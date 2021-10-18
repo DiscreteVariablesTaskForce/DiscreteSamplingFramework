@@ -1,7 +1,10 @@
 from discretesampling import spectrum
 
-#E.g. Proposal distribution with values and probabilities
-q = spectrum.SpectrumDimensionDistribution([1,2,3], [0.1,0.5,0.4])
+#Starting dimension 4
+startDimension = spectrum.SpectrumDimension(4)
+
+#E.g. Proposal distribution with values and probabilities relative to starting dimentison
+q = spectrum.SpectrumDimensionDistribution(startDimension)
 
 q.eval(spectrum.SpectrumDimension(1)) #Returns relevant probabilities from PMF
 q.eval(spectrum.SpectrumDimension(2))
