@@ -9,7 +9,9 @@ class DiscreteVariableDistribution:
     def __init__(self, values, probs):
         #Check dims and probs are valid
         assert len(values) == len(probs), "Invalid PMF specified, x and p of different lengths"
-        assert sum(probs) == 1.0, "Invalid PMF specified, sum of probabilities != 1.0"
+        probs = np.array(probs)
+        tolerance = np.sqrt(np.finfo(np.float64).eps)
+        assert abs(1 - sum(probs)) < tolerance, "Invalid PMF specified, sum of probabilities !~= 1.0"
         
         self.x = values
         self.pmf = probs
