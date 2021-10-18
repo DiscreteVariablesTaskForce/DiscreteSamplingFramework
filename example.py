@@ -1,7 +1,7 @@
 from discretesampling import spectrum
 
 #Starting dimension 4
-startDimension = spectrum.SpectrumDimension(4)
+startDimension = spectrum.SpectrumDimension(2)
 
 #E.g. Proposal distribution with values and probabilities relative to starting dimentison
 q = spectrum.SpectrumDimensionDistribution(startDimension)
@@ -19,17 +19,16 @@ x.value #Check the value
 current = spectrum.SpectrumDimension(2)
 print("Current dim: " + str(current.value))
 
-forward = spectrum.SpectrumDimensionDistribution([1,2,3], [0.1,0.5,0.4])
+forward = spectrum.SpectrumDimensionDistribution(current)
 
 proposed = spectrum.SpectrumDimension(3) #let's pretend we sampled it with proposed = forward.sample()
 print("Proposed dim: " + str(current.value))
 
-reverse = spectrum.SpectrumDimensionDistribution([2,3,4], [0.3,0.4,0.3])
-#We could write an extra function which automatically generates the proposal distributions
-#e.g. based on a graph/matrix transition probabilities
+reverse = spectrum.SpectrumDimensionDistribution(proposed)
 
 #In reality "target" is probably more complicated than this
-target = spectrum.SpectrumDimensionDistribution([1,2,3,4], [0.1,0.5,0.2,0.2])
+from discretesampling import discrete
+target = discrete.DiscreteVariableDistribution([spectrum.SpectrumDimension(x) for x in [1,2,3,4]], [0.1,0.5,0.2,0.2])
 
 acceptanceRatio = target.eval(proposed)/ target.eval(current) * reverse.eval(current) / forward.eval(proposed)
 print("Acceptance ratio: " + str(acceptanceRatio))
