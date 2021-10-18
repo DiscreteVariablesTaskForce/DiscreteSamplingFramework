@@ -21,7 +21,7 @@ print("Current dim: " + str(current.value))
 
 forward = spectrum.SpectrumDimensionDistribution(current)
 
-proposed = spectrum.SpectrumDimension(3) #let's pretend we sampled it with proposed = forward.sample()
+proposed = forward.sample()
 print("Proposed dim: " + str(current.value))
 
 reverse = spectrum.SpectrumDimensionDistribution(proposed)

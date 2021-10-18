@@ -18,7 +18,7 @@ class SpectrumDimension(discrete.DiscreteVariable): #SpectrumDimension inherits 
         return True
         
 
-class SpectrumDimensionDistribution(discrete.DiscreteVariableDisribution):#SpectrumDimensionDistribution inherits from DiscreteVariableDistribution
+class SpectrumDimensionDistribution(discrete.DiscreteVariableDistribution):#SpectrumDimensionDistribution inherits from DiscreteVariableDistribution
     def __init__(self, startingDimension: SpectrumDimension):
         
         startingValue = startingDimension.value

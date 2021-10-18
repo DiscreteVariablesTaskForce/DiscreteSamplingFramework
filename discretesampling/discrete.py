@@ -5,7 +5,7 @@ class DiscreteVariable:
     def __init__(self):
         pass
 
-class DiscreteVariableDisribution:    
+class DiscreteVariableDistribution:    
     def __init__(self, values, probs):
         #Check dims and probs are valid
         assert len(values) == len(probs), "Invalid PMF specified, x and p of different lengths"
