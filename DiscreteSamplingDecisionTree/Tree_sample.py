@@ -23,7 +23,7 @@ class TreeDistribution():
         
         #initialise the probabilities of each move
         moves = ["prune", "swap", "change", "grow"]
-        moves_prob = [0.3, 0.15, 0.15, 0.14]
+        moves_prob = [0.3, 0.15, 0.15, 0.4]
         moves_probabilities = np.cumsum(moves_prob)
         random_number= random.random()
         
