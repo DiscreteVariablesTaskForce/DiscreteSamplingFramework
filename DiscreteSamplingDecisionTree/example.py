@@ -25,28 +25,29 @@ node, leafs, features, thresholds =  Tree.initialise_tree(X_train)
 sampleTree = [node, leafs, features, thresholds] 
 currentTree = copy.deepcopy(sampleTree)
 
-a = 0.5 #grow likelihood(the biger the a the more possibility of growing the tree)
+a = 0.2 #grow likelihood(the biger the a the more possibility of growing the tree)
 b = 1 #the bigger the b the less number of terminal nodes we have
 
-for i in range(600):
-    current_tree_target, predict_possibilities = TreeDistribution.eval(X_train, y_train, sampleTree, a, b)
+for i in range(5000):
+    current_tree_target, predict_possibilities_current = TreeDistribution.eval(X_train, y_train, sampleTree, a, b)
     
     forward_probability, reverse_probability = TreeDistribution.sample(X_train, sampleTree)
     print("old_tree: ", currentTree)
     print("new_tree: ", sampleTree)
-    new_tree_target, predict_possibilities = TreeDistribution.eval(X_train, y_train, sampleTree, a, b)
+    new_tree_target, predict_possibilities_new = TreeDistribution.eval(X_train, y_train, sampleTree, a, b)
     
-    targetRatio = new_tree_target / current_tree_target
+    targetRatio = new_tree_target - current_tree_target
     
-    proposalRatio = reverse_probability / forward_probability
+    proposalRatio = reverse_probability - forward_probability
     
-    acceptProbability = min(1, targetRatio * proposalRatio)
+    acceptProbability = min(1, targetRatio + proposalRatio)
     
     
     q= random.random()
     
     if (acceptProbability > q):
         currentTree = copy.deepcopy(sampleTree)
+        predict_possibilities_current = predict_possibilities_new
         print("accepted")
     else:
         sampleTree = copy.deepcopy(currentTree)
@@ -55,7 +56,7 @@ for i in range(600):
 
 
     
-labels = predict(X_test, currentTree, predict_possibilities)
+labels = predict(X_test, currentTree, predict_possibilities_current)
 predictive_accuracy = accuracy(y_test, labels)
 print(predictive_accuracy)
         
