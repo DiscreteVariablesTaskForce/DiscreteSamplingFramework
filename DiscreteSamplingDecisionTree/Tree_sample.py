@@ -75,7 +75,6 @@ class TreeDistribution():
         target1 = math.log(target1)
         #call test tree to calculate  (theta|T)
         target2 = test.features_and_threshold_probabilities(X_train, newTree[2], newTree[3])
-        print(target2)
         target2 = math.log(target2)
         #p(T)
         target3 = test.prior_calculation(newTree[1], a, b)
