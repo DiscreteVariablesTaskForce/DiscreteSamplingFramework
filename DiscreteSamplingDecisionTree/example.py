@@ -11,6 +11,7 @@ import copy
 from Tree_sample import TreeDistribution
 import random
 from Metrics import predict, accuracy
+import math
 data = datasets.load_wine()
 
 X = data.data
@@ -40,7 +41,7 @@ for i in range(5000):
     
     proposalRatio = reverse_probability - forward_probability
     
-    acceptProbability = min(1, targetRatio + proposalRatio)
+    acceptProbability = min(1, math.exp(targetRatio + proposalRatio))
     
     
     q= random.random()
