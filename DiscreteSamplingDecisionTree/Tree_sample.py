@@ -33,9 +33,9 @@ class TreeDistribution():
             forward_probability = moves_prob[0]
             Tree.prune(current_Tree[0], current_Tree[1], current_Tree[2], current_Tree[3])
             #(T,theta|T',theta',a)
-            reverse_probability = moves_prob[3]  * 1/len(X_train[0]) * 1/len(X_train[:])
+            reverse_probability = moves_prob[3] * 1/len(X_train[0]) * 1/len(X_train[:])
             
-            return forward_probability, reverse_probability
+            return (forward_probability), (reverse_probability)
 
         elif random_number < moves_probabilities[1] and len(current_Tree[0]) > 1:
             #swap
@@ -45,7 +45,7 @@ class TreeDistribution():
             #(T,theta|T',theta',a)
             reverse_probability = moves_prob [1] * 1/((len(current_Tree[0]) * (len(current_Tree[0]) -1))/2)
             
-            return forward_probability, reverse_probability
+            return (forward_probability), (reverse_probability)
             
         
         elif random_number < moves_probabilities[2]:
@@ -56,7 +56,7 @@ class TreeDistribution():
             #(T,theta|T',theta',a)
             reverse_probability = moves_prob [2] * (1/len(current_Tree[0])) * 1/len(X_train[0]) * 1/len(X_train[:])
             
-            return forward_probability, reverse_probability
+            return (forward_probability), (reverse_probability)
         
         else:
             #grow
@@ -66,8 +66,7 @@ class TreeDistribution():
             #(T,theta|T',theta',a)
             reverse_probability = moves_prob[0]
             
-            return math.log(forward_probability), math.log(reverse_probability)
-        
+            return  (forward_probability), (reverse_probability)
         
     def eval(X_train, y_train, newTree, a, b):
         #call test tree to calculate Π(Y_i|T,theta,x_i)

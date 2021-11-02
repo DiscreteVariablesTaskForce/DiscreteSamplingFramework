@@ -118,7 +118,7 @@ class test():
                             
                         product_of_leafs_probabilities.append((target_probability))
             k+=1
-            
+
         product_of_target_feature = np.prod(product_of_leafs_probabilities)
         return product_of_target_feature, leafs_possibilities
     
@@ -143,7 +143,8 @@ class test():
     def prior_calculation(leafs,a,b):
         depth = math.ceil(math.log(len(leafs),2))
         prior = a / ((1+depth)**b)    
-
+        print("prior:", prior)
+        print("depth:", depth)
         return (prior)
         
     
