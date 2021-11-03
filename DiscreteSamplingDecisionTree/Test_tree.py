@@ -116,7 +116,7 @@ class test():
                         if target_probability == 1:
                             target_probability = 0.98
                             
-                        product_of_leafs_probabilities.append((target_probability))
+                    product_of_leafs_probabilities.append((target_probability))
             k+=1
 
         product_of_target_feature = np.prod(product_of_leafs_probabilities)
