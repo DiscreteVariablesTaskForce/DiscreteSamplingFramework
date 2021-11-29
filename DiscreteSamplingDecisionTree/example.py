@@ -28,7 +28,6 @@ initialTree = Tree(X_train, y_train)
 a = 0.01
 b = 5
 
-probabilityOfCorrect = initialTree.evaluatePosterior(a,b)
 currentTree = initialTree
 forward_probs = []
 sampledTrees = []
