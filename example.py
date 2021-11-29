@@ -1,37 +1,86 @@
-from discretesampling import spectrum
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov  5 14:28:12 2021
 
-#Starting dimension 4
-startDimension = spectrum.SpectrumDimension(2)
+@author: efthi
+"""
 
-#E.g. Proposal distribution with values and probabilities relative to starting dimentison
-q = spectrum.SpectrumDimensionDistribution(startDimension)
+from sklearn import datasets
+from sklearn.model_selection import train_test_split
+from create_tree import Tree
+import copy
+from Tree_sample import TreeDistribution, forward, reverse
+import random
+from Metrics import stats, accuracy
+import math
+import numpy as np
+from Test_tree import test
 
-q.eval(spectrum.SpectrumDimension(1)) #Returns relevant probabilities from PMF
-q.eval(spectrum.SpectrumDimension(2))
+data = datasets.load_wine()
 
-q.eval(spectrum.SpectrumDimension(10)) #Returns 0
+X = data.data
+y = data.target
 
-x = q.sample() #Returns a SpectrumDimension object
-x.value #Check the value
+X_train, X_test, y_train, y_test = train_test_split(X,y,test_size = 0.30,random_state=5)
 
-## How to use for Metropolis-Hastings
+initialTree = Tree(X_train, y_train)
 
-current = spectrum.SpectrumDimension(2)
-print("Current dim: " + str(current.value))
+forward_proposal = TreeDistribution(initialTree)
 
-forward = spectrum.SpectrumDimensionDistribution(current)
+sampledTree = forward_proposal.sample()
+forward_probability = forward_proposal.eval(sampledTree)
 
-proposed = forward.sample()
-print("Proposed dim: " + str(proposed.value))
+reverse_proposal = TreeDistribution(sampledTree)
+reverse_probability = reverse_proposal.eval(initialTree)
 
-reverse = spectrum.SpectrumDimensionDistribution(proposed)
+a = 0.01
+b = 5
+probabilityOfCorrect = initialTree.evaluatePosterior(a,b)
 
-#In reality "target" is probably more complicated than this
-from discretesampling import discrete
-target = discrete.DiscreteVariableDistribution([spectrum.SpectrumDimension(x) for x in [1,2,3,4]], [0.1,0.5,0.2,0.2])
 
-acceptanceRatio = target.eval(proposed)/ target.eval(current) * reverse.eval(current) / forward.eval(proposed)
-print("Acceptance ratio: " + str(acceptanceRatio))
+#sampleTree, sampleLeafs, currentTree, currentLeafs = TreeDistribution.build_trees(X_train)
 
-acceptanceProbability = min(1, acceptanceRatio)
-print("Acceptance probability: " + str(acceptanceProbability))
+
+
+currentTree = initialTree
+
+forward_probs = []
+
+sampledTrees = []
+
+for i in range (5000):
+
+    #the below command can run outside for loop. current_tree_target is the same if rejected, otherwise is updated to new_tree_target
+    forward_proposal = TreeDistribution(currentTree)
+    sampleTree = forward_proposal.sample()
+    forward_probability = forward_proposal.eval(sampleTree)
+    forward_probability = forward(forward_probs, forward_probability)
+    
+    reverse_proposal = TreeDistribution(sampleTree)
+    reverse_probability = reverse_proposal.eval(currentTree)
+    reverse_probability = reverse(forward_probs, reverse_probability)
+    
+    new_tree_target = sampleTree.evaluatePosterior(a,b)
+    current_tree_target = currentTree.evaluatePosterior(a,b)
+    
+    targetRatio = new_tree_target - current_tree_target
+    proposalRatio = math.log(reverse_probability) - math.log(forward_probability)
+    acceptLogProbability = min(1, math.exp(targetRatio + proposalRatio))
+
+    
+    q= random.random()
+    if ((acceptLogProbability) > q):
+        currentTree = sampleTree
+    else:
+        currentTree = currentTree
+        del forward_probs[-1]
+        
+    
+    sampledTrees.append(copy.deepcopy(currentTree))
+
+ 
+
+labels = stats.predict(currentTree, X_test)
+acc = accuracy(y_test, labels)
+
+
