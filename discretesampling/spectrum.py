@@ -1,5 +1,6 @@
 from . import discrete
 import numpy as np
+import math
 import random
 
 class SpectrumDimension(discrete.DiscreteVariable): #SpectrumDimension inherits from DiscreteVariable
@@ -48,3 +49,5 @@ class SpectrumDimensionTarget(discrete.DiscreteVariableTarget):
         
     def eval(self, x):
         #Evaluate logposterior at point x, P(x|D) \propto P(D|x)P(x)
+        return -math.inf
+        

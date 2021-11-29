@@ -5,7 +5,7 @@ import math
 startDimension = spectrum.SpectrumDimension(2)
 
 #E.g. Proposal distribution with values and probabilities relative to starting dimentison
-q = spectrum.SpectrumDimensionDistribution(startDimension)
+q = spectrum.SpectrumDimensionProposal(startDimension)
 
 q.eval(spectrum.SpectrumDimension(1)) #Returns relevant probabilities from PMF
 q.eval(spectrum.SpectrumDimension(2))
@@ -20,16 +20,18 @@ x.value #Check the value
 current = spectrum.SpectrumDimension(2)
 print("Current dim: " + str(current.value))
 
-forward = spectrum.SpectrumDimensionDistribution(current)
+forward = spectrum.SpectrumDimensionProposal(current)
 
 proposed = forward.sample()
 print("Proposed dim: " + str(proposed.value))
 
-reverse = spectrum.SpectrumDimensionDistribution(proposed)
+reverse = spectrum.SpectrumDimensionProposal(proposed)
 
 #In reality "target" is probably more complicated than this
 from discretesampling import discrete
-target = discrete.DiscreteVariableDistribution([spectrum.SpectrumDimension(x) for x in [1,2,3,4]], [0.1,0.5,0.2,0.2])
+target = discrete.DiscreteVariableProposal([spectrum.SpectrumDimension(x) for x in [1,2,3,4]], [0.1,0.5,0.2,0.2])
+#data = [0]
+#target = spectrum.SpectrumDimensionTarget(data)
 
 
 logAcceptanceRatio = target.eval(proposed) - target.eval(current) + reverse.eval(current) - forward.eval(proposed)
