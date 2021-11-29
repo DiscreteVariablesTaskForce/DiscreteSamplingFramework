@@ -1,7 +1,6 @@
 import numpy as np
 import random
-from create_tree import Tree
-from Test_tree import test
+from .tree import Tree
 import math
 import copy
 
