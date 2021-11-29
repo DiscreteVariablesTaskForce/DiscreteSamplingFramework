@@ -1,13 +1,19 @@
 # DiscreteSamplingFramework
-Python classes describing discrete variable sampling/proposals
+Python classes describing discrete variable sampling/proposals/targets
 
 ## Discrete Variables
 Each example of these should, at minimum implement functions:
  - `__init__` - a constructor with some arguments setting up the basic attributes of the variable
- - `getDistributionType` - a class method returning the relevant Distribution type for this variable type
+ - `getProposalType` - a class method returning the relevant proposal distribution type for this variable type
+- `getTargetType` - a class method returning the relevant target distribution type for this variable type
 
-## Discrete Variable Distributions
+## Discrete Variable Proposal Distributions
 Each example of these should, at minimum implement functions:
- - `__init__` - constructor with a single argument (a DiscreteVariable, x) which will act as the "starting point" for this distribution
- - `eval` - function taking a single argument (a DiscreteVariable, x') that returns the probability of sampling that DiscreteVariable from this Distribution (P(x|x'))
- - `sample` - function with no arguments which returns a sample of a DiscreteVariable, x', from this distribution, q (x' ~ q(x))
+ - `__init__` - constructor with a single argument (a DiscreteVariable, x) which will act as the "starting point" for this proposal
+ - `eval` - function taking a single argument (a DiscreteVariable, x') that returns the probability of sampling that DiscreteVariable from this proposal (P(x|x'))
+ - `sample` - function with no arguments which returns a sample of a DiscreteVariable, x', from this proposal, q (x' ~ q(x))
+
+## Discrete Variable Target Distributions
+Each example of these should, at minimum implement functions:
+ - `__init__` - constructor, possibly with some parameters theta and data D
+ - `eval` - function taking a single argument (a DiscreteVariable, x) that returns the log-posterior density logP(D|x,theta) + logP(x|theta)
