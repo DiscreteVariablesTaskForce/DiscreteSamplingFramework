@@ -25,32 +25,16 @@ X_train, X_test, y_train, y_test = train_test_split(X,y,test_size = 0.30,random_
 
 initialTree = Tree(X_train, y_train)
 
-forward_proposal = TreeDistribution(initialTree)
-
-sampledTree = forward_proposal.sample()
-forward_probability = forward_proposal.eval(sampledTree)
-
-reverse_proposal = TreeDistribution(sampledTree)
-reverse_probability = reverse_proposal.eval(initialTree)
-
 a = 0.01
 b = 5
+
 probabilityOfCorrect = initialTree.evaluatePosterior(a,b)
-
-
-#sampleTree, sampleLeafs, currentTree, currentLeafs = TreeDistribution.build_trees(X_train)
-
-
-
 currentTree = initialTree
-
 forward_probs = []
-
 sampledTrees = []
 
 for i in range (5000):
 
-    #the below command can run outside for loop. current_tree_target is the same if rejected, otherwise is updated to new_tree_target
     forward_proposal = TreeDistribution(currentTree)
     sampleTree = forward_proposal.sample()
     forward_probability = forward_proposal.eval(sampleTree)
