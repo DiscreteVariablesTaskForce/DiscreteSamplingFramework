@@ -1,6 +1,5 @@
 import numpy as np
 import random
-from .tree import Tree
 import math
 import copy
 from .. import discrete

@@ -4,6 +4,10 @@ import random
 class DiscreteVariable:    
     def __init__(self):
         pass
+    
+    @classmethod
+    def getDistributionType(self):
+        return DiscreteVariableDistribution
 
 class DiscreteVariableDistribution:    
     def __init__(self, values, probs):

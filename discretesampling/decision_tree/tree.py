@@ -3,6 +3,7 @@ import math
 import numpy as np
 import collections
 from .. import discrete
+from .tree_distribution import TreeDistribution
 
 class Tree(discrete.DiscreteVariable):
     def __init__(self, X_train, y_train):
@@ -13,6 +14,10 @@ class Tree(discrete.DiscreteVariable):
         self.tree = tree
         self.leafs = leafs
         self.lastAction = ""
+    
+    @classmethod
+    def getDistributionType(self):
+        return TreeDistribution
         
     def initialise_tree(self):
         leafs = [1,2]

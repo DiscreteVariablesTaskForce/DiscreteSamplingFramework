@@ -7,6 +7,9 @@ class SpectrumDimension(discrete.DiscreteVariable): #SpectrumDimension inherits 
         super().__init__()
         self.value = value
 
+    def getDistributionType(self):
+        return SpectrumDimensionDistribution
+    
     #Are equal if values are equal
     def __eq__(self, other):
         if not isinstance(other, SpectrumDimension):
