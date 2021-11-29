@@ -1,4 +1,5 @@
 from discretesampling import spectrum
+import math
 
 #Starting dimension 4
 startDimension = spectrum.SpectrumDimension(2)
@@ -30,8 +31,10 @@ reverse = spectrum.SpectrumDimensionDistribution(proposed)
 from discretesampling import discrete
 target = discrete.DiscreteVariableDistribution([spectrum.SpectrumDimension(x) for x in [1,2,3,4]], [0.1,0.5,0.2,0.2])
 
-acceptanceRatio = target.eval(proposed)/ target.eval(current) * reverse.eval(current) / forward.eval(proposed)
-print("Acceptance ratio: " + str(acceptanceRatio))
 
-acceptanceProbability = min(1, acceptanceRatio)
-print("Acceptance probability: " + str(acceptanceProbability))
+logAcceptanceRatio = target.eval(proposed) - target.eval(current) + reverse.eval(current) - forward.eval(proposed)
+print("Log Acceptance ratio: " + str(logAcceptanceRatio))
+
+acceptanceLogProbability = min(0, logAcceptanceRatio)
+print("Acceptance log-probability: " + str(acceptanceLogProbability))
+print("Acceptance probability: " + str(math.exp(acceptanceLogProbability)))

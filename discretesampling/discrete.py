@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import math
 
 class DiscreteVariable:    
     def __init__(self):
@@ -28,8 +29,8 @@ class DiscreteVariableDistribution:
     def eval(self, y):
         try:
             i = self.x.index(y)
-            p = self.pmf[i]
+            logp = math.log(self.pmf[i])
         except ValueError:
             print("Warning: value " + str(y) + " not in pmf")
-            p = 0
-        return p
+            logp = -math.inf
+        return logp
