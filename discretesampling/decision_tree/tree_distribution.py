@@ -4,7 +4,7 @@ import math
 import copy
 from .. import discrete
 
-class TreeDistribution(discrete.DiscreteVariableDistribution):
+class TreeProposal(discrete.DiscreteVariableProposal):
     def __init__(self, tree):
        
        self.X_train = tree.X_train

@@ -7,10 +7,14 @@ class DiscreteVariable:
         pass
     
     @classmethod
-    def getDistributionType(self):
-        return DiscreteVariableDistribution
+    def getProposalType(self):
+        return DiscreteVariableProposal
+    
+    @classmethod
+    def getTargetType(self):
+        return DiscreteVariableTarget
 
-class DiscreteVariableDistribution:    
+class DiscreteVariableProposal:    
     def __init__(self, values, probs):
         #Check dims and probs are valid
         assert len(values) == len(probs), "Invalid PMF specified, x and p of different lengths"
@@ -34,3 +38,12 @@ class DiscreteVariableDistribution:
             print("Warning: value " + str(y) + " not in pmf")
             logp = -math.inf
         return logp
+
+
+class DiscreteVariableTarget:
+    def __init__(self):
+        pass
+    
+    def eval(self, x):
+        p = 0
+        return p

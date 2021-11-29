@@ -26,6 +26,8 @@ initialTree = decision_tree.Tree(X_train, y_train)
 a = 0.01
 b = 5
 
+target = decision_tree.TreeTarget(a,b)
+
 currentTree = initialTree
 forward_probs = []
 sampledTrees = []

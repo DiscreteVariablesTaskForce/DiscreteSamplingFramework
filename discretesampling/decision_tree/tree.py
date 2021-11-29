@@ -1,13 +1,10 @@
 import random
-import math
-import numpy as np
-import collections
 from .. import discrete
-from .tree_distribution import TreeDistribution
+from .tree_distribution import TreeProposal
+from .tree_target import TreeTarget
 
 class Tree(discrete.DiscreteVariable):
     def __init__(self, X_train, y_train):
-
         self.X_train = X_train
         self.y_train = y_train
         tree, leafs = self.initialise_tree()
@@ -16,9 +13,13 @@ class Tree(discrete.DiscreteVariable):
         self.lastAction = ""
     
     @classmethod
-    def getDistributionType(self):
-        return TreeDistribution
-        
+    def getProposalType(self):
+        return TreeProposal
+    
+    @classmethod
+    def getTargetType(self):
+        return TreeTarget
+    
     def initialise_tree(self):
         leafs = [1,2]
        
@@ -173,200 +174,3 @@ class Tree(discrete.DiscreteVariable):
             
             return self
     
-    #Π(Y_i|T,theta,x_i)
-    def calculate_leaf_occurences(self):
-        '''
-        we calculate how many labelled as 0 each leaf has, how many labelled as 1 each leaf has and so on
-        '''
-        leaf_occurences = []
-        k=0 
-        for leaf in self.leafs:
-            leaf_occurences.append([leaf])
-            
-        for datum in self.X_train:
-            flag = "false"
-            current_node = self.tree[0]
-            
-            #make sure that we are not in leafs. current_node[0] is the node
-            while current_node[0] not in self.leafs and flag == "false":
-                if  datum[current_node[3]] > current_node[4]:
-                    for node in self.tree:
-                        if node[0] == current_node[2]:
-                            current_node = node
-                            break
-                        if current_node[2] in self.leafs:
-                            leaf = current_node[2]
-                            flag = "true"
-                            break
-                            
-                else:
-                    for node in self.tree:
-                        if node[0] == current_node[1]:
-                            current_node = node
-                            break
-                        if current_node[1] in self.leafs:
-                            leaf = current_node[1]
-                            flag = "true"
-                            break
-    
-            '''
-            create a list of lists that holds the leafs and the number of occurences
-            for example [[4,1,1,2,2,2][5,1,1,2,2,1][6,1,2,2,1,2][7,2,2,2,1,2,1,2]]
-            The first number represents the leaf id number
-            '''
-
-            
-                
-            for item in leaf_occurences:
-
-                if item[0] == leaf:
-                    item.append(self.y_train[k])
-            k+=1
-
-        '''
-        we have some cases where some leaf nodes may do not have any probabilities
-        because no data point ended up in the particular leaf
-        We add equal probabilities for each label to the particular leaf.
-        For example if we have 4 labels, we add 0:0.25, 1:0.25, 2:0.25, 3:0.25
-        '''
-        
-        for item in leaf_occurences:
-            if len(item) == 1 :
-                unique = set(self.y_train)
-                unique = list(unique)
-                for i in range(len(unique)):
-                    item.append(i)
-                
-
-        leaf_occurences = sorted(leaf_occurences)
-        leafs = sorted(self.leafs)
-
-        '''
-        we then delete the first number of the list which represents the leaf node id.
-        '''
-        for i in range(len(leaf_occurences)):
-            new_list = True
-            for p in range(len(leaf_occurences[i])):
-                if new_list :
-                    new_list = False
-                    del leaf_occurences[i][p] 
-    
-        '''
-        first count the number of labels in each leaf.
-        Then create probabilities by normalising those values[0,1]
-        '''
-        leafs_possibilities = []
-        for number_of_leaves in range(len(leaf_occurences)):
-            occurrences = collections.Counter(leaf_occurences[number_of_leaves][:])
-            leafs_possibilities.append(occurrences)
-        
-        #create leafs possibilities
-        for item in leafs_possibilities:
-            factor=1.0/sum(item.values())
-            for k in item:
-                item[k] = item[k]*factor
-        
-
-        product_of_leafs_probabilities  = []
-        k=0     
-        for datum in self.X_train:
-            #print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-            flag = "false"
-            current_node = self.tree[0]
-            #make sure that we are not in leafs. current_node[0] is the node
-            while current_node[0] not in leafs and flag == "false":
-                if  datum[current_node[3]] > current_node[4]:
-                    for node in self.tree:
-                        if node[0] == current_node[2]:
-                            current_node = node
-                            break
-                        if current_node[2] in leafs:
-                            leaf = current_node[2]
-                            #print(leaf)
-                            flag = "true"
-                            break
-                            
-                else:
-                    for node in self.tree:
-                        if node[0] == current_node[1]:
-                            current_node = node
-                            break
-                        if current_node[1] in leafs:
-                            leaf = current_node[1]
-                            #print(leaf)
-                            flag = "true"
-                            break
-                        
-            if leaf in leafs:
-                indice = leafs.index(leaf)#find the position of the dictionary probabilities given the leaf number
-                probs = leafs_possibilities[indice]
-                for prob in probs:
-                    target_probability = probs[self.y_train[k]]
-
-
-                    '''
-                    we make sure that in the case we are on a homogeneous leaf, 
-                    we dont get a 0 probability but a very low one
-                    '''
-                    
-                    if target_probability == 0:
-                        target_probability = 0.02
-                    if target_probability == 1:
-                        target_probability = 0.98
-                
-                product_of_leafs_probabilities.append(math.log(target_probability))
-
-            k+=1
-        product_of_target_feature = np.sum(product_of_leafs_probabilities)
-        return product_of_target_feature, leafs_possibilities
-    
-    #(theta|T)
-    def features_and_threshold_probabilities(self):
-        #this need to change
-        probabilities = []
-                
-        '''
-            the likelihood of choosing the specific feature and threshold must be computed. We need to find out the probabilty 
-            of selecting the specific feature multiplied by 1/the margins. it should be 
-            (1/number of features) * (1/(upper bound-lower bound)) 
-        '''
-        for node in self.tree:
-            probabilities.append( 1/len(self.X_train[0]) * 1/ (max(self.X_train[:,node[3]]) - min(self.X_train[:,node[3]])) )
-            #probabilities.append(math.log( 1/len(X_train[0]) * 1/len(X_train[:]) ))
-        
-        probability = np.prod(probabilities)
-        return ((probability))
-    
-    def evaluatePrior(self,a,b):
-        i = len(self.tree) - 1
-        depth = 0
-        while i >= 0 :
-            node = self.tree[i]
-            next_node = self.tree[i-1]
-            if node[0] == next_node[1]:
-                depth+=1
-            if node[0] == next_node[2]:
-                depth +=1
-            i -= 1
-        depth = depth + 1
-        prior = a / ((1+depth)**b)    
-        return (prior)
-        
-    def getLeafPossibilities(self):
-        target1, leafs_possibilities_for_prediction = self.calculate_leaf_occurences()
-        return leafs_possibilities_for_prediction
-    
-    def evaluatePosterior(self, a, b):
-        #call test tree to calculate Π(Y_i|T,theta,x_i)
-        target1, leafs_possibilities_for_prediction = self.calculate_leaf_occurences()
-        #call test tree to calculate  (theta|T)
-        target2 = self.features_and_threshold_probabilities()
-        target2 = math.log(target2)
-        #p(T)
-        target3 = self.evaluatePrior(a, b)
-        target3 = math.log(target3)
-
-        return (target1+target2+target3) 
-    
-        
-        

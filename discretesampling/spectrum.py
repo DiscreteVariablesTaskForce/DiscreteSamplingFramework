@@ -6,9 +6,14 @@ class SpectrumDimension(discrete.DiscreteVariable): #SpectrumDimension inherits 
     def __init__(self, value):        
         super().__init__()
         self.value = value
-
-    def getDistributionType(self):
-        return SpectrumDimensionDistribution
+    
+    @classmethod
+    def getProposalType(self):
+        return SpectrumDimensionProposal
+    
+    @classmethod
+    def getTargetType(self):
+        return SpectrumDimensionTarget
     
     #Are equal if values are equal
     def __eq__(self, other):
@@ -21,7 +26,7 @@ class SpectrumDimension(discrete.DiscreteVariable): #SpectrumDimension inherits 
         return True
         
 
-class SpectrumDimensionDistribution(discrete.DiscreteVariableDistribution):#SpectrumDimensionDistribution inherits from DiscreteVariableDistribution
+class SpectrumDimensionProposal(discrete.DiscreteVariableProposal):#SpectrumDimensionProposal inherits from DiscreteVariableProposal
     def __init__(self, startingDimension: SpectrumDimension):
         
         startingValue = startingDimension.value
@@ -36,5 +41,10 @@ class SpectrumDimensionDistribution(discrete.DiscreteVariableDistribution):#Spec
         probs = [1/numDims] * numDims
         
         super().__init__(dims, probs)
-        
     
+class SpectrumDimensionTarget(discrete.DiscreteVariableTarget):
+    def __init__(self, data):
+        self.data = data
+        
+    def eval(self, x):
+        #Evaluate logposterior at point x, P(x|D) \propto P(D|x)P(x)
