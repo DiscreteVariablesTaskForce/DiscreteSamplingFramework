@@ -1,6 +1,3 @@
-from create_tree import Tree
-
-
 class stats():
     def __init__(self, tree, X_test):
         self.X_train = tree.X_train
