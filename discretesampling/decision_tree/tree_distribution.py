@@ -3,8 +3,9 @@ import random
 from .tree import Tree
 import math
 import copy
+from .. import discrete
 
-class TreeDistribution():
+class TreeDistribution(discrete.DiscreteVariableDistribution):
     def __init__(self, tree):
        
        self.X_train = tree.X_train

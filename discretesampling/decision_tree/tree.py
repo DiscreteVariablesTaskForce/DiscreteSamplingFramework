@@ -2,8 +2,9 @@ import random
 import math
 import numpy as np
 import collections
+from .. import discrete
 
-class Tree():
+class Tree(discrete.DiscreteVariable):
     def __init__(self, X_train, y_train):
 
         self.X_train = X_train
