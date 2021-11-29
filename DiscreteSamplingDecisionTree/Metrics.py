@@ -1,27 +1,72 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Oct 24 10:30:36 2021
+from create_tree import Tree
 
-@author: efthi
-"""
 
-def predict(X_test, old_tree, leaf_possibilities):
-    '''
-    gets the old_tree parameters and makes predictions on the test dataset based on the train dataset
-    '''
-    labels = []
-    p = 0
-    for datum in X_test:
-        current_node = 0
-        label_max = -1 #helper variable to keep the highest variable
-        while current_node not in old_tree[1]:
-            if  datum[old_tree[2][current_node]] > old_tree[3][current_node]:
-                current_node = (current_node*2)+2
-            else:
-                current_node = (current_node*2)+1
-            p+=1
-            if current_node in old_tree[1]:
-                indice = old_tree[1].index(current_node)
+class stats():
+    def __init__(self, tree, X_test):
+        self.X_train = tree.X_train
+        self.y_train = tree.y_train
+        self.tree = tree.nodes
+        self.leafs = tree.leafs
+        
+        
+    def predict (self, X_test):
+        leaf_possibilities = self.getLeafPossibilities()
+        leafs = sorted(self.leafs)
+        labels = []
+        for datum in X_test:
+            #print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+            flag = "false"
+            current_node = self.tree[0]
+            label_max = -1
+            #make sure that we are not in leafs. current_node[0] is the node
+            while current_node[0] not in leafs and flag == "false":
+                if  datum[current_node[3]] > current_node[4]:
+                    for node in self.tree:
+                        if node[0] == current_node[2]:
+                            current_node = node
+                            break
+                        if current_node[2] in leafs:
+                            leaf = current_node[2]
+                            flag = "true"
+                            indice = leafs.index(leaf)
+                            for x,y in leaf_possibilities[indice].items():
+                                if y == label_max :
+                                    actual_label = 1
+                            
+                                if y > label_max:
+                                    label_max = y
+                                    actual_label = x
+                                                    
+      
+                            labels.append(actual_label)
+                            break
+                            
+                else:
+                    for node in self.tree:
+                        if node[0] == current_node[1]:
+                            current_node = node
+                            break
+                        if current_node[1] in leafs:
+                            leaf = current_node[1]
+                            flag = "true"
+                            indice = leafs.index(leaf)
+                            for x,y in leaf_possibilities[indice].items():
+                                if y == label_max :
+                                    actual_label = 1
+                            
+                                if y > label_max:
+                                    label_max = y
+                                    actual_label = x
+                                                    
+      
+                            labels.append(actual_label)
+                            break
+    
+    
+      
+    
+            if current_node in leafs:
+                indice = current_node.index(current_node)
                 #find in the dictionary which is the highest probable label
                 for x,y in leaf_possibilities[indice].items():
                     if y == label_max :
@@ -30,18 +75,22 @@ def predict(X_test, old_tree, leaf_possibilities):
                     if y > label_max:
                         label_max = y
                         actual_label = x
-                                                
-  
-                labels.append(actual_label)
-    return labels
-
+        return (labels)
+    
+    
+    
 def accuracy(y_test, labels):
     correct_classification = 0
-    print("labels: ", len(labels))
-    print("y_test: ", len(y_test))
     for i in range(len(y_test)):
         if labels[i] == y_test[i]:
             correct_classification +=1
     
     acc = correct_classification*100/len(y_test)
     return acc
+    correct_classification = 0
+    for i in range(len(y_test)):
+        if labels[i] == y_test[i]:
+            correct_classification +=1
+        
+        acc = correct_classification*100/len(y_test)
+        return acc
