@@ -1,4 +1,3 @@
-import numpy as np
 import discretesampling.additive_structure as addstruct
 
 # Starting with a discrete set of numbers
