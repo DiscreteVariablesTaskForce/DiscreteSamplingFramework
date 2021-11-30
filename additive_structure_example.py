@@ -1,17 +1,24 @@
 import discretesampling.additive_structure as addstruct
+import math
 
 # Starting with a discrete set of numbers
 initial_set = [[1, 2], [3], [4, 5], [6], [7, 8, 9]]
 initialAS = addstruct.AdditiveStructure(initial_set)
 
-forward_proposal = addstruct.AdditiveStructureDistribution(initialAS)
+data = [] #some data defining the target
+target = addstruct.AdditiveStructureTarget(data)
+
+forward_proposal = addstruct.AdditiveStructureProposal(initialAS)
 proposedAS = forward_proposal.sample()
 
-forward_probability = forward_proposal.eval(proposedAS)
+forward_logprob = forward_proposal.eval(proposedAS)
 
-reverse_proposal = addstruct.AdditiveStructureDistribution(proposedAS)
+reverse_proposal = addstruct.AdditiveStructureProposal(proposedAS)
 
-reverse_probability = reverse_proposal.eval(initialAS)
+reverse_logprob = reverse_proposal.eval(initialAS)
 
-proposalratio = reverse_probability - forward_probability
+current_target_logprob = target.eval(initialAS)
+proposed_target_logprob = target.eval(proposedAS)
 
+log_acceptance_ratio = proposed_target_logprob - current_target_logprob + reverse_logprob - forward_logprob
+acceptance_probability = min(1, math.exp(log_acceptance_ratio))

@@ -11,9 +11,13 @@ class AdditiveStructure(discrete.DiscreteVariable):
         self.discrete_set = discrete_set
         
     @classmethod
-    def getDistributionType(self):
-        return AdditiveStructureDistribution
+    def getProposalType(self):
+        return AdditiveStructureProposal
     
+    @classmethod
+    def getTargetType(self):
+        return AdditiveStructureTarget
+
     def split_subset(self, frac):
         """
         :param discrete_set: initial set
@@ -77,7 +81,7 @@ class AdditiveStructure(discrete.DiscreteVariable):
         return AdditiveStructure(new_discrete_set)
 
 
-class AdditiveStructureDistribution(discrete.DiscreteVariableDistribution):
+class AdditiveStructureProposal(discrete.DiscreteVariableProposal):
     def __init__(self, current: AdditiveStructure):
         self.current = current
         self.multi_subsets = [subset for subset in self.current.discrete_set if len(subset) > 1]
@@ -135,4 +139,16 @@ class AdditiveStructureDistribution(discrete.DiscreteVariableDistribution):
     @staticmethod
     def probability_split(frac, num_non_single, elements_subset):
         return -log(frac) - log(num_non_single) - log(stirling(elements_subset, 2))
-        
+
+
+class AdditiveStructureTarget(discrete.DiscreteVariableTarget):
+    def __init__(self,data):
+        self.data = data
+    
+    
+    def eval(self, x: AdditiveStructure):
+        #Calculate logposterior at "point" x, an instance of AdditiveStructure
+        #presumably some function of x.discrete_set and some data which
+        #could be defined in constructor as self.data
+        logprob = -inf
+        return logprob
