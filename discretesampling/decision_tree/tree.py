@@ -30,41 +30,34 @@ class Tree(discrete.DiscreteVariable):
     
     
     def grow(self):
-            
-            action = "grow"
-            print(action)
-            self.lastAction = action
-            '''
-            grow tree by just simply creating the individual nodes. each node holds their node index, 
-            the left and right leaf index, the node feature and threshold
-            '''
-            random_index = random.randint(0,len(self.leafs)-1)
-            leaf_to_grow = self.leafs[random_index] 
-    
-            #generating a random faeture
-            feature = random.randint(0,len(self.X_train[0])-1)
-            #generating a random threshold
-            threshold = random.randint(0,len(self.X_train)-1)
-            threshold = (self.X_train[threshold,feature])
-            
-            node = [leaf_to_grow, max(self.leafs)+1, max(self.leafs)+2, feature, threshold]
-    
-            #add the new leafs on the leafs array
-            self.leafs.append(max(self.leafs)+1)
-            self.leafs.append(max(self.leafs)+1)
-            #delete from leafs the new node
-            self.leafs.remove(leaf_to_grow)
-            self.tree.append(node)
-            
+        action = "grow"
+        self.lastAction = action
+        '''
+        grow tree by just simply creating the individual nodes. each node holds their node index, 
+        the left and right leaf index, the node feature and threshold
+        '''
+        random_index = random.randint(0,len(self.leafs)-1)
+        leaf_to_grow = self.leafs[random_index] 
 
-            
-            return self
+        #generating a random faeture
+        feature = random.randint(0,len(self.X_train[0])-1)
+        #generating a random threshold
+        threshold = random.randint(0,len(self.X_train)-1)
+        threshold = (self.X_train[threshold,feature])
         
+        node = [leaf_to_grow, max(self.leafs)+1, max(self.leafs)+2, feature, threshold]
+
+        #add the new leafs on the leafs array
+        self.leafs.append(max(self.leafs)+1)
+        self.leafs.append(max(self.leafs)+1)
+        #delete from leafs the new node
+        self.leafs.remove(leaf_to_grow)
+        self.tree.append(node)
         
-        
+        return self
+
     def prune(self):
         action = "prune"
-        print(action)
         self.lastAction = action
         '''
         For example when we have nodes 0,1,2 and leafs 3,4,5,6 when we prune we take the leafs 6 and 5 out, and the
@@ -130,7 +123,6 @@ class Tree(discrete.DiscreteVariable):
         
     def change(self):
         action = "change"
-        print(action)
         self.lastAction = action
         '''
         we need to choose a new feature at first
@@ -148,7 +140,6 @@ class Tree(discrete.DiscreteVariable):
     
     def swap(self):
             action = "swap"
-            print(action)
             self.lastAction = action
             '''
             need to swap the features and the threshold among the 2 nodes
