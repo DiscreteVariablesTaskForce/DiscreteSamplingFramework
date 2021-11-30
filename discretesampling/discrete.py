@@ -45,5 +45,5 @@ class DiscreteVariableTarget:
         pass
     
     def eval(self, x):
-        p = 0
-        return p
+        logprob = -math.inf
+        return logprob
