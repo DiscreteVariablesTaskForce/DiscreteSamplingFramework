@@ -1,3 +1,4 @@
+import numpy
 from discretesampling.algorithms import DiscreteVariableMCMC
 from discretesampling import decision_tree as dt
 
@@ -17,7 +18,9 @@ b = 5
 
 target = dt.TreeTarget(a,b)
 
+#Create an MCMC sampler on type dt.Tree with target distribution target
 dtMCMC = DiscreteVariableMCMC(dt.Tree, target)
 
 treeSamples = dtMCMC.sample(1000, initialTree)
 mcmc_acc = [dt.accuracy(y_test, dt.stats(x,X_test).predict(X_test)) for x in treeSamples]
+print(numpy.mean(mcmc_acc[501:1000]))
