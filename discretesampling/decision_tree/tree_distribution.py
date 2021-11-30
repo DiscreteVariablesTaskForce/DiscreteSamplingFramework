@@ -6,7 +6,6 @@ from .. import discrete
 
 class TreeProposal(discrete.DiscreteVariableProposal):
     def __init__(self, tree):
-       
        self.X_train = tree.X_train
        self.y_train = tree.y_train
        self.tree = copy.deepcopy(tree)
@@ -24,32 +23,26 @@ class TreeProposal(discrete.DiscreteVariableProposal):
         if random_number < moves_probabilities[0]:
             #prune
             newTree = newTree.prune()
-            
-            
-    
+
         elif random_number < moves_probabilities[1]:
             #swap
             newTree = newTree.swap()
-            
-            
-            
         
         elif random_number < moves_probabilities[2]:
             #change
             newTree = newTree.change()
-                     
-        
+         
         else:
             #grow
             newTree = newTree.grow()
-            
-        
+
         return newTree
         
     def eval(self, sampledTree):
         initialTree = self.tree
         moves_prob = [0.4, 0.1, 0.1, 0.4]
         probability = 0
+        nodes_differences = [i for i in sampledTree.tree + initialTree.tree if i not in sampledTree.tree or i not in initialTree.tree]
         #In order to get sampledTree from initialTree we must have:
         #Grow
         if (len(initialTree.tree) < len(sampledTree.tree)):
@@ -57,14 +50,16 @@ class TreeProposal(discrete.DiscreteVariableProposal):
         #Prune
         elif (len(initialTree.tree) > len(sampledTree.tree)):
             probability = moves_prob[0] * (1/(len(initialTree.tree) - 1))
-        else:
-            probability = 1 
+        #Change
+        elif (len(nodes_differences) == 2):
+            probability = moves_prob [2] * (1/len(initialTree.tree)) * 1/len(initialTree.X_train[0]) * 1/len(initialTree.X_train[:])
+        #swap
+        elif (len(nodes_differences) == 4):
+            probability = moves_prob[1] * 1/ ((len(initialTree.tree) * (len(initialTree.tree) -1))/2) 
         
-        print("probability:  ", probability)
         return probability
             
-    
-    
+
 def forward(forward, forward_probability):
     forward.append(forward_probability)
     forward_probability = np.sum(forward)
