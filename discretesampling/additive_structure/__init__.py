@@ -1,1 +1,1 @@
-from .split_merge import AdditiveStructure, AdditiveStructureDistribution
+from .additive_structure import AdditiveStructure, AdditiveStructureDistribution
