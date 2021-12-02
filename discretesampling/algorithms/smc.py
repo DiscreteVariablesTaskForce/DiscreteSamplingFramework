@@ -25,8 +25,11 @@ class DiscreteVariableSMC():
             print("Neff = ", math.exp(logNeff))
             if (logNeff < math.log(P) - math.log(2)):
                 print("Resampling...")
-                current_particles, logWeights = resample(current_particles, logWeights)
-        
+                try:
+                    current_particles, logWeights = resample(current_particles, logWeights)
+                except ValueError as error:
+                    raise RuntimeError('Weights do not sum to one, sum = ' + str(math.exp(logsumexp(logWeights)))) from error
+
             new_particles = copy.deepcopy(current_particles)
             new_logWeights = copy.deepcopy(logWeights)
 
@@ -53,11 +56,21 @@ class DiscreteVariableSMC():
 def calculateNeff(logWeights):
     w = normaliseLogWeights(logWeights)
     log_squared_weights = [2*logW for logW in logWeights]
-    return logsumexp(w) - logsumexp(log_squared_weights)
+
+    tmp = np.array(logWeights)
+    non_zero_logWeights = tmp[tmp != -math.inf]
+    if (len(non_zero_logWeights) > 0):
+        return logsumexp(non_zero_logWeights) - logsumexp(2*non_zero_logWeights)
+    else:
+        return -math.inf
+
 
 def normaliseLogWeights(logWeights):
-    normalisedWeights = logWeights - logsumexp(logWeights)
-    return normalisedWeights
+    tmp = np.array(logWeights)
+    non_zero_logWeights = tmp[tmp != -math.inf]
+    if (len(non_zero_logWeights) > 0):
+        tmp[tmp != -math.inf] = non_zero_logWeights - logsumexp(non_zero_logWeights)
+    return list(tmp)
 
 def resample(particles, logWeights):
     P = len(particles)
