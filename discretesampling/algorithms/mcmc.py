@@ -14,7 +14,7 @@ class DiscreteVariableMCMC():
         initialSample = self.initialProposal.sample()
         current = initialSample
 
-        samples = [current]
+        samples = []
         for i in range(N):
             forward_proposal = self.proposalType(current)
             proposed = forward_proposal.sample()
