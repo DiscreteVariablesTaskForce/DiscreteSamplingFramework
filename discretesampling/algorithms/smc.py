@@ -5,26 +5,26 @@ from scipy.special import logsumexp
 
 class DiscreteVariableSMC():
 
-    def __init__(self, variableType, target):
+    def __init__(self, variableType, target, initialProposal):
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
         self.LKernelType = variableType.getProposalType()
+        self.initialProposal = initialProposal
         self.target = target
     
-    def sample(self, N, P, init):
-        assert type(init) is self.variableType, "init is not of correct type"
-        initialProposal = self.proposalType(init)
-        initialParticles = [initialProposal.sample() for p in range(P)]
+    def sample(self, N, P):
+        initialParticles = [self.initialProposal.sample() for p in range(P)]
         
         current_particles = initialParticles
-        logWeights = [initialProposal.eval(p) for p in initialParticles]
+        logWeights = [self.target.eval(p) - self.initialProposal.eval(p) for p in initialParticles]
         logWeights = normaliseLogWeights(logWeights)
 
         for i in range(N):
                         
             logNeff = calculateNeff(logWeights)
+            print("Neff = ", math.exp(logNeff))
             if (logNeff < math.log(P) - math.log(2)):
-                print("Neff = ", math.exp(logNeff), ", resampling...")
+                print("Resampling...")
                 current_particles, logWeights = resample(current_particles, logWeights)
         
             new_particles = copy.deepcopy(current_particles)
