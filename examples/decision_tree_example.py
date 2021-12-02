@@ -5,7 +5,8 @@ Created on Fri Nov  5 14:28:12 2021
 @author: efthi
 """
 
-from discretesampling import decision_tree
+from discretesampling import decision_tree as dt
+from discretesampling.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
 
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
@@ -21,44 +22,23 @@ y = data.target
 
 X_train, X_test, y_train, y_test = train_test_split(X,y,test_size = 0.30,random_state=5)
 
-initialTree = decision_tree.Tree(X_train, y_train)
-
 a = 0.01
 b = 5
+target = dt.TreeTarget(a,b)
+initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
-target = decision_tree.TreeTarget(a,b)
+dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
+treeSamples = dtMCMC.sample(5000)
 
-currentTree = initialTree
-forward_probs = []
-sampledTrees = []
+mcmcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSamples]
+mcmcAccuracy = [dt.accuracy(y_test, x) for x in mcmcLabels]
 
-for i in range (5000):
-    forward_proposal = decision_tree.TreeDistribution(currentTree)
-    sampleTree = forward_proposal.sample()
-    forward_probability = forward_proposal.eval(sampleTree)
-    forward_probability = decision_tree.forward(forward_probs, forward_probability)
-    
-    reverse_proposal = decision_tree.TreeDistribution(sampleTree)
-    reverse_probability = reverse_proposal.eval(currentTree)
-    reverse_probability = decision_tree.reverse(forward_probs, reverse_probability)
-    
-    new_tree_target = sampleTree.evaluatePosterior(a,b)
-    current_tree_target = currentTree.evaluatePosterior(a,b)
-    
-    targetRatio = new_tree_target - current_tree_target
-    proposalRatio = math.log(reverse_probability) - math.log(forward_probability)
-    acceptLogProbability = min(1, math.exp(targetRatio + proposalRatio))
-    
-    q= random.random()
-    if ((acceptLogProbability) > q):
-        currentTree = sampleTree
-    else:
-        currentTree = currentTree
-        del forward_probs[-1]
-    
-    
-    sampledTrees.append(copy.deepcopy(currentTree))
+print("MCMC mean accuracy: ", np.mean(mcmcAccuracy[2500:4999]))
 
-labels = decision_tree.stats.predict(currentTree, X_test)
-acc = decision_tree.accuracy(y_test, labels)
+dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
+treeSMCSamples = dtSMC.sample(10,1000)
 
+smcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSMCSamples]
+smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
+
+print("SMC mean accuracy: ", np.mean(smcAccuracy))
