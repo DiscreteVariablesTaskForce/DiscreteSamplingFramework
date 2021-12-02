@@ -4,15 +4,14 @@ import copy
 
 class DiscreteVariableMCMC():
 
-    def __init__(self, variableType, target):
+    def __init__(self, variableType, target, initialProposal):
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
+        self.initialProposal = initialProposal
         self.target = target
     
-    def sample(self, N, init):
-        initialSample = init
-        assert type(init) is self.variableType, "init is not of correct type"
-        
+    def sample(self, N):
+        initialSample = self.initialProposal.sample()
         current = initialSample
 
         samples = [current]
