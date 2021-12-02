@@ -160,8 +160,14 @@ class AdditiveStructureInitialProposal(discrete.DiscreteVariableInitialProposal)
     def __init__(self, elems):
         self.elems = elems
         n = len(self.elems)
+
+        #Bell(n) is the number of possible (unordered) parititions of N elements
         self.bell_n = bell(n)
-        values = [x for x in multiset_partitions(elems)]
+        #Create AdditiveStructure for each possible partition
+        values = [AdditiveStructure(x) for x in multiset_partitions(elems)]
+        assert self.bell_n == len(values), "Should be Bell(n) different unordered partitions"
+
+        #Assume we sample uniformly from all possible partitions
         probs = [1/self.bell_n for x in values]
         super().__init__(values, probs)
     
@@ -172,4 +178,4 @@ class AdditiveStructureInitialProposal(discrete.DiscreteVariableInitialProposal)
 
     def sample(self):
         x = super().sample()
-        return AdditiveStructure(x)
+        return x
