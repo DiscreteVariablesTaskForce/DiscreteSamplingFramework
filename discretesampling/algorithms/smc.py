@@ -38,7 +38,7 @@ class DiscreteVariableSMC():
                 forward_proposal = self.proposalType(current_particles[p])
                 new_particles[p] = forward_proposal.sample()
                 
-                Lkernel = self.proposalType(new_particles[p])
+                Lkernel = self.LKernelType(new_particles[p])
                 
                 forward_logprob = forward_proposal.eval(new_particles[p])
                 reverse_logprob = Lkernel.eval(current_particles[p])
