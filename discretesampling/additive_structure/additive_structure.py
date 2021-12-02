@@ -3,7 +3,8 @@ from random import randint, random, choices
 import random
 import numpy as np
 import copy
-from .numbers import binomial, stirling
+from .numbers import binomial, stirling, bell
+from sympy.utilities.iterables import multiset_partitions
 from .. import discrete
 
 class AdditiveStructure(discrete.DiscreteVariable):
@@ -152,3 +153,23 @@ class AdditiveStructureTarget(discrete.DiscreteVariableTarget):
         #could be defined in constructor as self.data
         logprob = -inf
         return logprob
+
+
+
+class AdditiveStructureInitialProposal(discrete.DiscreteVariableInitialProposal):
+    def __init__(self, elems):
+        self.elems = elems
+        n = len(self.elems)
+        self.bell_n = bell(n)
+        values = [x for x in multiset_partitions(elems)]
+        probs = [1/self.bell_n for x in values]
+        super().__init__(values, probs)
+    
+    def eval(self, x: AdditiveStructure):
+        #TODO: check that elems of x match self.elems
+        logprob = -log(self.bell_n)
+        return logprob
+
+    def sample(self):
+        x = super().sample()
+        return AdditiveStructure(x)
