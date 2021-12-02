@@ -14,19 +14,26 @@ Each example of these should, at minimum implement functions:
  - `getInitialProposalType` - a class method returning the relevant initial proposal distribution type for this variable type
 - `getTargetType` - a class method returning the relevant target distribution type for this variable type
 
+We may at some point in the future need to also include:
+ - `getLKernelType` - a class method returning the relevant LKernel distribution type for this variable type
+ - `getOptimalLKernelType` - a class method returning the relevant Optimal LKernel distribution type for this variable type (a special case of the above probably)
+ 
+ as well as implementing these distribution classes for each variable type.
+
 
 ### Discrete Variable Proposal Distributions
+Proposal distributions, q(x'|x), for each variable type should be described.
 Each example of these should, at minimum implement functions:
  - `__init__` - constructor with a single argument (a DiscreteVariable, x) which will act as the "starting point" for this proposal
- - `eval` - function taking a single argument (a DiscreteVariable, x') that returns the probability of sampling that DiscreteVariable from this proposal (P(x|x'))
+ - `eval` - function taking a single argument (a DiscreteVariable, x') that returns the log-probability of sampling that DiscreteVariable from this proposal (P(x|x'))
  - `sample` - function with no arguments which returns a sample of a DiscreteVariable, x', from this proposal, q (x' ~ q(x))
 
 
 ### Discrete Variable Initial Proposal Distributions
-Similarly, distributions of initial proposals should be described.
+Similarly, distributions of initial proposals. q0(x) should be described.
 Each example of these should, at minimum implement functions:
  - `__init__` - constructor, possibly with some extra parameters
- - `eval` - function taking a single argument (a DiscreteVariable, x) that returns the probability of sampling that DiscreteVariable from this proposal (q0(x))
+ - `eval` - function taking a single argument (a DiscreteVariable, x) that returns the log-probability of sampling that DiscreteVariable from this proposal (q0(x))
  - `sample` - function with no arguments which returns a sample of a DiscreteVariable, x', from this initial proposal (x ~ q0())
 
 ### Discrete Variable Target Distributions
