@@ -4,14 +4,16 @@ from .tree_distribution import TreeProposal
 from .tree_target import TreeTarget
 
 class Tree(discrete.DiscreteVariable):
-    def __init__(self, X_train, y_train):
+    def __init__(self, X_train, y_train, tree, leafs):
         self.X_train = X_train
         self.y_train = y_train
-        tree, leafs = self.initialise_tree()
         self.tree = tree
         self.leafs = leafs
         self.lastAction = ""
     
+    def __eq__(self, x) -> bool:
+        return (x.X_train == self.X_train).all() and (x.y_train == self.y_train).all() and x.tree == self.tree and x.leafs == self.leafs
+
     @classmethod
     def getProposalType(self):
         return TreeProposal
@@ -19,14 +21,6 @@ class Tree(discrete.DiscreteVariable):
     @classmethod
     def getTargetType(self):
         return TreeTarget
-    
-    def initialise_tree(self):
-        leafs = [1,2]
-       
-        feature = random.randint(0,len(self.X_train[0])-1)
-        threshold = random.randint(0,len(self.X_train)-1)
-        tree = [[0, 1, 2, feature, self.X_train[threshold,feature]]]
-        return tree, leafs
     
     
     def grow(self):
