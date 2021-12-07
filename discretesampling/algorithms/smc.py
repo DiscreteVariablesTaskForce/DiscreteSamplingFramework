@@ -54,9 +54,6 @@ class DiscreteVariableSMC():
         return current_particles
 
 def calculateNeff(logWeights):
-    w = normaliseLogWeights(logWeights)
-    log_squared_weights = [2*logW for logW in logWeights]
-
     tmp = np.array(logWeights)
     non_zero_logWeights = tmp[tmp != -math.inf]
     if (len(non_zero_logWeights) > 0):
