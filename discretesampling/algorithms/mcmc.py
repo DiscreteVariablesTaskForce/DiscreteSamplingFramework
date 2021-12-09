@@ -28,6 +28,8 @@ class DiscreteVariableMCMC():
             proposed_target_logprob = self.target.eval(proposed)
             
             log_acceptance_ratio = proposed_target_logprob - current_target_logprob + reverse_logprob - forward_logprob
+            if log_acceptance_ratio > 0:
+                log_acceptance_ratio = 0
             acceptance_probability = min(1, math.exp(log_acceptance_ratio))
 
             q = random.random()
