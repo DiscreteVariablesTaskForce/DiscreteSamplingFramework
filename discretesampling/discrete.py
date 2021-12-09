@@ -14,6 +14,15 @@ class DiscreteVariable:
     def getTargetType(self):
         return DiscreteVariableTarget
 
+    @classmethod
+    def getLKernelType(self):
+        #Forward proposal
+        return self.getProposalType()
+
+    @classmethod
+    def getOptimalLKernelType(self):
+        return DiscreteVariableOptimalLKernel
+
 class DiscreteVariableProposal:    
     def __init__(self, values, probs):
         #Check dims and probs are valid
@@ -73,4 +82,20 @@ class DiscreteVariableTarget:
     
     def eval(self, x):
         logprob = -math.inf
+        return logprob
+
+
+class DiscreteVariableOptimalLKernel:
+    def __init__(self, current_particle, previous_particles):
+        self.current_particle = current_particle
+        self.previous_particles = previous_particles
+        self.proposalType = type(current_particle).getProposalType()
+
+    def eval(self, x):
+        logprob = -math.inf
+        
+        for old_particle in self.previous_particles:
+            forward_proposal = self.proposalType(old_particle)
+            #Do stuff here
+        
         return logprob
