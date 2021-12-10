@@ -1,6 +1,8 @@
 import numpy as np
 import random
 import math
+from scipy.special import logsumexp
+
 
 class DiscreteVariable:    
     def __init__(self):
@@ -86,16 +88,28 @@ class DiscreteVariableTarget:
 
 
 class DiscreteVariableOptimalLKernel:
-    def __init__(self, current_particle, previous_particles):
-        self.current_particle = current_particle
-        self.previous_particles = previous_particles
-        self.proposalType = type(current_particle).getProposalType()
+    def __init__(self):
+        pass
 
-    def eval(self, x):
+    def eval(self, current_particle, previous_particles, p):
+        proposalType = type(current_particle).getProposalType()
+
         logprob = -math.inf
         
-        for old_particle in self.previous_particles:
-            forward_proposal = self.proposalType(old_particle)
-            #Do stuff here
+        forward_probabilities = []
+        eta = []
+        for previous_particle in previous_particles:
+            forward_proposal = proposalType(previous_particle)
+            forward_probabilities.append(forward_proposal.eval(current_particle))
+            eta.append(previous_particles.count(previous_particle)/len(previous_particles))
+
+        eta_numerator = eta[p]
+        forward_probability_numerator = forward_probabilities[p]
         
+        numerator = forward_probability_numerator + math.log(eta_numerator)
+        denominator_p = [forward_probabilities[i] + math.log(eta[i]) for i in range(len(forward_probabilities))]
+        denominator = logsumexp([k for k in denominator_p if k != -math.inf])
+
+        logprob = numerator - denominator
+
         return logprob

@@ -46,12 +46,15 @@ class DiscreteVariableSMC():
                 new_particles[p] = forward_proposal.sample()
                 
                 if self.use_optimal_L:
-                    Lkernel = self.LKernelType(new_particles[p], current_particles)
+                    Lkernel = self.LKernelType()
+                    reverse_logprob = Lkernel.eval(new_particles[p], current_particles, p)
+                    
                 else:
                     Lkernel = self.LKernelType(new_particles[p])
+                    reverse_logprob = Lkernel.eval(current_particles[p])
+
                 
                 forward_logprob = forward_proposal.eval(new_particles[p])
-                reverse_logprob = Lkernel.eval(current_particles[p])
 
                 current_target_logprob = self.target.eval(current_particles[p])
                 new_target_logprob = self.target.eval(new_particles[p])
