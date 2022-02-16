@@ -42,6 +42,15 @@ class SpectrumDimensionProposal(discrete.DiscreteVariableProposal):#SpectrumDime
         probs = [1/numDims] * numDims
         
         super().__init__(dims, probs)
+        
+    @classmethod
+    def norm(self,x):
+        return x.value
+    
+    @classmethod
+    def heuristic(self, x,y):
+        #Proposal can move at most one value up or down
+        return abs(y-x) < 2
     
 class SpectrumDimensionTarget(discrete.DiscreteVariableTarget):
     def __init__(self, data):

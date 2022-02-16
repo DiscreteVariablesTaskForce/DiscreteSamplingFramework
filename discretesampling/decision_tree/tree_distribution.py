@@ -10,6 +10,15 @@ class TreeProposal(discrete.DiscreteVariableProposal):
        self.y_train = tree.y_train
        self.tree = copy.deepcopy(tree)
        
+    @classmethod
+    def norm(self,tree):
+        return len(tree.tree)
+
+    @classmethod
+    #Should return true if proposal is possible between x and y
+    #(and possibly at other times)
+    def heuristic(self, x,y):
+        return y < x or abs(x-y) < 2
 
     def sample(self):
         #initialise the probabilities of each move

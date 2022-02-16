@@ -87,6 +87,18 @@ class AdditiveStructureProposal(discrete.DiscreteVariableProposal):
         self.current = current
         self.multi_subsets = [subset for subset in self.current.discrete_set if len(subset) > 1]
     
+    @classmethod
+    def norm(self,x):
+        #Number of sets in x
+        return len(x.discrete_set)
+
+    @classmethod
+    #Should return true if proposal is possible between x and y
+    #(and possibly at other times)
+    def heuristic(self, x,y):
+        #At most ones more or one fewer sets
+        return abs(y-x) < 2
+    
     def eval(self, proposed: AdditiveStructure):
         #For now assume there is a valid move
         #TODO: add check that elements in current and proposed are the same

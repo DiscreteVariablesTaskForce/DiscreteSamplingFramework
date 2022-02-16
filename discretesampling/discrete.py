@@ -25,7 +25,18 @@ class DiscreteVariableProposal:
         self.x = values
         self.pmf = probs
         self.cmf = np.cumsum(probs)        
-        
+    
+    @classmethod
+    def norm(self,x):
+        return 1
+
+    @classmethod
+    #Should return true if proposal is possible between x and y
+    #(and possibly at other times)
+    #where x and y are norm values from the above function
+    def heuristic(self, x,y):
+        return true
+    
     def sample(self):
         q = random.random() #random unif(0,1)
         return self.x[np.argmax(self.cmf >= q)]
