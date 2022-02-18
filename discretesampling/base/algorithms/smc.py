@@ -47,15 +47,21 @@ class DiscreteVariableSMC():
             new_particles = copy.deepcopy(current_particles)
             new_logWeights = copy.deepcopy(logWeights)
 
-            for p in range(P):
+            forward_logprob = []
 
+            #Sample new particles and calculate forwawrd probabilities
+            for p in range(P):
                 forward_proposal = self.proposalType(current_particles[p])
                 new_particles[p] = forward_proposal.sample()
+                forward_logprob.append(forward_proposal.eval(new_particles[p]))
 
+            if self.use_optimal_L:
+                Lkernel = self.LKernelType(new_particles, current_particles)
+
+
+            for p in range(P):
                 if self.use_optimal_L:
-                    Lkernel = self.LKernelType()
-                    reverse_logprob = Lkernel.eval(new_particles[p],
-                                                   current_particles, p)
+                    reverse_logprob = Lkernel.eval(p)
 
                 else:
                     Lkernel = self.LKernelType(new_particles[p])
