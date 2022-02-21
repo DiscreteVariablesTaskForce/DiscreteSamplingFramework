@@ -54,7 +54,7 @@ class TreeProposal(discrete.DiscreteVariableProposal):
         nodes_differences = [i for i in sampledTree.tree + initialTree.tree if i not in sampledTree.tree or i not in initialTree.tree]
         #In order to get sampledTree from initialTree we must have:
         #Grow
-        if (len(initialTree.tree) < len(sampledTree.tree)):
+        if (len(initialTree.tree) == len(sampledTree.tree)-1):
             probability = moves_prob[3] * (1/len(initialTree.X_train[0])) * (1/len(initialTree.X_train[:])) * (1 / len(initialTree.leafs))
         #Prune
         elif (len(initialTree.tree) > len(sampledTree.tree)):
