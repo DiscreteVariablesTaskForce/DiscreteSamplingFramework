@@ -5,10 +5,17 @@ from scipy.special import logsumexp
 
 class DiscreteVariableSMC():
 
-    def __init__(self, variableType, target, initialProposal):
+    def __init__(self, variableType, target, initialProposal, use_optimal_L = False):
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
-        self.LKernelType = variableType.getProposalType()
+        self.use_optimal_L = use_optimal_L
+        if use_optimal_L:
+            self.LKernelType = variableType.getOptimalLKernelType()
+        else:
+            #By default getLKernelType just returns variableType.getProposalType(),
+            #the same as the forward_proposal
+            self.LKernelType = variableType.getLKernelType()
+        
         self.initialProposal = initialProposal
         self.target = target
     
@@ -38,10 +45,16 @@ class DiscreteVariableSMC():
                 forward_proposal = self.proposalType(current_particles[p])
                 new_particles[p] = forward_proposal.sample()
                 
-                Lkernel = self.LKernelType(new_particles[p])
+                if self.use_optimal_L:
+                    Lkernel = self.LKernelType()
+                    reverse_logprob = Lkernel.eval(new_particles[p], current_particles, p)
+                    
+                else:
+                    Lkernel = self.LKernelType(new_particles[p])
+                    reverse_logprob = Lkernel.eval(current_particles[p])
+
                 
                 forward_logprob = forward_proposal.eval(new_particles[p])
-                reverse_logprob = Lkernel.eval(current_particles[p])
 
                 current_target_logprob = self.target.eval(current_particles[p])
                 new_target_logprob = self.target.eval(new_particles[p])
