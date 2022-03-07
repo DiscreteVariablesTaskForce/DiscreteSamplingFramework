@@ -28,17 +28,25 @@ target = dt.TreeTarget(a, b)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
 dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
-treeSamples = dtMCMC.sample(5000)
+try:
+    treeSamples = dtMCMC.sample(5000)
 
-mcmcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSamples]
-mcmcAccuracy = [dt.accuracy(y_test, x) for x in mcmcLabels]
+    mcmcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSamples]
+    mcmcAccuracy = [dt.accuracy(y_test, x) for x in mcmcLabels]
 
-print("MCMC mean accuracy: ", np.mean(mcmcAccuracy[2500:4999]))
+    print("MCMC mean accuracy: ", np.mean(mcmcAccuracy[2500:4999]))
+except ZeroDivisionError:
+    print("MCMC sampling failed due to division by zero")
+
 
 dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
-treeSMCSamples = dtSMC.sample(10, 1000)
+try:
+    treeSMCSamples = dtSMC.sample(10, 1000)
 
-smcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSMCSamples]
-smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
+    smcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSMCSamples]
+    smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
 
-print("SMC mean accuracy: ", np.mean(smcAccuracy))
+    print("SMC mean accuracy: ", np.mean(smcAccuracy))
+except ZeroDivisionError:
+    print("SMC sampling failed due to division by zero")
+
