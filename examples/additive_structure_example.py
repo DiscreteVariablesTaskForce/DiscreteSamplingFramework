@@ -12,4 +12,7 @@ asSamples = asMCMC.sample(1000)
 
 asSMC = DiscreteVariableSMC(addstruct.AdditiveStructure, target,
                             initialProposal)
-asSamples = asSMC.sample(N=10, P=1000)
+try:
+    asSamples = asSMC.sample(N=10, P=1000)
+except RuntimeError:
+    print("AdditiveStructureTarget is not yet implemented for SMC")
