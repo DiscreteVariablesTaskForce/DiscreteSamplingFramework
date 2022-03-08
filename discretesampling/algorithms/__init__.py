@@ -1,2 +1,2 @@
-from .mcmc import DiscreteVariableMCMC
-from .smc import DiscreteVariableSMC
+from .mcmc import DiscreteVariableMCMC  # noqa
+from .smc import DiscreteVariableSMC  # noqa
