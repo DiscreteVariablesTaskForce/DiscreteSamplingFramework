@@ -112,25 +112,25 @@ class DiscreteVariableOptimalLKernel:
 
     def eval(self, current_particle, previous_particles, p):
         proposalType = type(current_particle).getProposalType()
-
         logprob = -math.inf
 
-        forward_probabilities = []
-        eta = []
-        for previous_particle in previous_particles:
-            forward_proposal = proposalType(previous_particle)
-            forward_prob = forward_proposal.eval(current_particle)
-            forward_probabilities.append(forward_prob)
-            eta.append(previous_particles.count(previous_particle)/len(previous_particles))  # noqa
+        forward_probabilities = np.zeros(len(previous_particles))
+        eta = np.zeros(len(previous_particles))
+        for i in range(len(previous_particles)):
+            forward_proposal = proposalType(previous_particles[i])
+            forward_probabilities[i] = forward_proposal.eval(current_particle)
+
+            eta[i] = previous_particles.count(previous_particles[i]) / len(previous_particles)
 
         eta_numerator = eta[p]
         forward_probability_numerator = forward_probabilities[p]
 
         numerator = forward_probability_numerator + math.log(eta_numerator)
-        denominator_p = [forward_probabilities[i] + math.log(eta[i]) for
-                         i in range(len(forward_probabilities))]
-        denominator = logsumexp([k for k in denominator_p if k != -math.inf])
+        denominator_p = np.array(
+            [forward_probabilities[i] + math.log(eta[i]) for i in range(len(forward_probabilities))])
+        denominator = logsumexp(np.setdiff1d(denominator_p, -math.inf))
 
         logprob = numerator - denominator
 
         return logprob
+
