@@ -1,53 +1,63 @@
 from . import discrete
-import numpy as np
 import math
-import random
 
-class SpectrumDimension(discrete.DiscreteVariable): #SpectrumDimension inherits from DiscreteVariable
-    def __init__(self, value):        
+
+# SpectrumDimension inherits from DiscreteVariable
+class SpectrumDimension(discrete.DiscreteVariable):
+    def __init__(self, value):
         super().__init__()
         self.value = value
-    
+
     @classmethod
     def getProposalType(self):
         return SpectrumDimensionProposal
-    
+
     @classmethod
     def getTargetType(self):
         return SpectrumDimensionTarget
-    
-    #Are equal if values are equal
+
+    # Are equal if values are equal
     def __eq__(self, other):
         if not isinstance(other, SpectrumDimension):
             return NotImplemented
-        
+
         if self.value != other.value:
             return False
 
         return True
-        
 
-class SpectrumDimensionProposal(discrete.DiscreteVariableProposal):#SpectrumDimensionProposal inherits from DiscreteVariableProposal
+
+# SpectrumDimensionProposal inherits from DiscreteVariableProposal
+class SpectrumDimensionProposal(discrete.DiscreteVariableProposal):
     def __init__(self, startingDimension: SpectrumDimension):
-        
         startingValue = startingDimension.value
 
         if startingValue > 0:
             firstValue = startingValue - 1
         else:
             firstValue = 0
-        
-        dims = [SpectrumDimension(x) for x in range(firstValue,startingValue+2)]
+
+        dims = [SpectrumDimension(x) for x in range(firstValue,
+                                                    startingValue+2)]
         numDims = len(dims)
         probs = [1/numDims] * numDims
-        
+
         super().__init__(dims, probs)
-    
+
+    @classmethod
+    def norm(self, x):
+        return x.value
+
+    @classmethod
+    def heuristic(self, x, y):
+        # Proposal can move at most one value up or down
+        return abs(y-x) < 2
+
+
 class SpectrumDimensionTarget(discrete.DiscreteVariableTarget):
     def __init__(self, data):
         self.data = data
-        
+
     def eval(self, x):
-        #Evaluate logposterior at point x, P(x|D) \propto P(D|x)P(x)
+        # Evaluate logposterior at point x, P(x|D) \propto P(D|x)P(x)
         return -math.inf
-        

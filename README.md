@@ -29,6 +29,13 @@ Each example of these should, at minimum implement functions:
  - `eval` - function taking a single argument (a DiscreteVariable, x') that returns the log-probability of sampling that DiscreteVariable from this proposal (P(x|x'))
  - `sample` - function with no arguments which returns a sample of a DiscreteVariable, x', from this proposal, q (x' ~ q(x))
 
+For more efficient evaluation, optionally implement class methods:
+ - `norm` - function that takes a single additional argument (a DiscreteVariable x) and returns some position-like value for that proposal/variable type. This value should impose some sort of ordering on DiscreteVariables.
+ - `heuristic` - function that takes two arguments, which will be returns from the above `norm` function and, given
+ these values, either return true if the proposal could potentially make transitions between two DiscreteVariables with these norm values or otherwise return false. Note that `heuristic(norm(x), norm(y)) == true` need not guarantee that the transition probability between x and y is non-zero. The inverse is however true: `heuristic(norm(x), norm(y)) == false` guarantees that the transition probability between x and y is zero.
+
+ These two functions will allows for efficient culling of proposal evaluations when implementing e.g. optimal L-kernels
+
 
 ### Discrete Variable Initial Proposal Distributions
 Similarly, distributions of initial proposals. q0(x) should be described.
