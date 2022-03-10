@@ -109,24 +109,30 @@ class AdditiveStructureProposal(discrete.DiscreteVariableProposal):
 
     def eval(self, proposed: AdditiveStructure):
         # For now assume there is a valid move
-        # TODO: add check that elements in current and proposed are the same
         current_num_sets = len(self.current.discrete_set)
         proposed_num_sets = len(proposed.discrete_set)
-
+        current = [tuple(t) for t in self.current.discrete_set]
+        propose = [tuple(t) for t in proposed.discrete_set]
         logprob = -inf
 
         # Figure out whether we do a split or merge to go from current to
         # proposed
         frac = 2
-        if (current_num_sets > proposed_num_sets):
+        if (current_num_sets > proposed_num_sets) and \
+                len(set(current).difference(propose)) == 2 and \
+                len(set(propose).difference(current)) == 1:
+
             if len(self.multi_subsets) == 0:
                 frac = 1
             else:
                 frac = 2
 
-            logprob = self.probability_merge(frac,
-                                             len(self.current.discrete_set))
-        elif (proposed_num_sets > current_num_sets):
+            logprob = self.probability_merge(frac, len(self.current.discrete_set))
+
+        elif (proposed_num_sets > current_num_sets) and \
+                len(set(propose).difference(current)) == 2 and \
+                len(set(current).difference(propose)) == 1:
+
             if len(self.current.discrete_set) == 1:
                 frac = 1
             else:
