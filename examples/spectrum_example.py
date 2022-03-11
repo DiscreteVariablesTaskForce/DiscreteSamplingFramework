@@ -1,5 +1,7 @@
-from discretesampling import spectrum, discrete
+from discretesampling.domain import spectrum
 import math
+
+from discretesampling.base import types
 
 # Starting dimension 4
 startDimension = spectrum.SpectrumDimension(2)
@@ -31,15 +33,12 @@ reverse = spectrum.SpectrumDimensionProposal(proposed)
 
 # In reality "target" is probably more complicated than this
 
-target = discrete.DiscreteVariableProposal([spectrum.SpectrumDimension(x)
-                                            for x in [1, 2, 3, 4]],
-                                           [0.1, 0.5, 0.2, 0.2])
+target = types.DiscreteVariableProposal([spectrum.SpectrumDimension(x) for x in [1, 2, 3, 4]], [0.1, 0.5, 0.2, 0.2])
 # data = [0]
 # target = spectrum.SpectrumDimensionTarget(data)
 
 
-logAcceptanceRatio = target.eval(proposed) - target.eval(current) +\
-                     reverse.eval(current) - forward.eval(proposed)
+logAcceptanceRatio = target.eval(proposed) - target.eval(current) + reverse.eval(current) - forward.eval(proposed)
 print("Log Acceptance ratio: " + str(logAcceptanceRatio))
 
 acceptanceLogProbability = min(0, logAcceptanceRatio)

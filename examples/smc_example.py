@@ -1,6 +1,6 @@
 import numpy
-from discretesampling.algorithms import DiscreteVariableSMC
-import discretesampling.decision_tree as dt
+from discretesampling.base.algorithms import DiscreteVariableSMC
+import discretesampling.domain.decision_tree as dt
 
 from sklearn import datasets
 from sklearn.model_selection import train_test_split

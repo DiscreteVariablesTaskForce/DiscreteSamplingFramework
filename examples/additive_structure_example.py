@@ -1,6 +1,5 @@
-import discretesampling.additive_structure as addstruct
-from discretesampling.algorithms import (DiscreteVariableMCMC,
-                                         DiscreteVariableSMC)
+import discretesampling.domain.additive_structure as addstruct
+from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
 
 data = []  # some data defining the target
 target = addstruct.AdditiveStructureTarget(data)
