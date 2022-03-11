@@ -1,10 +1,10 @@
 import math
 import numpy as np
-from .. import discrete
+from ...base import types
 from .metrics import calculate_leaf_occurences
 
 
-class TreeTarget(discrete.DiscreteVariableTarget):
+class TreeTarget(types.DiscreteVariableTarget):
     def __init__(self, a, b):
         self.a = a
         self.b = b

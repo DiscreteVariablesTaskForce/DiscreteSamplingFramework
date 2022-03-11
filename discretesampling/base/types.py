@@ -133,4 +133,3 @@ class DiscreteVariableOptimalLKernel:
         logprob = numerator - denominator
 
         return logprob
-

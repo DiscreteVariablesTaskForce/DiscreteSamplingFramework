@@ -1,4 +1,4 @@
-from ..discrete import DiscreteVariableInitialProposal
+from ...base.types import DiscreteVariableInitialProposal
 from .tree import Tree
 import math
 import random

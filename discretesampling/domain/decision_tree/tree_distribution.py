@@ -1,10 +1,10 @@
 import numpy as np
 import random
 import copy
-from .. import discrete
+from ...base import types
 
 
-class TreeProposal(discrete.DiscreteVariableProposal):
+class TreeProposal(types.DiscreteVariableProposal):
     def __init__(self, tree):
         self.X_train = tree.X_train
         self.y_train = tree.y_train

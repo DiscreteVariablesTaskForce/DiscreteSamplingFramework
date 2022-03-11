@@ -1,9 +1,9 @@
-from . import discrete
+from ..base import types
 import math
 
 
 # SpectrumDimension inherits from DiscreteVariable
-class SpectrumDimension(discrete.DiscreteVariable):
+class SpectrumDimension(types.DiscreteVariable):
     def __init__(self, value):
         super().__init__()
         self.value = value
@@ -28,7 +28,7 @@ class SpectrumDimension(discrete.DiscreteVariable):
 
 
 # SpectrumDimensionProposal inherits from DiscreteVariableProposal
-class SpectrumDimensionProposal(discrete.DiscreteVariableProposal):
+class SpectrumDimensionProposal(types.DiscreteVariableProposal):
     def __init__(self, startingDimension: SpectrumDimension):
         startingValue = startingDimension.value
 
@@ -54,7 +54,7 @@ class SpectrumDimensionProposal(discrete.DiscreteVariableProposal):
         return abs(y-x) < 2
 
 
-class SpectrumDimensionTarget(discrete.DiscreteVariableTarget):
+class SpectrumDimensionTarget(types.DiscreteVariableTarget):
     def __init__(self, data):
         self.data = data
 

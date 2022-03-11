@@ -1,10 +1,10 @@
 import random
-from .. import discrete
+from ...base import types
 from .tree_distribution import TreeProposal
 from .tree_target import TreeTarget
 
 
-class Tree(discrete.DiscreteVariable):
+class Tree(types.DiscreteVariable):
     def __init__(self, X_train, y_train, tree, leafs):
         self.X_train = X_train
         self.y_train = y_train

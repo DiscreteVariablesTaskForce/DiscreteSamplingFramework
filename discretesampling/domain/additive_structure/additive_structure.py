@@ -5,10 +5,10 @@ import numpy as np
 import copy
 from .numbers import binomial, stirling, bell
 from sympy.utilities.iterables import multiset_partitions
-from .. import discrete
+from ...base import types
 
 
-class AdditiveStructure(discrete.DiscreteVariable):
+class AdditiveStructure(types.DiscreteVariable):
     def __init__(self, discrete_set):
         self.discrete_set = discrete_set
 
@@ -89,7 +89,7 @@ class AdditiveStructure(discrete.DiscreteVariable):
         return AdditiveStructure(new_discrete_set)
 
 
-class AdditiveStructureProposal(discrete.DiscreteVariableProposal):
+class AdditiveStructureProposal(types.DiscreteVariableProposal):
     def __init__(self, current: AdditiveStructure):
         self.current = current
         self.multi_subsets = [subset for subset in self.current.discrete_set
@@ -173,7 +173,7 @@ class AdditiveStructureProposal(discrete.DiscreteVariableProposal):
             log(stirling(elements_subset, 2))
 
 
-class AdditiveStructureTarget(discrete.DiscreteVariableTarget):
+class AdditiveStructureTarget(types.DiscreteVariableTarget):
     def __init__(self, data):
         self.data = data
 
@@ -185,7 +185,7 @@ class AdditiveStructureTarget(discrete.DiscreteVariableTarget):
         return logprob
 
 
-class AdditiveStructureInitialProposal(discrete.DiscreteVariableInitialProposal):  # noqa
+class AdditiveStructureInitialProposal(types.DiscreteVariableInitialProposal):  # noqa
     def __init__(self, elems):
         self.elems = elems
         n = len(self.elems)

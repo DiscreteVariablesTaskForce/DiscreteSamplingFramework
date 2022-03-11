@@ -5,9 +5,8 @@ Created on Fri Nov  5 14:28:12 2021
 @author: efthi
 """
 
-from discretesampling import decision_tree as dt
-from discretesampling.algorithms import (DiscreteVariableMCMC,
-                                         DiscreteVariableSMC)
+from discretesampling.domain import decision_tree as dt
+from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
 
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
@@ -19,8 +18,7 @@ data = datasets.load_wine()
 X = data.data
 y = data.target
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30,
-                                                    random_state=5)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=5)
 
 a = 0.01
 b = 5
@@ -49,4 +47,3 @@ try:
     print("SMC mean accuracy: ", np.mean(smcAccuracy))
 except ZeroDivisionError:
     print("SMC sampling failed due to division by zero")
-
