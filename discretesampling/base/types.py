@@ -111,20 +111,32 @@ class DiscreteVariableOptimalLKernel:
         self.current_particles = current_particles
         self.previous_particles = previous_particles
         self.proposalType = type(self.current_particles[0]).getProposalType()
-        previous_positions = [self.proposalType.norm(particle) for particle in self.previous_particles]
-        current_positions = [self.proposalType.norm(particle) for particle in self.current_particles]
+        previous_positions = [
+            self.proposalType.norm(particle)
+            for particle in self.previous_particles
+        ]
+        current_positions = [
+            self.proposalType.norm(particle)
+            for particle in self.current_particles
+        ]
         heuristic_function = self.proposalType.heuristic
 
-        self.forward_proposals = [self.proposalType(particle) for particle in self.previous_particles]
+        self.forward_proposals = [
+            self.proposalType(particle) for particle in self.previous_particles
+        ]
 
         nParticles = len(current_positions)
 
         self.eta = np.zeros(len(previous_particles))
         self.proposal_possible = np.zeros([nParticles, nParticles])
         for i in range(nParticles):
-            self.eta[i] = self.previous_particles.count(self.previous_particles[i]) / nParticles
+            self.eta[i] = self.previous_particles.count(
+                self.previous_particles[i]) / nParticles
+            
             for j in range(nParticles):
-                self.proposal_possible[i,j] = heuristic_function(previous_positions[i], current_positions[j])
+                self.proposal_possible[i, j] = heuristic_function(
+                    previous_positions[i], current_positions[j]
+                )
 
     def eval(self, p):
         logprob = -math.inf
@@ -132,14 +144,19 @@ class DiscreteVariableOptimalLKernel:
         forward_probabilities = np.zeros(len(self.previous_particles))
 
         for i in range(len(self.previous_particles)):
-            forward_probabilities[i] = self.forward_proposals[i].eval(self.current_particles[p])
+            forward_probabilities[i] = self.forward_proposals[i].eval(
+                self.current_particles[p]
+            )
 
         eta_numerator = self.eta[p]
         forward_probability_numerator = forward_probabilities[p]
 
         numerator = forward_probability_numerator + math.log(eta_numerator)
-        denominator_p = np.array(
-            [forward_probabilities[i] + math.log(self.eta[i]) for i in range(len(forward_probabilities))])
+        denominator_p = np.array([
+            forward_probabilities[i] + math.log(self.eta[i])
+            for i in range(len(forward_probabilities))
+        ])
+        
         denominator = logsumexp(np.setdiff1d(denominator_p, -math.inf))
 
         logprob = numerator - denominator
