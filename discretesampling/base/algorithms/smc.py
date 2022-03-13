@@ -47,13 +47,13 @@ class DiscreteVariableSMC():
             new_particles = copy.deepcopy(current_particles)
             new_logWeights = copy.deepcopy(logWeights)
 
-            forward_logprob = []
+            forward_logprob = np.zeros(len(current_particles))
 
-            #Sample new particles and calculate forwawrd probabilities
+            #Sample new particles and calculate forward probabilities
             for p in range(P):
                 forward_proposal = self.proposalType(current_particles[p])
                 new_particles[p] = forward_proposal.sample()
-                forward_logprob.append(forward_proposal.eval(new_particles[p]))
+                forward_logprob[p] = forward_proposal.eval(new_particles[p])
 
             if self.use_optimal_L:
                 Lkernel = self.LKernelType(new_particles, current_particles)
@@ -104,8 +104,12 @@ def normaliseLogWeights(logWeights):
 def resample(particles, logWeights):
     P = len(particles)
     indexes = range(P)
-    weights = [math.exp(logW) for logW in logWeights]
+    weights = np.zeros(P)
+    for i in range(P):
+        weights[i] = math.exp(logWeights[i])
+    
     new_indexes = RandomChoices(indexes, weights=weights, k=P).eval()
     new_particles = [particles[i] for i in new_indexes]
-    new_logWeights = [-math.log(P) for p in range(P)]
+    new_logWeights = np.full(len(new_particles), -math.log(P))
+
     return new_particles, new_logWeights
