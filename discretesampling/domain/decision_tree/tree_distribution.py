@@ -1,6 +1,6 @@
 import numpy as np
-import random
 import copy
+from ...base.random import Random
 from ...base import types
 
 
@@ -27,7 +27,7 @@ class TreeProposal(types.DiscreteVariableProposal):
         if len(self.tree.tree) == 1:
             moves_prob = [0.0, 0.0, 0.5, 0.5]
         moves_probabilities = np.cumsum(moves_prob)
-        random_number = random.random()
+        random_number = Random().eval()
         newTree = copy.deepcopy(self.tree)
         if random_number < moves_probabilities[0]:
             # prune

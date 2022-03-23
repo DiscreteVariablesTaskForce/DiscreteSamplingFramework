@@ -1,11 +1,10 @@
 from math import log, inf
-from random import randint, choices
-import random
 import numpy as np
 import copy
 from .numbers import binomial, stirling, bell
 from sympy.utilities.iterables import multiset_partitions
 from ...base import types
+from ...base.random import RandomChoice, RandomChoices, RandomInt, Random
 
 
 class AdditiveStructure(types.DiscreteVariable):
@@ -36,13 +35,13 @@ class AdditiveStructure(types.DiscreteVariable):
             return single_subsets
 
         # Get a random subset from the list
-        index = randint(0, len(multi_subsets)-1)
+        index = RandomInt(0, len(multi_subsets)-1).eval()
         subset_to_split = np.array(multi_subsets[index])
 
         # assign each element to a subset
-        split_vec = choices([True, False], k=len(subset_to_split))
+        split_vec = RandomChoices([True, False], k=len(subset_to_split)).eval()
         while np.sum(split_vec) == 0 or np.sum(np.logical_not(split_vec)) == 0:
-            split_vec = choices([True, False], k=len(subset_to_split))
+            split_vec = RandomChoices([True, False], k=len(subset_to_split)).eval()
 
         multi_subsets.pop(index)
         multi_subsets.append(list(subset_to_split[split_vec]))
@@ -70,10 +69,10 @@ class AdditiveStructure(types.DiscreteVariable):
         if len(self.discrete_set) == 1:
             return copy.deepcopy(self)
 
-        index_1 = randint(0, len(self.discrete_set)-1)
+        index_1 = RandomInt(0, len(self.discrete_set)-1).eval()
         remaining = list(range(len(self.discrete_set)))
         remaining.pop(index_1)
-        index_2 = random.choice(remaining)
+        index_2 = RandomChoice(remaining).eval()
 
         first_subset = self.discrete_set[index_1]
         second_subset = self.discrete_set[index_2]
@@ -158,7 +157,7 @@ class AdditiveStructureProposal(types.DiscreteVariableProposal):
             return self.current.merge_subset(frac=1)
         elif len(self.current.discrete_set) == 1:
             return self.current.split_subset(frac=1)
-        elif random.random() < 0.5:
+        elif Random().eval() < 0.5:
             return self.current.merge_subset(frac=2)
         else:
             return self.current.split_subset(frac=2)
