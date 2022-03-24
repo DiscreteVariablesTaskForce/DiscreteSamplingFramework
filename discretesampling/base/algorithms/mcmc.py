@@ -1,6 +1,6 @@
-import random
 import math
 import copy
+from ...base.random import Random
 
 
 class DiscreteVariableMCMC():
@@ -34,7 +34,7 @@ class DiscreteVariableMCMC():
                 log_acceptance_ratio = 0
             acceptance_probability = min(1, math.exp(log_acceptance_ratio))
 
-            q = random.random()
+            q = Random().eval()
             # Accept/Reject
             if (q < acceptance_probability):
                 current = proposed

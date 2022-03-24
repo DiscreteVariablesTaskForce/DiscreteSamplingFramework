@@ -11,7 +11,7 @@ class TreeTarget(types.DiscreteVariableTarget):
 
     def eval(self, x):
         # call test tree to calculate Π(Y_i|T,theta,x_i)
-        target1, leafs_possibilities_for_prediction = calculate_leaf_occurences(x)  # noqa
+        target1, leafs_possibilities_for_prediction = calculate_leaf_occurences(x)
         # call test tree to calculate  (theta|T)
         target2 = self.features_and_threshold_probabilities(x)
         target2 = math.log(target2)

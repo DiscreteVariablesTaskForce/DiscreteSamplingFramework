@@ -2,6 +2,7 @@ import numpy as np
 import math
 import copy
 from scipy.special import logsumexp
+from ...base.random import RandomChoices
 
 
 class DiscreteVariableSMC():
@@ -97,8 +98,8 @@ def normaliseLogWeights(logWeights):
 def resample(particles, logWeights):
     P = len(particles)
     indexes = range(P)
-    new_indexes = np.random.choice(indexes, P,
-                                   p=[math.exp(logW) for logW in logWeights])
+    weights = [math.exp(logW) for logW in logWeights]
+    new_indexes = RandomChoices(indexes, weights=weights, k=P).eval()
     new_particles = [particles[i] for i in new_indexes]
     new_logWeights = [-math.log(P) for p in range(P)]
     return new_particles, new_logWeights
