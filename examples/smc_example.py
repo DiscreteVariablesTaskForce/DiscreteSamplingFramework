@@ -19,12 +19,16 @@ b = 5
 target = dt.TreeTarget(a, b)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
-dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
+# Necessary to use multiprocessing
+if __name__ == "__main__":
+    dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal,
+                                use_optimal_L=True, parallel=True, num_cores=10)
 
-try:
-    treeSamples = dtSMC.sample(N=10, P=1000)
+    try:
+        treeSamples = dtSMC.sample(N=10, P=100)
 
-    smc_acc = [dt.accuracy(y_test, dt.stats(x, X_test).predict(X_test)) for x in treeSamples]
-    print(numpy.mean(smc_acc))
-except ZeroDivisionError:
-    print("SMC sampling failed due to division by zero")
+        smc_acc = [dt.accuracy(y_test, dt.stats(x, X_test).predict(X_test))
+                   for x in treeSamples]
+        print(numpy.mean(smc_acc))
+    except ZeroDivisionError:
+        print("SMC sampling failed due to division by zero")
