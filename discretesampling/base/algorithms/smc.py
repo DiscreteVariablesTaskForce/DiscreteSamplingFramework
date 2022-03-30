@@ -1,3 +1,4 @@
+import multiprocessing
 import numpy as np
 import math
 import copy
@@ -18,9 +19,10 @@ class DiscreteVariableSMC():
         self.num_cores = num_cores
 
         if (self.parallel and (num_cores is None)):
+            num_cores = multiprocessing.cpu_count()
             print("WARNING: `parallel=True` but `num_cores` not specified; "
-                  + "setting `num_cores = 1`")
-            self.num_cores = 1
+                  + "setting `num_cores = ",num_cores,"`")
+            self.num_cores = num_cores
 
         if use_optimal_L:
             self.LKernelType = variableType.getOptimalLKernelType()
