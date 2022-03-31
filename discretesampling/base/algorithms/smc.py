@@ -21,7 +21,7 @@ class DiscreteVariableSMC():
         if (self.parallel and (num_cores is None)):
             num_cores = multiprocessing.cpu_count()
             print("WARNING: `parallel=True` but `num_cores` not specified; "
-                  + "setting `num_cores = ",num_cores,"`")
+                  + "setting `num_cores = ", num_cores, "`")
             self.num_cores = num_cores
 
         if use_optimal_L:
@@ -41,14 +41,14 @@ class DiscreteVariableSMC():
         current_particles = initialParticles
         logWeights = [self.target.eval(p) - self.initialProposal.eval(p)
                       for p in initialParticles]
-        logWeights = self.normaliseLogWeights(logWeights)
+        logWeights = normaliseLogWeights(logWeights)
         for i in range(N):
-            logNeff = self.calculateNeff(logWeights)
+            logNeff = calculateNeff(logWeights)
             print("Neff = ", math.exp(logNeff))
             if (logNeff < math.log(P) - math.log(2)):
                 print("Resampling...")
                 try:
-                    current_particles, logWeights = self.resample(
+                    current_particles, logWeights = resample(
                         current_particles, logWeights
                     )
                 except ValueError as error:
@@ -90,41 +90,41 @@ class DiscreteVariableSMC():
                                      - forward_logprob[p]
                                      + logWeights[p])
 
-            logWeights = self.normaliseLogWeights(new_logWeights)
+            logWeights = normaliseLogWeights(new_logWeights)
 
             current_particles = new_particles
 
         return current_particles
 
-    @staticmethod
-    def calculateNeff(logWeights):
-        tmp = np.array(logWeights)
-        non_zero_logWeights = tmp[tmp != -math.inf]
-        if (len(non_zero_logWeights) > 0):
-            return (logsumexp(non_zero_logWeights)
-                    - logsumexp(2 * non_zero_logWeights))
-        else:
-            return -math.inf
 
-    @staticmethod
-    def normaliseLogWeights(logWeights):
-        tmp = np.array(logWeights)
-        non_zero_logWeights = tmp[tmp != -math.inf]
-        if (len(non_zero_logWeights) > 0):
-            tmp[tmp != -math.inf] = (non_zero_logWeights
-                                     - logsumexp(non_zero_logWeights))
-        return list(tmp)
+def calculateNeff(logWeights):
+    tmp = np.array(logWeights)
+    non_zero_logWeights = tmp[tmp != -math.inf]
+    if (len(non_zero_logWeights) > 0):
+        return (logsumexp(non_zero_logWeights)
+                - logsumexp(2 * non_zero_logWeights))
+    else:
+        return -math.inf
 
-    @staticmethod
-    def resample(particles, logWeights):
-        P = len(particles)
-        indexes = range(P)
-        weights = np.zeros(P)
-        for i in range(P):
-            weights[i] = math.exp(logWeights[i])
 
-        new_indexes = RandomChoices(indexes, weights=weights, k=P).eval()
-        new_particles = [particles[i] for i in new_indexes]
-        new_logWeights = np.full(len(new_particles), -math.log(P))
+def normaliseLogWeights(logWeights):
+    tmp = np.array(logWeights)
+    non_zero_logWeights = tmp[tmp != -math.inf]
+    if (len(non_zero_logWeights) > 0):
+        tmp[tmp != -math.inf] = (non_zero_logWeights
+                                 - logsumexp(non_zero_logWeights))
+    return list(tmp)
 
-        return new_particles, new_logWeights
+
+def resample(particles, logWeights):
+    P = len(particles)
+    indexes = range(P)
+    weights = np.zeros(P)
+    for i in range(P):
+        weights[i] = math.exp(logWeights[i])
+
+    new_indexes = RandomChoices(indexes, weights=weights, k=P).eval()
+    new_particles = [particles[i] for i in new_indexes]
+    new_logWeights = np.full(len(new_particles), -math.log(P))
+
+    return new_particles, new_logWeights
