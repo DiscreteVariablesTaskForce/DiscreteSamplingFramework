@@ -119,7 +119,7 @@ class DiscreteVariableOptimalLKernel:
         self.forward_proposals = [
             self.proposalType(particle) for particle in self.previous_particles
         ]
-
+       
         # If parallel, calculate eta and proposal_possible in parallel
         # Then precalculate logprob
         if (self.parallel):
@@ -193,6 +193,7 @@ class DiscreteVariableOptimalLKernel:
             self.logprob = self.calculate_logprob(range(len(current_particles)))
 
     def eval(self, p):
+        
         return self.logprob[p]
 
     # Calculate logprob for this set of particles
@@ -255,18 +256,24 @@ class DiscreteVariableOptimalLKernel:
     @staticmethod
     def calculate_proposal_possible(previous_particles, current_particles,
                                     proposalType):
-
-        heuristic_function = proposalType.heuristic
-        previous_positions = [proposalType.norm(particle) for particle in previous_particles]
-        current_positions = [proposalType.norm(particle) for particle in current_particles]
-        nPrevious = len(previous_positions)
-        nCurrent = len(current_positions)
-
-        proposal_possible = np.zeros([nCurrent, nPrevious])
-
-        for i in range(nCurrent):
-            for j in range(nPrevious):
-                proposal_possible[i, j] = int(heuristic_function(
-                    current_positions[i], previous_positions[j]
-                ))
+        
+        i=0
+        proposal_possible = np.zeros([len(current_particles), len(previous_particles)])
+        for current_particle in current_particles:
+            
+            j=0
+            
+            for previous_particle in previous_particles:
+                count=0
+                for node in current_particle.tree:
+                    if node in previous_particle.tree:
+                        count +=1
+                
+                if (count == len(current_particle.tree) - 1) or (count == len(current_particle.tree) +1) or (count == len(current_particle.tree)):
+                    proposal_possible[i, j] = 1
+                    
+                else:
+                    proposal_possible[i, j] = 0
+                j+=1
+            i+=1
         return proposal_possible
