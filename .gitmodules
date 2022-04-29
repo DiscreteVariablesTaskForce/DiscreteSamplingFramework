@@ -1,0 +1,3 @@
+[submodule "redding-stan"]
+	path = redding-stan
+	url = https://github.com/dmuck/redding-stan
