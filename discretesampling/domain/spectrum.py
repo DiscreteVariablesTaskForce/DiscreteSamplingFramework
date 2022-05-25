@@ -1,5 +1,6 @@
 from ..base import types
-import math
+from scipy.stats import poisson
+
 
 
 # SpectrumDimension inherits from DiscreteVariable
@@ -31,14 +32,12 @@ class SpectrumDimension(types.DiscreteVariable):
 class SpectrumDimensionProposal(types.DiscreteVariableProposal):
     def __init__(self, startingDimension: SpectrumDimension):
         startingValue = startingDimension.value
-
-        if startingValue > 0:
-            firstValue = startingValue - 1
+        values = []
+        if startingValue > 1:
+            values = [startingValue-1, startingValue+1]
         else:
-            firstValue = 0
-
-        dims = [SpectrumDimension(x) for x in range(firstValue,
-                                                    startingValue+2)]
+            values = [startingValue+1]
+        dims = [SpectrumDimension(x) for x in values]
         numDims = len(dims)
         probs = [1/numDims] * numDims
 
@@ -51,13 +50,20 @@ class SpectrumDimensionProposal(types.DiscreteVariableProposal):
     @classmethod
     def heuristic(self, x, y):
         # Proposal can move at most one value up or down
-        return abs(y-x) < 2
+        return abs(y-x) == 1
 
+class SpectrumDimensionInitialProposal(types.DiscreteVariableProposal):
+    def __init__(self, max):
+        dims = [SpectrumDimension(x+1) for x in range(max)]
+        numDims = len(dims)
+        probs = [1/numDims] * numDims
+
+        super().__init__(dims, probs)
 
 class SpectrumDimensionTarget(types.DiscreteVariableTarget):
-    def __init__(self, data):
-        self.data = data
+    def __init__(self, rate):
+        self.rate = rate
 
     def eval(self, x):
         # Evaluate logposterior at point x, P(x|D) \propto P(D|x)P(x)
-        return -math.inf
+        return poisson(self.rate).logpmf(x.value)
