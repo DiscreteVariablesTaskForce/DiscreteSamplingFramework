@@ -17,6 +17,9 @@ class Tree(types.DiscreteVariable):
                 (x.y_train == self.y_train).all() and\
                 x.tree == self.tree and x.leafs == self.leafs
 
+    def __str__(self):
+        return str(self.tree)
+
     @classmethod
     def getProposalType(self):
         return TreeProposal

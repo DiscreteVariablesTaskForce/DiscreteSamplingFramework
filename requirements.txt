@@ -3,3 +3,4 @@ numpy
 scipy
 flake8
 scikit-learn
+pytest
