@@ -84,7 +84,7 @@ rjmcmc = DiscreteVariableRJMCMC(
 )
 
 n_chains = 4
-samples = [rjmcmc.sample(500) for c in range(n_chains)]
+samples = [rjmcmc.sample(1000) for c in range(n_chains)]
 
 dims = [[x[0].value for x in chain] for chain in samples]
 
