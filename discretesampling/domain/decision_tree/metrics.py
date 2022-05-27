@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import collections
+from .util import find_leaf_for_datum
 
 
 class stats():
@@ -101,86 +102,19 @@ def calculate_leaf_occurences(x):
     we calculate how many labelled as 0 each leaf has, how many labelled as 1
     each leaf has and so on
     '''
-    leaf_occurences = []
-    k = 0
-    for leaf in x.leafs:
-        leaf_occurences.append([leaf])
+    leafs = x.leafs
+    leafs_possibilities = [collections.Counter() for _ in leafs]
+    for k, datum in enumerate(x.X_train):
 
-    for datum in x.X_train:
-        flag = "false"
-        current_node = x.tree[0]
+        leaf = find_leaf_for_datum(x, datum)
+        leafs_possibilities[x.leafs.index(leaf)][x.y_train[k]] += 1
 
-        # make sure that we are not in leafs. current_node[0] is the node
-        while current_node[0] not in x.leafs and flag == "false":
-            if datum[current_node[3]] > current_node[4]:
-                for node in x.tree:
-                    if node[0] == current_node[2]:
-                        current_node = node
-                        break
-                    if current_node[2] in x.leafs:
-                        leaf = current_node[2]
-                        flag = "true"
-                        break
+    unique = list(set(x.y_train))
 
-            else:
-                for node in x.tree:
-                    if node[0] == current_node[1]:
-                        current_node = node
-                        break
-                    if current_node[1] in x.leafs:
-                        leaf = current_node[1]
-                        flag = "true"
-                        break
-
-        '''
-        create a list of lists that holds the leafs and the number of
-        occurences for example [[4, 1, 1, 2, 2, 2], [5, 1, 1, 2, 2, 1],
-        [6, 1, 2, 2, 1, 2], [7, 2, 2, 2, 1, 2, 1, 2]]
-        The first number represents the leaf id number
-        '''
-
-        for item in leaf_occurences:
-
-            if item[0] == leaf:
-                item.append(x.y_train[k])
-        k += 1
-
-    '''
-    we have some cases where some leaf nodes may do not have any probabilities
-    because no data point ended up in the particular leaf
-    We add equal probabilities for each label to the particular leaf.
-    For example if we have 4 labels, we add 0:0.25, 1:0.25, 2:0.25, 3:0.25
-    '''
-
-    for item in leaf_occurences:
-        if len(item) == 1:
-            unique = set(x.y_train)
-            unique = list(unique)
-            for i in range(len(unique)):
-                item.append(i)
-
-    leaf_occurences = sorted(leaf_occurences)
-    leafs = sorted(x.leafs)
-
-    '''
-    we then delete the first number of the list which represents the leaf node
-    id.
-    '''
-    for i in range(len(leaf_occurences)):
-        new_list = True
-        for p in range(len(leaf_occurences[i])):
-            if new_list:
-                new_list = False
-                del leaf_occurences[i][p]
-
-    '''
-    first count the number of labels in each leaf.
-    Then create probabilities by normalising those values[0,1]
-    '''
-    leafs_possibilities = []
-    for number_of_leaves in range(len(leaf_occurences)):
-        occurrences = collections.Counter(leaf_occurences[number_of_leaves][:])
-        leafs_possibilities.append(occurrences)
+    for item in leafs_possibilities:
+        if len(item) == 0:
+            for i in unique:
+                item[i] = 1
 
     # create leafs possibilities
     for item in leafs_possibilities:
@@ -189,55 +123,14 @@ def calculate_leaf_occurences(x):
             item[k] = item[k]*factor
 
     product_of_leafs_probabilities = []
-    k = 0
-    for datum in x.X_train:
-        # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-        flag = "false"
-        current_node = x.tree[0]
-        # make sure that we are not in leafs. current_node[0] is the node
-        while current_node[0] not in leafs and flag == "false":
-            if datum[current_node[3]] > current_node[4]:
-                for node in x.tree:
-                    if node[0] == current_node[2]:
-                        current_node = node
-                        break
-                    if current_node[2] in leafs:
-                        leaf = current_node[2]
-                        # print(leaf)
-                        flag = "true"
-                        break
+    for k, datum in enumerate(x.X_train):
+        leaf = find_leaf_for_datum(x, datum)
 
-            else:
-                for node in x.tree:
-                    if node[0] == current_node[1]:
-                        current_node = node
-                        break
-                    if current_node[1] in leafs:
-                        leaf = current_node[1]
-                        # print(leaf)
-                        flag = "true"
-                        break
+        probs = leafs_possibilities[leafs.index(leaf)]
+        target_probability = probs[x.y_train[k]]
+        target_probability = max(0.02, min(0.98, target_probability))
 
-        if leaf in leafs:
-            # find the position of the dictionary probabilities given the leaf
-            # number
-            indice = leafs.index(leaf)
-            probs = leafs_possibilities[indice]
-            for prob in probs:
-                target_probability = probs[x.y_train[k]]
+        product_of_leafs_probabilities.append(math.log(target_probability))
 
-                '''
-                we make sure that in the case we are on a homogeneous leaf,
-                we dont get a 0 probability but a very low one
-                '''
-
-                if target_probability == 0:
-                    target_probability = 0.02
-                if target_probability == 1:
-                    target_probability = 0.98
-
-            product_of_leafs_probabilities.append(math.log(target_probability))
-
-        k += 1
     product_of_target_feature = np.sum(product_of_leafs_probabilities)
     return product_of_target_feature, leafs_possibilities
