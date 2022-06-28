@@ -1,4 +1,5 @@
 import numpy as np
+from math import log
 import copy
 from ...base.random import Random
 from ...base import types
@@ -51,25 +52,28 @@ class TreeProposal(types.DiscreteVariableProposal):
         initialTree = self.tree
         moves_prob = [0.4, 0.1, 0.1, 0.4]
         probability = 0
+        if len(initialTree.tree) == 1:
+            moves_prob = [0.0, 0.0, 0.5, 0.5]
+
         nodes_differences = [i for i in sampledTree.tree + initialTree.tree
                              if i not in sampledTree.tree or
                              i not in initialTree.tree]
         # In order to get sampledTree from initialTree we must have:
         # Grow
         if (len(initialTree.tree) == len(sampledTree.tree)-1):
-            probability = moves_prob[3] * (1/len(initialTree.X_train[0])) *\
-                (1/len(initialTree.X_train[:])) * (1 / len(initialTree.leafs))
+            probability = log(moves_prob[3] * (1/len(initialTree.X_train[0])) *\
+                (1/len(initialTree.X_train[:])) * (1 / len(initialTree.leafs)))
         # Prune
         elif (len(initialTree.tree) > len(sampledTree.tree)):
-            probability = moves_prob[0] * (1/(len(initialTree.tree) - 1))
+            probability = log(moves_prob[0] * (1/(len(initialTree.tree) - 1)))
         # Change
-        elif (len(nodes_differences) == 2):
-            probability = moves_prob[2] * (1/len(initialTree.tree)) *\
-                1/len(initialTree.X_train[0]) * 1/len(initialTree.X_train[:])
+        elif (len(initialTree.tree) == len(sampledTree.tree) and len(nodes_differences) == 2):
+            probability = log(moves_prob[2] * (1/len(initialTree.tree)) *\
+                1/len(initialTree.X_train[0]) * 1/len(initialTree.X_train[:]))
         # swap
-        elif (len(nodes_differences) == 4):
-            probability = moves_prob[1] *\
-                1 / ((len(initialTree.tree) * (len(initialTree.tree) - 1)) / 2)
+        elif (len(initialTree.tree) == len(sampledTree.tree) and len(nodes_differences) == 4):
+            probability = log(moves_prob[1] *\
+                1 / ((len(initialTree.tree) * (len(initialTree.tree) - 1)) / 2))
 
         return probability
 
