@@ -1,46 +1,20 @@
 from discretesampling.domain import spectrum
-import math
+from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
 
-from discretesampling.base import types
+target = spectrum.SpectrumDimensionTarget(10, 3.4)  # NB with mean 10 and variance 3.4^2
+initialProposal = spectrum.SpectrumDimensionInitialProposal(50)  # Uniform sampling from 0-50
 
-# Starting dimension 4
-startDimension = spectrum.SpectrumDimension(2)
+specMCMC = DiscreteVariableMCMC(spectrum.SpectrumDimension, target, initialProposal)
+try:
+    samples = specMCMC.sample(1000)
 
-# E.g. Proposal distribution with values and probabilities relative to
-# starting dimentison
-q = spectrum.SpectrumDimensionProposal(startDimension)
-
-# Returns relevant probabilities from PMF
-q.eval(spectrum.SpectrumDimension(1))
-q.eval(spectrum.SpectrumDimension(2))
-
-q.eval(spectrum.SpectrumDimension(10))  # Returns 0
-
-x = q.sample()  # Returns a SpectrumDimension object
-x.value  # Check the value
-
-# How to use for Metropolis-Hastings
-
-current = spectrum.SpectrumDimension(2)
-print("Current dim: " + str(current.value))
-
-forward = spectrum.SpectrumDimensionProposal(current)
-
-proposed = forward.sample()
-print("Proposed dim: " + str(proposed.value))
-
-reverse = spectrum.SpectrumDimensionProposal(proposed)
-
-# In reality "target" is probably more complicated than this
-
-target = types.DiscreteVariableProposal([spectrum.SpectrumDimension(x) for x in [1, 2, 3, 4]], [0.1, 0.5, 0.2, 0.2])
-# data = [0]
-# target = spectrum.SpectrumDimensionTarget(data)
+except ZeroDivisionError:
+    print("MCMC sampling failed due to division by zero")
 
 
-logAcceptanceRatio = target.eval(proposed) - target.eval(current) + reverse.eval(current) - forward.eval(proposed)
-print("Log Acceptance ratio: " + str(logAcceptanceRatio))
+specSMC = DiscreteVariableSMC(spectrum.SpectrumDimension, target, initialProposal)
+try:
+    SMCSamples = specSMC.sample(10, 1000)
 
-acceptanceLogProbability = min(0, logAcceptanceRatio)
-print("Acceptance log-probability: " + str(acceptanceLogProbability))
-print("Acceptance probability: " + str(math.exp(acceptanceLogProbability)))
+except ZeroDivisionError:
+    print("SMC sampling failed due to division by zero")
