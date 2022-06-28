@@ -34,6 +34,26 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
+    def evolve_particle(self, particle):
+        new_particle = copy.deepcopy(particle)
+        forward_logprob = 0
+
+        forward_proposal = self.proposalType(particle)
+        new_particle = forward_proposal.sample()
+        forward_logprob = forward_proposal.eval(new_particle)
+
+        return new_particle, forward_logprob
+
+    def evolve(self, particles):
+        P = len(particles)
+        new_particles = copy.deepcopy(particles)
+        forward_logprob = np.zeros(P)
+
+        for p in range(P):
+            new_particles[p], forward_logprob[p] = self.evolve_particle(particles[p])
+
+        return new_particles, forward_logprob
+
     def sample(self, N, P):
 
         initialParticles = [self.initialProposal.sample() for p in range(P)]
@@ -56,16 +76,11 @@ class DiscreteVariableSMC():
                                        + str(math.exp(logsumexp(logWeights)))) \
                                        from error
 
-            new_particles = copy.deepcopy(current_particles)
             new_logWeights = copy.deepcopy(logWeights)
 
-            forward_logprob = np.zeros(len(current_particles))
-
             # Sample new particles and calculate forward probabilities
-            for p in range(P):
-                forward_proposal = self.proposalType(current_particles[p])
-                new_particles[p] = forward_proposal.sample()
-                forward_logprob[p] = forward_proposal.eval(new_particles[p])
+
+            new_particles, forward_logprob = self.evolve(current_particles)
 
             new_logWeights = np.full([P], -math.inf)
             if self.use_optimal_L:
@@ -95,6 +110,18 @@ class DiscreteVariableSMC():
             current_particles = new_particles
 
         return current_particles
+
+
+class DiscreteVariableSMC_MP(DiscreteVariableSMC):
+    def evolve(self, particles):
+        P = len(particles)
+        new_particles = copy.deepcopy(particles)
+        forward_logprob = np.zeros(P)
+
+        with multiprocessing.Pool() as pool:
+            new_particles, forward_logrob = zip(*pool.map(super().evolve_particle, particles))
+
+        return new_particles, forward_logprob
 
 
 def calculateNeff(logWeights):
