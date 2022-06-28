@@ -1,5 +1,5 @@
 import numpy as np
-from math import log
+from math import log, inf
 import copy
 from ...base.random import Random
 from ...base import types
@@ -51,7 +51,7 @@ class TreeProposal(types.DiscreteVariableProposal):
     def eval(self, sampledTree):
         initialTree = self.tree
         moves_prob = [0.4, 0.1, 0.1, 0.4]
-        probability = 0
+        logprobability = -inf
         if len(initialTree.tree) == 1:
             moves_prob = [0.0, 0.0, 0.5, 0.5]
 
@@ -61,21 +61,28 @@ class TreeProposal(types.DiscreteVariableProposal):
         # In order to get sampledTree from initialTree we must have:
         # Grow
         if (len(initialTree.tree) == len(sampledTree.tree)-1):
-            probability = log(moves_prob[3] * (1/len(initialTree.X_train[0])) *\
-                (1/len(initialTree.X_train[:])) * (1 / len(initialTree.leafs)))
+            logprobability = (log(moves_prob[3])
+                              - log(len(initialTree.X_train[0]))
+                              - log(len(initialTree.X_train[:]))
+                              - log(len(initialTree.leafs)))
         # Prune
         elif (len(initialTree.tree) > len(sampledTree.tree)):
-            probability = log(moves_prob[0] * (1/(len(initialTree.tree) - 1)))
+            logprobability = (log(moves_prob[0])
+                              - log(len(initialTree.tree) - 1))
         # Change
         elif (len(initialTree.tree) == len(sampledTree.tree) and len(nodes_differences) == 2):
-            probability = log(moves_prob[2] * (1/len(initialTree.tree)) *\
-                1/len(initialTree.X_train[0]) * 1/len(initialTree.X_train[:]))
+            logprobability = (log(moves_prob[2])
+                              - log(len(initialTree.tree))
+                              - log(len(initialTree.X_train[0]))
+                              - log(len(initialTree.X_train[:])))
         # swap
-        elif (len(initialTree.tree) == len(sampledTree.tree) and len(nodes_differences) == 4):
-            probability = log(moves_prob[1] *\
-                1 / ((len(initialTree.tree) * (len(initialTree.tree) - 1)) / 2))
+        elif (len(nodes_differences) == 4 and len(initialTree.tree) > 1):
+            logprobability = (log(moves_prob[1])
+                              - log(len(initialTree.tree))
+                              - log(len(initialTree.tree) - 1)
+                              + log(2))
 
-        return probability
+        return logprobability
 
 
 def forward(forward, forward_probability):
