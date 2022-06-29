@@ -3,6 +3,7 @@ from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVaria
 import numpy as np
 import pandas as pd
 
+
 def func(x):
     return (x.iloc[:, 0] + x.iloc[:, 1]) * (x.iloc[:, 2] + x.iloc[:, 4]) * x.iloc[:, 3]
 

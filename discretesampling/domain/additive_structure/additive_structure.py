@@ -85,4 +85,3 @@ class AdditiveStructure(types.DiscreteVariable):
         new_discrete_set.sort()
 
         return AdditiveStructure(new_discrete_set)
-

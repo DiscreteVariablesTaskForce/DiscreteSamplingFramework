@@ -86,4 +86,3 @@ class AdditiveStructureProposal(types.DiscreteVariableProposal):
     def probability_split(frac, num_non_single, elements_subset):
         return -log(frac) - log(num_non_single) -\
             log(stirling(elements_subset, 2))
-
