@@ -15,11 +15,10 @@ class AdditiveStructureTarget(types.DiscreteVariableTarget):
         # presumably some function of x.discrete_set and some data which
         # could be defined in constructor as self.data
 
-        D = self.xtrain.shape[1]
         y = [self.evaluate(x.discrete_set, self.xtrain.iloc[i]) for i in range(self.xtrain.shape[0])]
-        cov = 0.25  # np.eye(D) * np.power(sigma,2)
+        cov = 0.25
 
-        # calculate Π(Y_i|M,theta,x_i) # make data from gaussian with structure (?)
+        # calculate Π(Y_i|M,theta,x_i)
         target1 = [self.log_likelihood(self.ytrain.iloc[i], y[i], cov) for i in range(len(y))]
         targ = sum(target1)
 
