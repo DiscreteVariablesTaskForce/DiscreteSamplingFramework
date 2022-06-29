@@ -70,7 +70,13 @@ class TreeProposal(types.DiscreteVariableProposal):
             logprobability = (log(moves_prob[0])
                               - log(len(initialTree.tree) - 1))
         # Change
-        elif (len(initialTree.tree) == len(sampledTree.tree) and len(nodes_differences) == 2):
+        elif (
+            len(initialTree.tree) == len(sampledTree.tree)
+            and (
+                len(nodes_differences) == 2
+                or len(nodes_differences) == 0
+            )
+        ):
             logprobability = (log(moves_prob[2])
                               - log(len(initialTree.tree))
                               - log(len(initialTree.X_train[0]))
