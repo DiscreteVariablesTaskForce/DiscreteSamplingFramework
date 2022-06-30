@@ -14,16 +14,14 @@ class TreeTarget(types.DiscreteVariableTarget):
         target1, leafs_possibilities_for_prediction = calculate_leaf_occurences(x)
         # call test tree to calculate  (theta|T)
         target2 = self.features_and_threshold_probabilities(x)
-        target2 = math.log(target2)
         # p(T)
         target3 = self.evaluatePrior(x)
-        target3 = math.log(target3)
         return (target1+target2+target3)
 
     # (theta|T)
     def features_and_threshold_probabilities(self, x):
         # this need to change
-        probabilities = []
+        logprobabilities = []
 
         '''
             the likelihood of choosing the specific feature and threshold must
@@ -32,14 +30,16 @@ class TreeTarget(types.DiscreteVariableTarget):
             (1/number of features) * (1/(upper bound-lower bound))
         '''
         for node in x.tree:
-            probabilities.append(1/len(x.X_train[0]) *
-                                 1 / (max(x.X_train[:, node[3]]) -
-                                      min(x.X_train[:, node[3]])))
+            logprobabilities.append(
+                -math.log(len(x.X_train[0]))
+                - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
+            )
+
             # probabilities.append(math.log( 1/len(X_train[0]) *
             # 1/len(X_train[:]) ))
 
-        probability = np.prod(probabilities)
-        return ((probability))
+        logprobability = np.sum(logprobabilities)
+        return (logprobability)
 
     def evaluatePrior(self, x):
         i = len(x.tree) - 1
@@ -53,5 +53,5 @@ class TreeTarget(types.DiscreteVariableTarget):
                 depth += 1
             i -= 1
         depth = depth + 1
-        prior = self.a / ((1+depth)**self.b)
-        return (prior)
+        logprior = math.log(self.a) - self.b*math.log(1+depth)
+        return (logprior)
