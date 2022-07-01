@@ -112,18 +112,6 @@ class DiscreteVariableSMC():
         return current_particles
 
 
-class DiscreteVariableSMC_MP(DiscreteVariableSMC):
-    def evolve(self, particles):
-        P = len(particles)
-        new_particles = copy.deepcopy(particles)
-        forward_logprob = np.zeros(P)
-
-        with multiprocessing.Pool() as pool:
-            new_particles, forward_logrob = zip(*pool.map(super().evolve_particle, particles))
-
-        return new_particles, forward_logprob
-
-
 def calculateNeff(logWeights):
     tmp = np.array(logWeights)
     non_zero_logWeights = tmp[tmp != -math.inf]
