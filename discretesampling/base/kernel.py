@@ -1,3 +1,9 @@
+import numpy as np
+import math
+from multiprocessing import Process, Manager
+from scipy.special import logsumexp
+
+
 class DiscreteVariableOptimalLKernel:
     def __init__(self, current_particles, previous_particles,
                  parallel=False, num_cores=None):
