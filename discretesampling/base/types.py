@@ -28,19 +28,8 @@ class DiscreteVariable:
 
 
 class DiscreteVariableProposal:
-    def __init__(self, values, probs):
-        # Check dims and probs are valid
-        assert len(values) == len(probs), "Invalid PMF specified, x and p" +\
-             " of different lengths"
-        probs = np.array(probs)
-        tolerance = np.sqrt(np.finfo(np.float64).eps)
-        assert abs(1 - sum(probs)) < tolerance, "Invalid PMF specified," +\
-            " sum of probabilities !~= 1.0"
-        assert all(probs > 0), "Invalid PMF specified, all probabilities" +\
-            " must be > 0"
-        self.x = values
-        self.pmf = probs
-        self.cmf = np.cumsum(probs)
+    def __init__(self, moves_dice):
+        self.moves_dice = moves_dice
 
     @classmethod
     def norm(self, x):
@@ -54,8 +43,7 @@ class DiscreteVariableProposal:
         return True
 
     def sample(self):
-        q = random.random()  # random unif(0,1)
-        return self.x[np.argmax(self.cmf >= q)]
+        return self.moves_dice.eval()
 
     def eval(self, y):
         try:

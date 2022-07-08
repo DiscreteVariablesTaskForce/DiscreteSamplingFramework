@@ -1,11 +1,14 @@
 import numpy as np
 from math import log, inf
 import copy
-from ...base.random import Random
+from ...base.random import Dice
 from ...base import types
 
 
 class TreeProposal(types.DiscreteVariableProposal):
+    moves_prob = [0.4, 0.1, 0.1, 0.4]
+    moves = ["prune", "swap", "change", "grow"]  # noqa
+
     def __init__(self, tree):
         self.X_train = tree.X_train
         self.y_train = tree.y_train
@@ -21,40 +24,25 @@ class TreeProposal(types.DiscreteVariableProposal):
     def heuristic(self, x, y):
         return y < x or abs(x-y) < 2
 
-    def sample(self):
-        # initialise the probabilities of each move
-        moves = ["prune", "swap", "change", "grow"]  # noqa
-        moves_prob = [0.4, 0.1, 0.1, 0.4]
+    def get_moves_prob(self):
         if len(self.tree.tree) == 1:
             moves_prob = [0.0, 0.0, 0.5, 0.5]
-        moves_probabilities = np.cumsum(moves_prob)
-        random_number = Random().eval()
-        newTree = copy.deepcopy(self.tree)
-        if random_number < moves_probabilities[0]:
-            # prune
-            newTree = newTree.prune()
-
-        elif random_number < moves_probabilities[1]:
-            # swap
-            newTree = newTree.swap()
-
-        elif random_number < moves_probabilities[2]:
-            # change
-            newTree = newTree.change()
-
         else:
-            # grow
-            newTree = newTree.grow()
+            moves_prob = self.moves_prob
+        return moves_prob
 
-        return newTree
+    def sample(self):
+        # initialise the probabilities of each move
+        moves_prob = self.get_moves_prob()
+        newTree = copy.deepcopy(self.tree)
+        moves_dice = Dice(moves_prob, [newTree.prune, newTree.swap, newTree.change, newTree.grow])
+
+        return moves_dice.eval()
 
     def eval(self, sampledTree):
         initialTree = self.tree
-        moves_prob = [0.4, 0.1, 0.1, 0.4]
         logprobability = -inf
-        if len(initialTree.tree) == 1:
-            moves_prob = [0.0, 0.0, 0.5, 0.5]
-
+        moves_prob = self.get_moves_prob()
         nodes_differences = [i for i in sampledTree.tree + initialTree.tree
                              if i not in sampledTree.tree or
                              i not in initialTree.tree]
