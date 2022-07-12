@@ -4,7 +4,7 @@ import math
 import copy
 from scipy.special import logsumexp
 from ...base.random import RandomChoices
-
+from ...base.executor import Executor
 
 class DiscreteVariableSMC():
 
@@ -23,6 +23,9 @@ class DiscreteVariableSMC():
             print("WARNING: `parallel=True` but `num_cores` not specified; "
                   + "setting `num_cores = ", num_cores, "`")
             self.num_cores = num_cores
+        
+        self.exec = Executor()
+
 
         if use_optimal_L:
             self.LKernelType = variableType.getOptimalLKernelType()
@@ -35,7 +38,6 @@ class DiscreteVariableSMC():
         self.target = target
 
     def evolve_particle(self, particle):
-        new_particle = copy.deepcopy(particle)
         forward_proposal = self.proposalType(particle)
         new_particle = forward_proposal.sample()
         forward_logprob = forward_proposal.eval(new_particle)
@@ -43,14 +45,15 @@ class DiscreteVariableSMC():
         return new_particle, forward_logprob
 
     def evolve(self, particles):
-        P = len(particles)
-        new_particles = copy.deepcopy(particles)
-        forward_logprob = np.zeros(P)
+        new_particles, forward_logprob = zip(*self.exec.map(
+            self.evolve_particle,
+            particles
+        ))
 
-        for p in range(P):
-            new_particles[p], forward_logprob[p] = self.evolve_particle(particles[p])
+        return list(new_particles), list(forward_logprob)
 
-        return new_particles, forward_logprob
+    def eval_L_particle(self, current_particle, new_particle):
+        return self.LKernelType(new_particle).eval(current_particle)
 
     def evaluate_LKernel(self, current_particles, new_particles):
         P = len(current_particles)
@@ -61,31 +64,32 @@ class DiscreteVariableSMC():
                 new_particles, current_particles, parallel=self.parallel,
                 num_cores=self.num_cores
             )
+            reverse_logprob = list(self.exec.map(Lkernel.eval, current_particles))
 
-        for p in range(P):
-            if self.use_optimal_L:
-                reverse_logprob[p] = Lkernel.eval(p)
-            else:
-                Lkernel = self.LKernelType(new_particles[p])
-                reverse_logprob[p] = Lkernel.eval(current_particles[p])
+        else:
+            reverse_logprob = list(self.exec.map(self.eval_L_particle, current_particles, new_particles))
 
         return reverse_logprob
 
     def update_weights(self, current_particles, new_particles, logWeights,
                        forward_logprob, reverse_logprob):
 
-        P = len(current_particles)
-        new_logWeights = np.full([P], -math.inf)
+        def update_weight_particle(current_particle, new_particle, logWeight,
+                forward_logprob, reverse_logprob):
+            
+            current_target_logprob = self.target.eval(current_particle)
+            new_target_logprob = self.target.eval(new_particle)
+            new_logWeight = (new_target_logprob
+                             - current_target_logprob
+                             + reverse_logprob
+                             - forward_logprob
+                             + logWeight)
+            return new_logWeight
 
-        for p in range(P):
-            current_target_logprob = self.target.eval(current_particles[p])
-            new_target_logprob = self.target.eval(new_particles[p])
-
-            new_logWeights[p] = (new_target_logprob
-                                 - current_target_logprob
-                                 + reverse_logprob[p]
-                                 - forward_logprob[p]
-                                 + logWeights[p])
+        new_logWeights = list(self.exec.map(
+            update_weight_particle, current_particles, new_particles,
+            logWeights, forward_logprob, reverse_logprob
+        ))
 
         return new_logWeights
 
