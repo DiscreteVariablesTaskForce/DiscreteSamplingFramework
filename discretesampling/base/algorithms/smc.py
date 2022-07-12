@@ -4,7 +4,7 @@ import math
 import copy
 from scipy.special import logsumexp
 from ...base.random import RandomChoices
-from ...base.executor import Executor
+from ...base.executor import Executor, Executor_MP
 
 class DiscreteVariableSMC():
 
@@ -24,7 +24,8 @@ class DiscreteVariableSMC():
                   + "setting `num_cores = ", num_cores, "`")
             self.num_cores = num_cores
         
-        self.exec = Executor()
+        #self.exec = Executor()
+        self.exec = Executor_MP(self.num_cores)
 
 
         if use_optimal_L:
