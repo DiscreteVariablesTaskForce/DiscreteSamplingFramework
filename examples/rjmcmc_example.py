@@ -7,7 +7,7 @@ import discretesampling.domain.spectrum as spec
 from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 
 stan_model_path = "StanForRJMCMCProblems/mixturemodel.stan"
-redding_stan_path = "redding-stan"
+redding_stan_path = "redding-stan/redding-stan"
 
 
 # What's the dimensionality of the model represented by discrete variable x?
@@ -75,11 +75,12 @@ rjmcmc = DiscreteVariableRJMCMC(
     spec.SpectrumDimension,
     spec.SpectrumDimensionInitialProposal(10),  # Initial proposal uniform(0,20)
     spec.SpectrumDimensionTarget(3, 2),  # NB prior on number of mixture components
-    "StanForRJMCMCProblems/mixturemodel.stan",
+    "mixturemodel.stan",
     "redding-stan",
     data_function,
     continuous_dim_function,
     transformation_function,
+    "NUTS",
     update_probability=0.5
 )
 

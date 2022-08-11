@@ -81,7 +81,7 @@ class stan_model(object):
         gradient_strings = text_results[1].split()
         gradients = [float(x) for x in gradient_strings]
         exec_time = float(text_results[2])
-        return logprob
+        return logprob, gradients
 
     def prepare_data(self, data):
         #Write params to data file

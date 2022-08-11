@@ -31,8 +31,8 @@ current = init
 #MCMC
 for i in range(niters):
     proposed = current + rng.multivariate_normal(mu,sigma)
-    current_target = mixturemodel.eval(data,current)
-    proposed_target = mixturemodel.eval(data,proposed)
+    current_target = mixturemodel.eval(data,current)[0]
+    proposed_target = mixturemodel.eval(data,proposed)[0]
 
     forward_logprob = multivariate_normal.logpdf(proposed, mean = current, cov = sigma)
     reverse_logprob = multivariate_normal.logpdf(current, mean = proposed, cov = sigma)
