@@ -10,7 +10,7 @@ class Tree(types.DiscreteVariable):
         self.X_train.flags.writeable = False
         self.y_train = y_train
         self.y_train.flags.writeable = False
-        self.tree = tuple(tree)
+        self.tree = tuple(tuple(x) for x in tree)
         self.leafs = tuple(leafs)
 
 
