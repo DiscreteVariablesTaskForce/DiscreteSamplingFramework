@@ -1,3 +1,6 @@
-[submodule "redding-stan"]
-	path = redding-stan
-	url = https://github.com/dmuck/redding-stan
+[submodule "bridgestan"]
+	path = bridgestan
+	url = https://github.com/roualdes/bridgestan.git
+[submodule "cmdstan"]
+	path = cmdstan
+	url = https://github.com/stan-dev/cmdstan.git

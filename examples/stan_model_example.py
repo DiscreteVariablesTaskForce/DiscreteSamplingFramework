@@ -9,7 +9,8 @@ import matplotlib.pyplot as plt
 
 mixturemodel = stan_model(
     "StanForRJMCMCProblems/mixturemodel.stan",
-    "redding-stan"
+    "bridgestan",
+    "cmdstan"
 )
 mixturemodel.compile()
 
@@ -33,20 +34,15 @@ for i in range(niters):
     proposed = current + rng.multivariate_normal(mu,sigma)
     current_target = mixturemodel.eval(data,current)[0]
     proposed_target = mixturemodel.eval(data,proposed)[0]
-
     forward_logprob = multivariate_normal.logpdf(proposed, mean = current, cov = sigma)
     reverse_logprob = multivariate_normal.logpdf(current, mean = proposed, cov = sigma)
-
     log_acceptance_ratio = proposed_target - current_target + reverse_logprob - forward_logprob
-
     if log_acceptance_ratio > 0:
         log_acceptance_ratio = 0
     acceptance_probability = min(1, math.exp(log_acceptance_ratio))
-
     q = Random().eval()
     if (q < acceptance_probability):
         current = proposed
-
     samples.append(current)
 
 

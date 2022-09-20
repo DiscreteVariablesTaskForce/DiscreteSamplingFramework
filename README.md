@@ -7,6 +7,19 @@ Python classes describing discrete variable sampling/proposals/targets
  - scipy
  - scikit-learn (for examples)
 
+## Installation
+Make sure the submodules are present and updated:
+```bash
+git submodule update --init --recursive
+```
+
+Then build cmdstan:
+```bash
+cd cmdstan
+make build
+```
+
+
 ## Variables and Distributions
 ### Discrete Variables
 Each example of these should, at minimum implement functions:

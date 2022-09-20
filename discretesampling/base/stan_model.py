@@ -1,102 +1,61 @@
 import subprocess
-import re
 import math
 import os
 import logging
+import bridgestan.python.bridgestan as bs
+from cmdstanpy import write_stan_json
+import numpy as np
 
 class stan_model(object):
-    def __init__(self, model_file, redding_stan_path):
+    def __init__(self, model_file, bridgestan_path, cmdstan_path):
         self.model_file = os.path.abspath(model_file)
         self.model_filename = os.path.basename(self.model_file)
         self.model_path = os.path.dirname(self.model_file)
         self.exec_name = self.model_filename.replace(".stan", "")
         self.exec_path = os.path.join(self.model_path,self.exec_name)
-        self.data_file = self.exec_name + ".data.R"
-        self.redding_stan_path = redding_stan_path
+        self.data_file = self.exec_name + ".data.json"
+        self.bridgestan_path = os.path.abspath(bridgestan_path)
+        self.cmdstan_path = os.path.abspath(cmdstan_path)
         self.compiled = False
+        self.model = None
+        self.lib = None
+        self.data = None
 
     def compile(self):
         model_path = os.path.join(self.model_path, self.exec_name)
-        logging.info("Compiling Stan model ", self.exec_name, "with redding-stan...")
-        p = subprocess.Popen(["make", model_path], cwd = self.redding_stan_path)
+        logging.info("Compiling Stan model ", self.exec_name, "with bridge-stan...")
+        self.lib = os.path.join(self.model_path, self.exec_name + "_model.so")
+        cmdstan_cmd = "CMDSTAN=" + self.cmdstan_path + "/"
+
+        p = subprocess.Popen(["make", cmdstan_cmd, self.lib], cwd = self.bridgestan_path)
         p.wait()
         logging.info("Done.")
         self.compiled = True
-
 
     def eval(self, data, params):
 
         if not self.compiled:
             self.compile()
-        
 
         self.prepare_data(data)
+        self.model = bs.StanModel(self.lib, self.data_file)
 
         logprob = -math.inf
-        
-        data_command = "load " + self.data_file + "\n"
-        
-        
-        eval_command = "eval "
-        for i in range(len(params)):
-            eval_command = eval_command + str(params[i])
-            if i < len(params)-1:
-                eval_command = eval_command + ","
-        eval_command = eval_command + "\n"
-        
-        
-        proc = subprocess.Popen(self.exec_path, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+        gradients = None
 
-        proc.stdin.write(data_command.encode())    
-        proc.stdin.flush()
-        proc.stdin.write(eval_command.encode())
-        proc.stdin.flush()
-        
-        prompt = 0
-        
-        result = []
-        while True:
-            output  = proc.stdout.readline()
+        try:
+            if self.model.param_unc_num() != len(params):
+                raise ValueError("Array of incorrect length passed to log_density; expected {x}, found {y}".format(x=self.model.param_unc_num(), y=len(params)))
             
-            #find first prompt
-            if re.match("\[redding\]\$", output.decode()) is not None:
-                prompt = prompt + 1
-            if prompt > 1:
-                #Found second prompt, what follows is the output we care about
-                #Grab three lines of output
-                result.append(output)
-                for i in range(2):
-                    output = proc.stdout.readline()
-                    
-                    result.append(output)
-                break
+            tmp_params = np.array([0.0]*self.model.param_unc_num())
+            logprob = self.model.log_density(theta_unc=tmp_params)                
 
-        proc.stdin.write('quit\n'.encode())
-        proc.kill()
-        
-        text_results = [s.decode().strip() for s in result]
-        text_results[0] = text_results[0].replace("[redding]$ ", "")
+        except RuntimeError as err:
+            logging.error("Something went wrong when trying to evaluate the stan model")
 
-        logprob = float(text_results[0])
-        gradient_strings = text_results[1].split()
-        gradients = [float(x) for x in gradient_strings]
-        exec_time = float(text_results[2])
         return logprob, gradients
 
     def prepare_data(self, data):
         #Write params to data file
-        with open(self.data_file, "w") as f:
-            for d in data:
-                param_name = str(d[0])
-                param_value = ""
-                if type(d[1]) is list:
-                    param_value = "c("
-                    for i in range(len(d[1])):
-                        param_value = param_value + str(d[1][i])
-                        if i < len(d[1])-1:
-                            param_value = param_value + ","
-                    param_value = param_value + ")"
-                else:
-                    param_value = str(d[1])
-                f.write(param_name + " <- " + param_value + "\n")
-            f.close()
+        write_stan_json(self.data_file, dict(data))
+        

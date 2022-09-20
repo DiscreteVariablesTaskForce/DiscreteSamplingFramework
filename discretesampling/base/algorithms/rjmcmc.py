@@ -9,7 +9,7 @@ from ...base.stan_model import stan_model
 class DiscreteVariableRJMCMC():
 
     def __init__(self, variableType, initialProposal, discrete_target,
-                 stan_model_path, redding_stan_path,
+                 stan_model_path, bridgestan_path, cmdstan_path,
                  data_function, continuous_dim_function,
                  transformation_function, continuous_update,
                  update_probability=0.5):
@@ -20,7 +20,8 @@ class DiscreteVariableRJMCMC():
         self.discrete_target = discrete_target
 
         self.stan_model_path = stan_model_path
-        self.redding_stan_path = redding_stan_path
+        self.bridgestan_path = bridgestan_path
+        self.cmdstan_path = cmdstan_path
 
         self.data_function = data_function
         self.continuous_dim_function = continuous_dim_function
@@ -30,7 +31,7 @@ class DiscreteVariableRJMCMC():
         self.update_probability = update_probability
 
     def init_stan_model(self):
-        self.stan_model = stan_model(self.stan_model_path, self.redding_stan_path)
+        self.stan_model = stan_model(self.stan_model_path, self.bridgestan_path, self.cmdstan_path)
         self.stan_model.compile()
 
     def random_walk(self, current_continuous, current_discrete, rng):
