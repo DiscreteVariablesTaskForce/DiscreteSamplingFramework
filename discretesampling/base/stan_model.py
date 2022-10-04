@@ -38,7 +38,7 @@ class stan_model(object):
             self.compile()
 
         self.prepare_data(data)
-        self.model = bs.StanModel(self.lib, self.data_file)
+        self.model = bs.StanModel.from_stan_file(self.model_file, self.data_file)
 
         logprob = -math.inf
         gradients = None
@@ -46,9 +46,8 @@ class stan_model(object):
         try:
             if self.model.param_unc_num() != len(params):
                 raise ValueError("Array of incorrect length passed to log_density; expected {x}, found {y}".format(x=self.model.param_unc_num(), y=len(params)))
-            
-            tmp_params = np.array([0.0]*self.model.param_unc_num())
-            logprob = self.model.log_density(theta_unc=tmp_params)                
+
+            logprob, gradients = self.model.log_density_gradient(theta_unc=np.array(params))
 
         except RuntimeError as err:
             logging.error("Something went wrong when trying to evaluate the stan model")
@@ -58,4 +57,4 @@ class stan_model(object):
     def prepare_data(self, data):
         #Write params to data file
         write_stan_json(self.data_file, dict(data))
-        
+
