@@ -10,14 +10,6 @@ stan_model_path = "StanForRJMCMCProblems/mixturemodel.stan"
 bridgestan_path = "bridgestan"
 cmdstan_path = "cmdstan"
 
-# What's the dimensionality of the model represented by discrete variable x?
-def continuous_dim_function(x):
-    dim = x.value
-    if dim == 1:
-        return 2  # one component, just a mean and variance
-    else:
-        return 2*dim + (dim-1)  # K components, mixing proportion is K-1, plus K means and variances
-
 
 # What data should be passed to the stan model given discrete variable x?
 def data_function(x):
@@ -79,7 +71,6 @@ rjmcmc = DiscreteVariableRJMCMC(
     bridgestan_path,
     cmdstan_path,
     data_function,
-    continuous_dim_function,
     transformation_function,
     "NUTS",
     update_probability=0.5

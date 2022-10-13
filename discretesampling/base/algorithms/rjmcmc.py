@@ -10,8 +10,7 @@ class DiscreteVariableRJMCMC():
 
     def __init__(self, variableType, initialProposal, discrete_target,
                  stan_model_path, bridgestan_path, cmdstan_path,
-                 data_function, continuous_dim_function,
-                 transformation_function, continuous_update,
+                 data_function, transformation_function, continuous_update,
                  update_probability=0.5):
 
         self.variableType = variableType
@@ -24,7 +23,6 @@ class DiscreteVariableRJMCMC():
         self.cmdstan_path = cmdstan_path
 
         self.data_function = data_function
-        self.continuous_dim_function = continuous_dim_function
         self.transformation_function = transformation_function
         self.continuous_update = continuous_update
         self.stan_model = None
@@ -32,15 +30,13 @@ class DiscreteVariableRJMCMC():
 
     def init_stan_model(self):
         self.stan_model = stan_model(self.stan_model_path, self.bridgestan_path, self.cmdstan_path)
-        self.stan_model.compile()
 
     def random_walk(self, current_continuous, current_discrete, rng):
-        param_length = self.continuous_dim_function(current_discrete)
+        current_data = self.data_function(current_discrete)
+        param_length = self.stan_model.num_unconstrained_parameters(current_data)
         mu = [0 for i in range(param_length)]
         sigma = np.identity(param_length) * 1
         proposed_continuous = current_continuous + rng.multivariate_normal(mu, sigma)
-
-        current_data = self.data_function(current_discrete)
 
         current_target = self.stan_model.eval(current_data, current_continuous)[0]
         proposed_target = self.stan_model.eval(current_data, proposed_continuous)[0]
@@ -55,7 +51,7 @@ class DiscreteVariableRJMCMC():
         acceptance_probability = min(1, math.exp(log_acceptance_ratio))
 
         return proposed_continuous, acceptance_probability
-    
+
     # Perform a single leapfrog step
     def Leapfrog(self, current_data, theta, r, epsilon):
         dtheta = np.array(self.stan_model.eval(current_data, theta)[1])
@@ -126,17 +122,17 @@ class DiscreteVariableRJMCMC():
         return theta_n, r_n, theta_p, r_p, theta1, n1, s1, 0
 
     def NUTS(self, current_continuous, current_discrete, rng):
-        param_length = self.continuous_dim_function(current_discrete)
         current_data = self.data_function(current_discrete)
+        param_length = self.stan_model.num_unconstrained_parameters(current_data)
 
         epsilon = 0.1  # step size is currently hard-coded (needs adaptation)
-        
+
         # calculate likelihood for starting state
         L = self.stan_model.eval(current_data, current_continuous)[0]
 
         # randomly sample momenta (mass matrix not currently implemented)
         r0 = rng.multivariate_normal(np.zeros([param_length]), np.identity(param_length))
-        
+
         arg = L - np.dot(r0, r0)/2
         u = rng.uniform(0, np.exp(arg))
         theta_n = copy.deepcopy(current_continuous)
@@ -148,7 +144,7 @@ class DiscreteVariableRJMCMC():
         s = 1
         n = 1
         treedepth = 0
-        
+
         # start building tree
         while s == 1:
             v_j = rng.uniform(-1, 1)
@@ -198,7 +194,8 @@ class DiscreteVariableRJMCMC():
 
         initialSample = self.initialProposal.sample()
         current_discrete = initialSample
-        param_length = self.continuous_dim_function(current_discrete)
+        current_data = self.data_function(current_discrete)
+        param_length = self.stan_model.num_unconstrained_parameters(current_data)
 
         mu = [0 for i in range(param_length)]
         sigma = np.identity(param_length) * 10

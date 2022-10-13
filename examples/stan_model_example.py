@@ -12,14 +12,15 @@ mixturemodel = stan_model(
     "bridgestan",
     "cmdstan"
 )
-mixturemodel.compile()
 
 niters = 500
 sigma = 1
 
 data = [["K", 5], ["N", 20], ["y", [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]]]
 
-param_length = 14 #5 mixture component locations and sigmas, 5-simplex (described by four-element unconstrained vector)
+# 5 mixture component locations and sigmas, 5-simplex (described by four-element unconstrained vector)
+param_length = mixturemodel.num_unconstrained_parameters(data)
+print("Param_length:", param_length)
 
 mu = [0 for i in range(param_length)]
 sigma = np.identity(param_length)

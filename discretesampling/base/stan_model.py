@@ -1,4 +1,3 @@
-import subprocess
 import math
 import os
 import logging
@@ -23,22 +22,20 @@ class stan_model(object):
         self.data = None
 
     def compile(self):
-        logging.info("Compiling Stan model ", self.exec_name, "with bridge-stan...")
-        self.lib = os.path.join(self.model_path, self.exec_name + "_model.so")
-        cmdstan_cmd = "CMDSTAN=" + self.cmdstan_path + "/"
+        if not self.compiled:
+            logging.info("Compiling Stan model ", self.exec_name, "with bridge-stan...")
+            self.model = bs.StanModel.from_stan_file(self.model_file, self.data_file)
+            logging.info("Finished compiling Stan model ", self.exec_name, ".")
+            self.compiled = True
 
-        p = subprocess.Popen(["make", cmdstan_cmd, self.lib], cwd=self.bridgestan_path)
-        p.wait()
-        logging.info("Done.")
-        self.compiled = True
+    def num_unconstrained_parameters(self, data):
+        self.prepare_data(data)
+        self.compile()
+        return self.model.param_unc_num()
 
     def eval(self, data, params):
-
-        if not self.compiled:
-            self.compile()
-
         self.prepare_data(data)
-        self.model = bs.StanModel.from_stan_file(self.model_file, self.data_file)
+        self.compile()
 
         logprob = -math.inf
         gradients = None
@@ -56,5 +53,10 @@ class stan_model(object):
         return logprob, gradients
 
     def prepare_data(self, data):
-        # Write params to data file
-        write_stan_json(self.data_file, dict(data))
+        if self.data != data:
+            # Cache data
+            self.data = data
+            # Write params to data file
+            write_stan_json(self.data_file, dict(data))
+            # If the data changes, the model also needs to be recompiled before it's used
+            self.compiled = False
