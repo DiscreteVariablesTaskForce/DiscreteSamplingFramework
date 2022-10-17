@@ -35,9 +35,9 @@ class stan_model(object):
         logprob = -math.inf
         
         data_command = "load " + self.data_file + "\n"
-        
-        
-        eval_command = "eval "
+
+
+        eval_command = "eval_J_false "
         for i in range(len(params)):
             eval_command = eval_command + str(params[i])
             if i < len(params)-1:
@@ -51,13 +51,11 @@ class stan_model(object):
         proc.stdin.flush()
         proc.stdin.write(eval_command.encode())
         proc.stdin.flush()
-        
         prompt = 0
         
         result = []
         while True:
             output  = proc.stdout.readline()
-            
             #find first prompt
             if re.match("\[redding\]\$", output.decode()) is not None:
                 prompt = prompt + 1
@@ -67,13 +65,12 @@ class stan_model(object):
                 result.append(output)
                 for i in range(2):
                     output = proc.stdout.readline()
-                    
                     result.append(output)
                 break
 
         proc.stdin.write('quit\n'.encode())
         proc.kill()
-        
+
         text_results = [s.decode().strip() for s in result]
         text_results[0] = text_results[0].replace("[redding]$ ", "")
 
@@ -90,12 +87,22 @@ class stan_model(object):
                 param_name = str(d[0])
                 param_value = ""
                 if type(d[1]) is list:
-                    param_value = "c("
-                    for i in range(len(d[1])):
-                        param_value = param_value + str(d[1][i])
-                        if i < len(d[1])-1:
-                            param_value = param_value + ","
-                    param_value = param_value + ")"
+                    if type(d[1][0]) is list:
+                        # added to account for 2D arrays / vectors
+                        param_value = "structure(c("
+                        for i in range(len(d[1][0]) - 1):
+                            for j in range(len(d[1])):
+                                param_value = param_value + str(d[1][j][i]) + ","
+                        for j in range(len(d[1]) - 1):
+                            param_value = param_value + str(d[1][j][-1]) + ","
+                        param_value = param_value + str(d[1][-1][-1]) + "),.Dim=c({},{}))".format(len(d[1]), len(d[1][0]))
+                    else:
+                        param_value = "c("
+                        for i in range(len(d[1])):
+                            param_value = param_value + str(d[1][i])
+                            if i < len(d[1])-1:
+                                param_value = param_value + ","
+                        param_value = param_value + ")"
                 else:
                     param_value = str(d[1])
                 f.write(param_name + " <- " + param_value + "\n")
