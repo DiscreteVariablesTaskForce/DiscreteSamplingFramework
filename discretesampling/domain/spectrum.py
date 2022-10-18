@@ -60,6 +60,13 @@ class SpectrumDimensionInitialProposal(types.DiscreteVariableProposal):
 
         super().__init__(dims, probs)
 
+class SpectrumDimensionInitialProposal(types.DiscreteVariableProposal):
+    def __init__(self, max):
+        dims = [SpectrumDimension(x+1) for x in range(max)]
+        numDims = len(dims)
+        probs = [1/numDims] * numDims
+
+        super().__init__(dims, probs)
 
 class SpectrumDimensionTarget(types.DiscreteVariableTarget):
     def __init__(self, mu, sigma):
