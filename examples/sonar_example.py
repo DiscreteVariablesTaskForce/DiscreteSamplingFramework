@@ -8,15 +8,11 @@ import discretesampling.domain.spectrum as spec
 from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 
 stan_model_path = "StanForRJMCMCProblems/linear_array.stan"
-redding_stan_path = "redding-stan/redding-stan"
+bridgestan_path = "bridgestan"
+cmdstan_path = "cmdstan"
 data_path = "examples/5_targets_noisy.data.json"
 
 stationary_data = []
-
-# What's the dimensionality of the model represented by discrete variable x?
-def continuous_dim_function(x):
-    dim = x.value
-    return dim + 1
 
 
 # What data should be passed to the stan model given discrete variable x?
@@ -32,7 +28,7 @@ def data_function(x):
 # where params is the params vector for the model defined by x
 def continuous_proposal(x, params, y):
     # grid search parameters
-    grid_size = 200
+    grid_size = 1000
     min_vals = [0]
     max_vals = [np.pi]
     inds = [0]
@@ -73,10 +69,10 @@ rjmcmc = DiscreteVariableRJMCMC(
     spec.SpectrumDimension,
     spec.SpectrumDimensionInitialProposal(1),
     spec.SpectrumDimensionTarget(3, 2),
-    "linear_array",
-    "redding-stan",
+    stan_model_path,
+    bridgestan_path,
+    cmdstan_path,
     data_function,
-    continuous_dim_function,
     continuous_proposal,
     "NUTS",
     update_probability=0.5
@@ -87,8 +83,8 @@ with open(data_path, 'r') as f:
     for key, value in json_data.items():
         stationary_data.append([key, value])
 
-n_chains = 4
-samples = [rjmcmc.sample(1000) for c in range(n_chains)]
+n_chains = 1
+samples = [rjmcmc.sample(200) for c in range(n_chains)]
 
 dims = [[x[0].value for x in chain] for chain in samples]
 

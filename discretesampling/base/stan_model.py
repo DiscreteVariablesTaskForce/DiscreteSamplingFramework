@@ -15,11 +15,11 @@ class stan_model(object):
         self.exec_path = os.path.join(self.model_path, self.exec_name)
         self.data_file = self.exec_name + ".data.json"
         self.bridgestan_path = os.path.abspath(bridgestan_path)
-        self.cmdstan_path = os.path.abspath(cmdstan_path)
         self.compiled = False
         self.model = None
         self.lib = None
         self.data = None
+        bs.set_cmdstan_path(os.path.abspath(cmdstan_path))
 
     def compile(self):
         if not self.compiled:

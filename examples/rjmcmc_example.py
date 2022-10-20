@@ -6,6 +6,8 @@ import discretesampling.domain.spectrum as spec
 
 from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 
+from scipy.stats import multivariate_normal
+
 stan_model_path = "StanForRJMCMCProblems/mixturemodel.stan"
 bridgestan_path = "bridgestan"
 cmdstan_path = "cmdstan"
@@ -20,9 +22,11 @@ def data_function(x):
 
 # What params should be evaluated if we've made a discrete move from x to y
 # where params is the params vector for the model defined by x
-def transformation_function(x, params, y):
+def continuous_proposal(x, params, y):
     dim_x = x.value
     dim_y = y.value
+
+    move_logprob = 0
 
     params_temp = copy.deepcopy(params)
     if dim_x > 1:
@@ -44,23 +48,36 @@ def transformation_function(x, params, y):
         mu_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
         sigma_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
 
+        mvn = multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
+        forward_logprob = mvn.logpdf(theta_new) + mvn.logpdf(mu_new) + mvn.logpdf(sigma_new)
+        reverse_logprob = np.log(1/dim_y)
+        move_logprob = forward_logprob - reverse_logprob
+
         params_temp = np.concatenate((np.array(theta), theta_new, np.array(mu), mu_new, np.array(sigma), sigma_new))
 
-        return params_temp
+        return params_temp, move_logprob
     elif (dim_x > dim_y):
         # randomly choose one to remove
         to_remove = RandomInt(0, dim_x-1).eval()
+        # birth of component could happen multiple ways (i.e. different n_new_components)
+        # so I think the reverse_logprob will only be approximate - seems like there might
+        # be a proof for the summed pdf values of the series of Gaussians that we can use?
+        mvn = multivariate_normal(0, 1)
+        reverse_logprob = mvn.logpdf(theta[to_remove]) + mvn.logpdf(mu[to_remove]) + mvn.logpdf(sigma[to_remove])
         if dim_y > 1:
-            theta = np.delete(theta, 0)
+            theta = np.delete(theta, to_remove)
         else:
             theta = np.array([])
 
         mu = np.delete(mu, to_remove)
         sigma = np.delete(sigma, to_remove)
 
+        forward_logprob = np.log(1/dim_x)
+        move_logprob = forward_logprob - reverse_logprob
+
         params_temp = np.concatenate((theta, mu, sigma))
 
-    return list(params_temp)
+    return list(params_temp), move_logprob
 
 
 rjmcmc = DiscreteVariableRJMCMC(
@@ -71,7 +88,7 @@ rjmcmc = DiscreteVariableRJMCMC(
     bridgestan_path,
     cmdstan_path,
     data_function,
-    transformation_function,
+    continuous_proposal,
     "NUTS",
     update_probability=0.5
 )
