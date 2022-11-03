@@ -54,7 +54,6 @@ model {
   real delta2_const;
   real alpha_factor;
   array[M, L] real alpha;
-  print("test");
   delta2 ~ inv_gamma(2,0.1);
   delta2_const = 1+1/(N*delta2);
   for (omega in 1:f_n){
