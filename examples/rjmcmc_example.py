@@ -7,6 +7,7 @@ import discretesampling.domain.spectrum as spec
 from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 
 from scipy.stats import multivariate_normal
+from discretesampling.base.stan_model import stan_model
 
 stan_model_path = "StanForRJMCMCProblems/mixturemodel.stan"
 bridgestan_path = "bridgestan"
@@ -22,7 +23,7 @@ def data_function(x):
 
 # What params should be evaluated if we've made a discrete move from x to y
 # where params is the params vector for the model defined by x
-def continuous_proposal(x, params, y):
+def continuous_proposal(x, params, y, rng):
     dim_x = x.value
     dim_y = y.value
 
@@ -42,14 +43,23 @@ def continuous_proposal(x, params, y):
         # Birth move
         # Add new components
         n_new_components = dim_y - dim_x
-        rng = np.random.default_rng()
 
-        theta_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
-        mu_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
-        sigma_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
+        if dim_x > 0:
+            theta_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
+            mu_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
+            sigma_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
 
-        mvn = multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
-        forward_logprob = mvn.logpdf(theta_new) + mvn.logpdf(mu_new) + mvn.logpdf(sigma_new)
+            mvn = multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
+            forward_logprob = mvn.logpdf(theta_new) + mvn.logpdf(mu_new) + mvn.logpdf(sigma_new)
+        else:
+            # initial proposal
+            theta_new = rng.multivariate_normal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
+            mu_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
+            sigma_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
+
+            mvn = multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
+            mvn_theta = multivariate_normal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
+            forward_logprob = mvn_theta.logpdf(theta_new) + mvn.logpdf(mu_new) + mvn.logpdf(sigma_new)
         reverse_logprob = np.log(1/dim_y)
         move_logprob = forward_logprob - reverse_logprob
 
@@ -80,13 +90,14 @@ def continuous_proposal(x, params, y):
     return list(params_temp), move_logprob
 
 
+# initialise stan model
+model = stan_model(stan_model_path, bridgestan_path, cmdstan_path)
+
 rjmcmc = DiscreteVariableRJMCMC(
     spec.SpectrumDimension,
     spec.SpectrumDimensionInitialProposal(10),  # Initial proposal uniform(0,20)
     spec.SpectrumDimensionTarget(3, 2),  # NB prior on number of mixture components
-    stan_model_path,
-    bridgestan_path,
-    cmdstan_path,
+    model,
     data_function,
     continuous_proposal,
     "NUTS",

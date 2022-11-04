@@ -251,7 +251,6 @@ class nuts():
         log_epsilon_bar = 0
         proposed_continuous = copy.deepcopy(current_continuous)
         for n in range(1, self.warmup_iters):
-            print(np.exp(log_epsilon))
             proposed_continuous, alpha, n_alpha = self.NUTS(proposed_continuous, current_discrete, M, np.exp(log_epsilon))
             H_bar = (1 - 1/(n + t0))*H_bar + (self.delta - alpha/n_alpha)/(n + t0)
             log_epsilon = mu - np.sqrt(n)*H_bar/gamma
