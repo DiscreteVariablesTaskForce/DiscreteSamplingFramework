@@ -27,9 +27,29 @@ pip install pip install git+https://github.com/DiscreteVariablesTaskForce/Discre
 or
 
 ```
-git clone https://github.com/DiscreteVariablesTaskForce/DiscreteSamplingFramework.git
+git clone --recurse-submodules https://github.com/DiscreteVariablesTaskForce/DiscreteSamplingFramework.git
 pip install -e DiscreteSamplingFramework
 ```
+
+### bridgestan
+
+[bridgestan](https://github.com/roualdes/bridgestan) must be "installed".
+It is set as a submodule of this repo and so, if you installed by cloning the repo, you can
+set an environment variable to point to the bridgestan repo:
+```bash
+export BRIDGESTAN=<path/to/this/repo/>/bridgestan
+```
+
+
+Alternatively, you can clone bridgestan elsewhere and set an environment variable:
+```bash
+git clone https://github.com/roualdes/bridgestan.git <path/to/bridgestan>
+export BRIDGESTAN=<path/to/bridgestan>
+```
+
+If this environment variable is not set, discretesampling will attempt to set it to
+the bridgestan submodule.
+
 
 ### Cmdstan
 [cmdstan](https://github.com/stan-dev/cmdstan) is also required to query stan models with bridgestan.
