@@ -8,8 +8,7 @@ import math
 import matplotlib.pyplot as plt
 
 mixturemodel = stan_model(
-    "examples/stanmodels/mixturemodel.stan",
-    "cmdstan"
+    "examples/stanmodels/mixturemodel.stan"
 )
 
 niters = 500

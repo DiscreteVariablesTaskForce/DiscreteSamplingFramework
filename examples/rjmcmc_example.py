@@ -10,7 +10,6 @@ from scipy.stats import multivariate_normal
 from discretesampling.base.stan_model import stan_model
 
 stan_model_path = "examples/stanmodels/mixturemodel.stan"
-cmdstan_path = "cmdstan"
 
 
 # What data should be passed to the stan model given discrete variable x?
@@ -90,7 +89,7 @@ def continuous_proposal(x, params, y, rng):
 
 
 # initialise stan model
-model = stan_model(stan_model_path, cmdstan_path)
+model = stan_model(stan_model_path)
 
 rjmcmc = DiscreteVariableRJMCMC(
     spec.SpectrumDimension,

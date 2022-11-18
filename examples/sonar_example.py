@@ -8,7 +8,6 @@ from discretesampling.base.algorithms.continuous_proposals import sample_offsets
 from discretesampling.base.stan_model import stan_model
 
 stan_model_path = "examples/stanmodels/linear_array.stan"
-cmdstan_path = "cmdstan"
 data_path = "examples/5_targets_noisy.data.json"
 
 stationary_data = []
@@ -109,7 +108,7 @@ class continuous_proposal():
         return move_logprob
 
 # initialise stan model
-model = stan_model(stan_model_path, cmdstan_path)
+model = stan_model(stan_model_path)
 
 rjmcmc = DiscreteVariableRJMCMC(
     spec.SpectrumDimension,

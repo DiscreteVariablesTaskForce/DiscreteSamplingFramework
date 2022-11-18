@@ -7,7 +7,7 @@ import numpy as np
 
 
 class stan_model(object):
-    def __init__(self, model_file, cmdstan_path):
+    def __init__(self, model_file):
         self.model_file = os.path.abspath(model_file)
         self.model_filename = os.path.basename(self.model_file)
         self.model_path = os.path.dirname(self.model_file)
@@ -18,7 +18,6 @@ class stan_model(object):
         self.model = None
         self.lib = None
         self.data = None
-        bs.set_cmdstan_path(os.path.abspath(cmdstan_path))
 
     def compile(self):
         if not self.compiled:
