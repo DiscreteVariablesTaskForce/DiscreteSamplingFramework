@@ -5,4 +5,5 @@ flake8
 scikit-learn
 pandas
 pytest
+cmdstanpy
 bridgestan @ git+https://github.com/roualdes/bridgestan.git#egg=bridgestan&subdirectory=python
