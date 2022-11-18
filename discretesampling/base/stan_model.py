@@ -5,6 +5,16 @@ import bridgestan as bs
 from cmdstanpy import write_stan_json
 import numpy as np
 
+if "BRIDGESTAN" not in os.environ:
+    default_bridgestan_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "bridgestan")
+    )
+    logging.warning(
+        "Environment variable `BRIDGESTAN` not set. Defaulting to `%s`.",
+        default_bridgestan_path
+    )
+    bs.set_bridgestan_path(default_bridgestan_path)
+
 
 class stan_model(object):
     def __init__(self, model_file):
