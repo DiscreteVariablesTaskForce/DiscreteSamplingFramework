@@ -7,7 +7,7 @@ from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 from discretesampling.base.algorithms.continuous_proposals import sample_offsets, forward_grid_search, reverse_grid_search
 from discretesampling.base.stan_model import stan_model
 
-stan_model_path = "StanForRJMCMCProblems/linear_array.stan"
+stan_model_path = "examples/stanmodels/linear_array.stan"
 cmdstan_path = "cmdstan"
 data_path = "examples/5_targets_noisy.data.json"
 

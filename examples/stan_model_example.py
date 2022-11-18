@@ -8,7 +8,7 @@ import math
 import matplotlib.pyplot as plt
 
 mixturemodel = stan_model(
-    "StanForRJMCMCProblems/mixturemodel.stan",
+    "examples/stanmodels/mixturemodel.stan",
     "cmdstan"
 )
 

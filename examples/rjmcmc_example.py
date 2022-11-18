@@ -9,7 +9,7 @@ from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 from scipy.stats import multivariate_normal
 from discretesampling.base.stan_model import stan_model
 
-stan_model_path = "StanForRJMCMCProblems/mixturemodel.stan"
+stan_model_path = "examples/stanmodels/mixturemodel.stan"
 cmdstan_path = "cmdstan"
 
 
