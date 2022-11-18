@@ -6,18 +6,57 @@ Python classes describing discrete variable sampling/proposals/targets
  - numpy
  - scipy
  - scikit-learn (for examples)
+ - [bridgestan](https://github.com/roualdes/bridgestan) (for models with continuous parameters specified with Stan)
+ - cmdstanpy (for models with continuous parameters specified with Stan)
+
+## Continuous Parameters and Stan 
+For models with continuous parameters, the continuous model conditional on discrete
+parameters can be specified using a model written in Stan.
+Log density and gradient information are extracted from Stan models using
+[bridgestan](https://github.com/roualdes/bridgestan).
+
+
 
 ## Installation
-Make sure the submodules are present and updated:
+
+Install with pip:
 ```bash
-git submodule update --init --recursive
+pip install pip install git+https://github.com/DiscreteVariablesTaskForce/DiscreteSamplingFramework.git
 ```
 
-Then build cmdstan:
-```bash
-cd cmdstan
-make build
+or
+
 ```
+git clone https://github.com/DiscreteVariablesTaskForce/DiscreteSamplingFramework.git
+pip install -e DiscreteSamplingFramework
+```
+
+### Cmdstan
+[cmdstan](https://github.com/stan-dev/cmdstan) is also required to query stan models with bridgestan.
+
+#### Installation with cmdstanpy
+The simplest way to install cmdstan is using cmdstanpy:
+```python
+import cmdstanpy
+cmdstanpy.install_cmdstan()
+```
+which will download and build the latest version of cmdstan to
+your home directory in `~/.cmdstan` and
+sets an environment variable `CMDSTAN` to that location.
+
+#### Manual installation
+Alternatively, cmdstan can be installed manually following instructions for [installing with conda](https://mc-stan.org/docs/cmdstan-guide/cmdstan-installation.html#conda-install) or [building from source](https://mc-stan.org/docs/cmdstan-guide/cmdstan-installation.html#installation-from-github).
+
+The `CMDSTAN` environment variable should be then set:
+```bash
+export CMDSTAN=path/to/cmdstan
+```
+or with cmdstanpy:
+```python
+import cmdstanpy
+cmdstanpy.set_cmdstan_path('path/to/cmdstan')
+```
+
 
 
 ## Variables and Distributions
