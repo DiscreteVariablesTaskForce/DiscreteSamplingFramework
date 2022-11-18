@@ -1,20 +1,19 @@
 import math
 import os
 import logging
-import bridgestan.python.bridgestan as bs
+import bridgestan as bs
 from cmdstanpy import write_stan_json
 import numpy as np
 
 
 class stan_model(object):
-    def __init__(self, model_file, bridgestan_path, cmdstan_path):
+    def __init__(self, model_file, cmdstan_path):
         self.model_file = os.path.abspath(model_file)
         self.model_filename = os.path.basename(self.model_file)
         self.model_path = os.path.dirname(self.model_file)
         self.exec_name = self.model_filename.replace(".stan", "")
         self.exec_path = os.path.join(self.model_path, self.exec_name)
         self.data_file = self.exec_name + ".data.json"
-        self.bridgestan_path = os.path.abspath(bridgestan_path)
         self.compiled = False
         self.model = None
         self.lib = None

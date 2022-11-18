@@ -10,7 +10,6 @@ from scipy.stats import multivariate_normal
 from discretesampling.base.stan_model import stan_model
 
 stan_model_path = "StanForRJMCMCProblems/mixturemodel.stan"
-bridgestan_path = "bridgestan"
 cmdstan_path = "cmdstan"
 
 
@@ -91,7 +90,7 @@ def continuous_proposal(x, params, y, rng):
 
 
 # initialise stan model
-model = stan_model(stan_model_path, bridgestan_path, cmdstan_path)
+model = stan_model(stan_model_path, cmdstan_path)
 
 rjmcmc = DiscreteVariableRJMCMC(
     spec.SpectrumDimension,

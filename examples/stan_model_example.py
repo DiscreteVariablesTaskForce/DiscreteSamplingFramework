@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 
 mixturemodel = stan_model(
     "StanForRJMCMCProblems/mixturemodel.stan",
-    "bridgestan",
     "cmdstan"
 )
 

@@ -12,7 +12,6 @@ from discretesampling.base.algorithms.continuous_proposals import sample_offsets
 from discretesampling.base.stan_model import stan_model
 
 stan_model_path = "StanForRJMCMCProblems/linear_array.stan"
-bridgestan_path = "bridgestan"
 cmdstan_path = "cmdstan"
 data_path = "examples/5_targets_noisy.data.json"
 
@@ -187,7 +186,7 @@ class continuous_proposal():
 #np.seterr(all='raise')  # DEBUG
 
 # initialise stan model
-model = stan_model(stan_model_path, bridgestan_path, cmdstan_path)
+model = stan_model(stan_model_path, cmdstan_path)
 
 # set variables used in the proposal
 rj.set_proposal_attributes(spec.SpectrumDimensionTarget(3, 2), model, data_function, continuous_proposal(), "NUTS", 0.5)
