@@ -48,7 +48,7 @@ class ReversibleJumpProposal(types.DiscreteVariableProposal):
     def __init__(self, currentReversibleJumpVariable):
         self.currentReversibleJumpVariable = currentReversibleJumpVariable
         self.rjmcmc = rjmcmc.DiscreteVariableRJMCMC(type(currentReversibleJumpVariable.discrete), base_target, model,
-                                                    data_func, cont_proposal, cont_update, True, True, update_prob)
+                                                    data_func, cont_proposal, cont_update, True, True, False, update_prob)
         # copy over previous NUTS parameters
         if cont_update == "NUTS":
             self.rjmcmc.csampler.NUTS_params = self.currentReversibleJumpVariable.NUTS_params
@@ -118,7 +118,7 @@ class ReversibleJumpInitialProposal(types.DiscreteVariableInitialProposal):
 
     def sample(self):
         rjmcmc_proposal = rjmcmc.DiscreteVariableRJMCMC(self.base_type, base_target, model,
-                                                        data_func, cont_proposal, cont_update, True, True, update_prob)
+                                                        data_func, cont_proposal, cont_update, True, True, False, update_prob)
         proposed_discrete = self.base_proposal.sample()
         if hasattr(proposed_discrete.value, "__len__"):
             empty_discrete = self.base_type(np.zeros(proposed_discrete.value.shape()))

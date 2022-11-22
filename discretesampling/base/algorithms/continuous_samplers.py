@@ -13,23 +13,24 @@ class rw():
         self.rng = rng
 
     def sample(self, current_continuous, current_discrete):
+        proposed_continuous = copy.deepcopy(current_continuous)
         current_data = self.data_function(current_discrete)
         param_length = self.stan_model.num_unconstrained_parameters(current_data)
         mu = [0 for i in range(param_length)]
         sigma = np.identity(param_length) * 1
-        proposed_continuous = current_continuous + self.rng.multivariate_normal(mu, sigma)
+        proposed_continuous[0:param_length] = current_continuous[0:param_length] + self.rng.multivariate_normal(mu, sigma)
 
-        return proposed_continuous
+        return proposed_continuous, 0, 0  # zeros added for consistency with NUTS method
 
     def eval(self, current_continuous, current_discrete, proposed_continuous, r0, r1):  # r0 and r1 added for consistency
         current_data = self.data_function(current_discrete)
         param_length = self.stan_model.num_unconstrained_parameters(current_data)
         sigma = np.identity(param_length) * 1
 
-        current_target = self.stan_model.eval(current_data, current_continuous)[0]
-        proposed_target = self.stan_model.eval(current_data, proposed_continuous)[0]
-        forward_logprob = multivariate_normal.logpdf(proposed_continuous, mean=current_continuous, cov=sigma)
-        reverse_logprob = multivariate_normal.logpdf(current_continuous, mean=proposed_continuous, cov=sigma)
+        current_target = self.stan_model.eval(current_data, current_continuous[0:param_length])[0]
+        proposed_target = self.stan_model.eval(current_data, proposed_continuous[0:param_length])[0]
+        forward_logprob = multivariate_normal.logpdf(proposed_continuous[0:param_length], mean=current_continuous[0:param_length], cov=sigma)
+        reverse_logprob = multivariate_normal.logpdf(current_continuous[0:param_length], mean=proposed_continuous[0:param_length], cov=sigma)
         # Discrete part of target p(discrete_variables) cancels
         log_acceptance_ratio = (proposed_target - current_target
                                 + reverse_logprob - forward_logprob)
@@ -232,8 +233,6 @@ class nuts():
         [proposed_continuous, r0, r1, alpha, n_alpha] = self.NUTS(current_continuous, current_discrete, M,
                                                                   np.exp(log_epsilon))
         H_bar = (1 - 1 / (n + t0)) * H_bar + (self.delta - alpha / n_alpha) / (n + t0)
-        if np.isnan(H_bar):
-            pass
         log_epsilon = mu - np.sqrt(n) * H_bar / gamma
         n_scaled = n ** (-kappa)
         log_epsilon_bar = n_scaled * log_epsilon + (1 - n_scaled) * log_epsilon_bar

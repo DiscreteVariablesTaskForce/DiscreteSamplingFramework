@@ -31,7 +31,7 @@ def data_function(x):
 class continuous_proposal():
     def __init__(self):
         # grid search parameters
-        self.grid_size = 10
+        self.grid_size = 100
         self.min_vals = [0]
         self.max_vals = [np.pi]
         self.inds = [0]
@@ -128,11 +128,6 @@ class continuous_proposal():
                     num_matching += len(np.where(params == p_params[n]))
                 if num_matching == p_param_length:
                     # can reuse forward logprob
-                    living = np.asarray([])
-                    # work out index of component that was removed
-                    for n in range(0, p_param_length):
-                        ind = np.where(params == p_params[n])
-                        living = np.hstack(living, ind)
                     all_inds = range(0, p_param_length)
                     for n in range(0, p_param_length):
                         if len(np.where(params == all_inds[n])) == 0:
@@ -182,13 +177,12 @@ class continuous_proposal():
 
         return evals
 
-#np.seterr(all='raise')  # DEBUG
 
 # initialise stan model
 model = stan_model(stan_model_path)
 
 # set variables used in the proposal
-rj.set_proposal_attributes(spec.SpectrumDimensionTarget(3, 2), model, data_function, continuous_proposal(), "NUTS", 0.5)
+rj.set_proposal_attributes(spec.SpectrumDimensionTarget(3, 2), model, data_function, continuous_proposal(), "random_walk", 0.5)
 
 # define target
 target = rj.ReversibleJumpTarget()
@@ -202,7 +196,7 @@ with open(data_path, 'r') as f:
         stationary_data.append([key, value])
 
 try:
-    SMCSamples = specSMC.sample(10, 10)
+    SMCSamples = specSMC.sample(5, 10)
 
 except ZeroDivisionError:
     print("SMC sampling failed due to division by zero")

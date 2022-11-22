@@ -10,7 +10,7 @@ class DiscreteVariableRJMCMC():
 
     def __init__(self, variableType, discrete_target,
                  stan_model, data_function, continuous_proposal, continuous_update="NUTS", accept_reject=False,
-                 always_update=False, update_probability=0.5, initialProposal=None):
+                 always_update=False, do_warmup=True, update_probability=0.5, initialProposal=None, warmup_iters=100):
 
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
@@ -33,7 +33,10 @@ class DiscreteVariableRJMCMC():
         if self.continuous_update == "random_walk":
             self.csampler = rw(self.stan_model, self.data_function, self.rng)
         elif self.continuous_update == "NUTS":
-            self.csampler = nuts(True, self.stan_model, self.data_function, self.rng, 0.9, 5)
+            if do_warmup:
+                self.csampler = nuts(True, self.stan_model, self.data_function, self.rng, 0.9, warmup_iters)
+            else:
+                self.csampler = nuts(False, self.stan_model, self.data_function, self.rng, 0.9, warmup_iters)
         else:
             raise NameError("Continuous update type not defined")
 
@@ -45,12 +48,7 @@ class DiscreteVariableRJMCMC():
         # Update vs Birth/death
         if (q < self.update_probability):
             # Perform update in continuous space
-            if self.continuous_update == "random_walk":
-                proposed_continuous = self.csampler.sample(current_continuous, current_discrete)
-            elif self.continuous_update == "NUTS":
-                [proposed_continuous, r0, r1] = self.csampler.sample(current_continuous, current_discrete)
-            else:
-                raise NameError("Continuous update type not defined")
+            [proposed_continuous, r0, r1] = self.csampler.sample(current_continuous, current_discrete)
         else:
             # Perform discrete update
             forward_proposal = self.proposalType(current_discrete)

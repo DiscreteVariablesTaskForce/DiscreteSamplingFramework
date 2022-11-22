@@ -77,6 +77,8 @@ import cmdstanpy
 cmdstanpy.set_cmdstan_path('path/to/cmdstan')
 ```
 
+#### Windows
+On Windows there's an additional step in the cmdstan installation to link the TBB libraries. However, this might not work correctly. In this case you may run into an error when using bridgestan, where it will say that it is unable to find the model .so file or one of its dependencies. The way to fix this is to copy the tbb.dll file from `cmdstan\stan\lib\stan_math\lib\tbb` to the folder containing the stan model.
 
 
 ## Variables and Distributions

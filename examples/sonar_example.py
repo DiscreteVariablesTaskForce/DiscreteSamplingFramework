@@ -119,8 +119,10 @@ rjmcmc = DiscreteVariableRJMCMC(
     "NUTS",
     False,
     False,
+    True,
     0.5,
     spec.SpectrumDimensionInitialProposal(1),
+    5
 )
 
 with open(data_path, 'r') as f:
@@ -129,7 +131,7 @@ with open(data_path, 'r') as f:
         stationary_data.append([key, value])
 
 n_chains = 1
-samples = [rjmcmc.sample(200) for c in range(n_chains)]
+samples = [rjmcmc.sample(10) for c in range(n_chains)]
 
 dims = [[x[0].value for x in chain] for chain in samples]
 
