@@ -60,8 +60,8 @@ class DiscreteVariableRJMCMC():
             # the reverse move (e.g. random selection for birth / death). This information might be better stored in the
             # discrete variables.
             if self.always_update:
-                # need to do this to initialise NUTS (if we don't do this then we can end up in a situation in SMC where we're comparing NUTS
-                # proposals between two starting points without sampled momenta / NUTS parameters)
+                # need to do this to initialise NUTS (if we don't do this then we can end up in a situation in SMC where we're
+                # comparing NUTS proposals between two starting points without sampled momenta / NUTS parameters)
                 init_proposed_continuous = self.continuous_proposal.sample(current_discrete, current_continuous,
                                                                            proposed_discrete,
                                                                            self.rng)
@@ -115,8 +115,10 @@ class DiscreteVariableRJMCMC():
             discrete_reverse_logprob = reverse_proposal.eval(current_discrete)
 
             if self.always_update and not (self.continuous_update == "NUTS" and self.accept_reject is False):
-                # we need to sum over all of the possible combinations of birth / death moves + updates to get to proposed_continuous
-                continuous_proposals = self.continuous_proposal.eval_all(current_discrete, current_continuous, proposed_discrete, proposed_continuous)
+                # we need to sum over all of the possible combinations of birth / death moves + updates to get to
+                # proposed_continuous
+                continuous_proposals = self.continuous_proposal.eval_all(current_discrete, current_continuous,
+                                                                         proposed_discrete, proposed_continuous)
                 continuous_proposal_logprobs = []
                 for continuous_proposal, continuous_proposal_logprob in continuous_proposals:
                     nuts_logprob = self.csampler.eval(continuous_proposal, proposed_discrete, proposed_continuous, r0, r1)
@@ -125,7 +127,6 @@ class DiscreteVariableRJMCMC():
             else:
                 continuous_proposal_logprob = self.continuous_proposal.eval(current_discrete, current_continuous,
                                                                             proposed_discrete, proposed_continuous)
-
 
             # Setup data for stan model
             current_data = self.data_function(current_discrete)

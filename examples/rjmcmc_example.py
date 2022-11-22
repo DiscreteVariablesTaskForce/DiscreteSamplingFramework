@@ -77,7 +77,6 @@ class continuous_proposal():
                 mvn = multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
                 mvn_theta = multivariate_normal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
                 forward_logprob = mvn_theta.logpdf(theta_new) + mvn.logpdf(mu_new) + mvn.logpdf(sigma_new)
-            reverse_logprob = np.log(1/dim_y)
             self.forward_logprob = forward_logprob
 
             params_temp = np.concatenate((np.array(theta), theta_new, np.array(mu), mu_new, np.array(sigma), sigma_new))
@@ -89,7 +88,6 @@ class continuous_proposal():
             # so I think the reverse_logprob will only be approximate - seems like there might
             # be a proof for the summed pdf values of the series of Gaussians that we can use?
             mvn = multivariate_normal(0, 1)
-            reverse_logprob = mvn.logpdf(theta[to_remove]) + mvn.logpdf(mu[to_remove]) + mvn.logpdf(sigma[to_remove])
             if dim_y > 1:
                 theta = np.delete(theta, to_remove)
             else:

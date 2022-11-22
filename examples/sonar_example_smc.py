@@ -1,14 +1,12 @@
-from discretesampling.domain import spectrum
-from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
-
+from discretesampling.base.algorithms import DiscreteVariableSMC
 import copy
 import json
-import itertools
 import numpy as np
 from discretesampling.base.random import RandomInt
 import discretesampling.domain.spectrum as spec
 import discretesampling.domain.reversible_jump as rj
-from discretesampling.base.algorithms.continuous_proposals import sample_offsets, grid_search_logprobs, forward_grid_search, reverse_grid_search
+from discretesampling.base.algorithms.continuous_proposals import sample_offsets, grid_search_logprobs, forward_grid_search,\
+    reverse_grid_search
 from discretesampling.base.stan_model import stan_model
 
 stan_model_path = "examples/stanmodels/linear_array.stan"
@@ -59,7 +57,8 @@ class continuous_proposal():
             # Birth move
             # Add new components
             offsets = sample_offsets(self.grid_size, self.min_vals, self.max_vals)
-            [params_temp, forward_logprob] = forward_grid_search(data_function, model, self.grid_size, self.min_vals, self.max_vals, offsets, self.inds, params[0:(dim_x + 1)], y)
+            [params_temp, forward_logprob] = forward_grid_search(data_function, model, self.grid_size, self.min_vals,
+                                                                 self.max_vals, offsets, self.inds, params[0:(dim_x + 1)], y)
             if len(params) > dim_x+1:
                 if params[dim_x + 1] == 1:
                     logprob_vals = params_temp[-(dim_x + 1):-1]
@@ -70,7 +69,9 @@ class continuous_proposal():
                 else:
                     raise Exception("Something weird happened with the discrete moves.")
             last_move = 1  # flag birth
-            params_temp = np.hstack((params_temp, last_move, offset_vals, offsets, logprob_vals, forward_logprob))  # store previous parameters for eval check in case we go through a series of discrete moves that lead back to the same point (expensive to work out forward_logprob again)
+            # store previous parameters for eval check in case we go through a series of discrete moves that lead back to the
+            # same point (expensive to work out forward_logprob again)
+            params_temp = np.hstack((params_temp, last_move, offset_vals, offsets, logprob_vals, forward_logprob))
 
         elif (dim_x > dim_y):
             # randomly choose one to remove
@@ -153,8 +154,10 @@ class continuous_proposal():
         if (dim_y == dim_x + 1):
             # Birth move
             reverse_logprob = 1 / dim_y
-            offsets = np.asarray([p_params[-dim_y-1]])  # calculate move probability for grid specified by offsets sampled in p_params
-            [proposals, forward_logprobs] = grid_search_logprobs(data_function, model, self.grid_size, self.min_vals, self.max_vals, offsets, self.inds, params[0:(dim_x + 1)], y)
+            # calculate move probability for grid specified by offsets sampled in p_params
+            offsets = np.asarray([p_params[-dim_y-1]])
+            [proposals, forward_logprobs] = grid_search_logprobs(data_function, model, self.grid_size, self.min_vals,
+                                                                 self.max_vals, offsets, self.inds, params[0:(dim_x + 1)], y)
             for proposal, forward_logprob in zip(proposals, forward_logprobs):
                 move_logprob = reverse_logprob - forward_logprob
                 evals.append((proposal, move_logprob))

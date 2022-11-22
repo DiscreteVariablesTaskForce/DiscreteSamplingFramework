@@ -23,7 +23,7 @@ def sample_offsets(grid_size, min_vals, max_vals):
 
 
 def grid_search_logprobs(data_function, stan_model, grid_size, min_vals, max_vals, offsets, inds, current_continuous,
-                      proposed_discrete):
+                         proposed_discrete):
     # input:
     # data_function      - function returning data passed to Stan model for given discrete parameters
     # stan_model         - initialised stan_model object
@@ -104,7 +104,8 @@ def grid_search_logprobs(data_function, stan_model, grid_size, min_vals, max_val
     return proposals, logprobs
 
 
-def forward_grid_search(data_function, stan_model, grid_size, min_vals, max_vals, offsets, inds, current_continuous, proposed_discrete):
+def forward_grid_search(data_function, stan_model, grid_size, min_vals, max_vals, offsets, inds, current_continuous,
+                        proposed_discrete):
     # input:
     # data_function      - function returning data passed to Stan model for given discrete parameters
     # stan_model         - initialised stan_model object
@@ -203,7 +204,8 @@ def forward_grid_search(data_function, stan_model, grid_size, min_vals, max_vals
     return proposed_continuous, np.log(probs[samp])
 
 
-def reverse_grid_search(data_function, stan_model, grid_size, min_vals, max_vals, inds, current_continuous, current_discrete, death_ind):
+def reverse_grid_search(data_function, stan_model, grid_size, min_vals, max_vals, inds, current_continuous, current_discrete,
+                        death_ind):
     # input:
     # data_function      - function returning data passed to Stan model for given discrete parameters
     # stan_model         - initialised stan_model object

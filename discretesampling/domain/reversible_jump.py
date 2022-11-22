@@ -1,6 +1,5 @@
 from ..base import types
 from ..base.algorithms import rjmcmc
-from scipy.stats import nbinom
 import numpy as np
 import copy
 
@@ -90,7 +89,8 @@ class ReversibleJumpProposal(types.DiscreteVariableProposal):
         r0 = proposedReversibleJumpVariable.r0
         r1 = proposedReversibleJumpVariable.r1
 
-        log_acceptance_ratio = self.rjmcmc.eval(current_discrete, current_continuous, proposed_discrete, proposed_continuous, r0, r1)
+        log_acceptance_ratio = self.rjmcmc.eval(current_discrete, current_continuous, proposed_discrete, proposed_continuous,
+                                                r0, r1)
 
         if log_acceptance_ratio > 0:
             log_acceptance_ratio = 0

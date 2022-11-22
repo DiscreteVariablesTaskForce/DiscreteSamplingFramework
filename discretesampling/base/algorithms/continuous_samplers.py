@@ -5,6 +5,7 @@ from scipy.stats import multivariate_normal
 
 MAX_TREEDEPTH = 10
 
+
 class rw():
     # Random walk sampling
     def __init__(self, model, data_function, rng):
@@ -29,8 +30,10 @@ class rw():
 
         current_target = self.stan_model.eval(current_data, current_continuous[0:param_length])[0]
         proposed_target = self.stan_model.eval(current_data, proposed_continuous[0:param_length])[0]
-        forward_logprob = multivariate_normal.logpdf(proposed_continuous[0:param_length], mean=current_continuous[0:param_length], cov=sigma)
-        reverse_logprob = multivariate_normal.logpdf(current_continuous[0:param_length], mean=proposed_continuous[0:param_length], cov=sigma)
+        forward_logprob = multivariate_normal.logpdf(proposed_continuous[0:param_length],
+                                                     mean=current_continuous[0:param_length], cov=sigma)
+        reverse_logprob = multivariate_normal.logpdf(current_continuous[0:param_length],
+                                                     mean=proposed_continuous[0:param_length], cov=sigma)
         # Discrete part of target p(discrete_variables) cancels
         log_acceptance_ratio = (proposed_target - current_target
                                 + reverse_logprob - forward_logprob)
@@ -38,6 +41,7 @@ class rw():
             log_acceptance_ratio = 0
 
         return log_acceptance_ratio
+
 
 class nuts():
     # We need to adapt the NUTS parameters before we sample from a specific model as defined by the discrete parameters.
@@ -129,7 +133,6 @@ class nuts():
 
         return theta_n, r_n, theta_p, r_p, theta1, n1, s1, alpha1, n_alpha1, r1, 0
 
-
     def NUTS(self, current_continuous, current_discrete, M, epsilon):
         current_data = self.data_function(current_discrete)
         param_length = self.stan_model.num_unconstrained_parameters(current_data)
@@ -186,7 +189,6 @@ class nuts():
                     u1 = self.rng.uniform(0, 1)
                     if n1/n > u1:
                         p_params[0:param_length] = theta1
-                        r = r1
                 n += n1
                 u1 = 0
                 if np.dot((theta_p - theta_n), r_n) >= 0:
@@ -198,7 +200,6 @@ class nuts():
                 j += 1
 
         return p_params, r0, r1, alpha, n_alpha
-
 
     def FindReasonableEpsilon(self, current_continuous, current_discrete):
         epsilon = 1
@@ -224,7 +225,6 @@ class nuts():
 
         return epsilon
 
-
     def adapt(self, current_continuous, current_discrete, log_epsilon, log_epsilon_bar, M, H_bar, n):
         mu = np.log(10) + log_epsilon
         gamma = 0.05
@@ -239,7 +239,6 @@ class nuts():
 
         return proposed_continuous, r0, r1, log_epsilon, log_epsilon_bar, H_bar
 
-
     def warmup(self, current_continuous, current_discrete, log_epsilon, M):
         # Step 2: Adapt step size using dual averaging
         H_bar = 0
@@ -252,13 +251,12 @@ class nuts():
 
         return proposed_continuous, r0, r1, log_epsilon_bar
 
-
     def continual_adaptation(self, current_continuous, current_discrete, log_epsilon, log_epsilon_bar, M, H_bar, n):
         [proposed_continuous, r0, r1, log_epsilon, log_epsilon_bar, H_bar] = self.adapt(current_continuous, current_discrete,
-                                                                                log_epsilon, log_epsilon_bar, M, H_bar, n)
+                                                                                        log_epsilon, log_epsilon_bar, M,
+                                                                                        H_bar, n)
 
         return proposed_continuous, r0, r1, log_epsilon, log_epsilon_bar, H_bar
-
 
     def init_NUTS(self, current_continuous, current_discrete):
         current_data = self.data_function(current_discrete)
@@ -294,7 +292,6 @@ class nuts():
         self.current_stepsize = np.exp(log_epsilon_bar)
 
         return proposed_continuous, r0, r1
-
 
     def sample(self, current_continuous, current_discrete):
         if str(current_discrete.value) in self.NUTS_params.keys():
@@ -338,7 +335,7 @@ class nuts():
         L = self.stan_model.eval(current_data, proposed_continuous[0:param_length])[0]
 
         log_acceptance_ratio = L - 0.5 * np.dot(np.linalg.solve(M, proposed_r), proposed_r) \
-                               - init_L + 0.5 * np.dot(np.linalg.solve(M, current_r), current_r)
+            - init_L + 0.5 * np.dot(np.linalg.solve(M, current_r), current_r)
 
         if log_acceptance_ratio > 0:
             log_acceptance_ratio = 0

@@ -1,7 +1,7 @@
 import math
 import os
 import logging
-import bridgestan as bs
+import bridgestan.python.bridgestan as bs
 from cmdstanpy import write_stan_json
 import numpy as np
 

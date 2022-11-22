@@ -65,7 +65,8 @@ class continuous_proposal():
             # Birth move
             # Add new components
             offsets = sample_offsets(self.grid_size, self.min_vals, self.max_vals)
-            [params_temp, forward_logprob] = forward_grid_search(data_function, model, self.grid_size, self.min_vals, self.max_vals, offsets, self.inds, params, y)
+            [params_temp, forward_logprob] = forward_grid_search(data_function, model, self.grid_size, self.min_vals,
+                                                                 self.max_vals, offsets, self.inds, params, y)
 
         elif (dim_x > dim_y):
             # randomly choose one to remove
@@ -106,6 +107,7 @@ class continuous_proposal():
                             proposal.")
 
         return move_logprob
+
 
 # initialise stan model
 model = stan_model(stan_model_path)
