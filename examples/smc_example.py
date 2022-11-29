@@ -1,5 +1,6 @@
 import numpy
 from discretesampling.base.algorithms import DiscreteVariableSMC
+from discretesampling.base.executor import Executor
 import discretesampling.domain.decision_tree as dt
 
 from sklearn import datasets
@@ -22,7 +23,7 @@ initialProposal = dt.TreeInitialProposal(X_train, y_train)
 # Necessary to use multiprocessing
 if __name__ == "__main__":
     dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal,
-                                use_optimal_L=True, parallel=True, num_cores=10)
+                                use_optimal_L=False, executor=Executor())
 
     try:
         treeSamples = dtSMC.sample(N=10, P=100)

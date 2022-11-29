@@ -1,32 +1,20 @@
-import multiprocessing
 import numpy as np
 import math
-import copy
 from scipy.special import logsumexp
 from ...base.random import RandomChoices
-from ...base.executor import Executor, Executor_MP
+from ...base.executor import Executor
+
 
 class DiscreteVariableSMC():
 
     def __init__(self, variableType, target, initialProposal,
                  use_optimal_L=False,
-                 parallel=False,
-                 num_cores=None):
+                 executor=Executor()  # use inbuilt map by default
+                 ):
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
         self.use_optimal_L = use_optimal_L
-        self.parallel = parallel
-        self.num_cores = num_cores
-
-        if (self.parallel and (num_cores is None)):
-            num_cores = multiprocessing.cpu_count()
-            print("WARNING: `parallel=True` but `num_cores` not specified; "
-                  + "setting `num_cores = ", num_cores, "`")
-            self.num_cores = num_cores
-        
-        #self.exec = Executor()
-        self.exec = Executor_MP(self.num_cores)
-
+        self.exec = executor
 
         if use_optimal_L:
             self.LKernelType = variableType.getOptimalLKernelType()
@@ -61,10 +49,7 @@ class DiscreteVariableSMC():
         reverse_logprob = np.zeros(P)
 
         if self.use_optimal_L:
-            Lkernel = self.LKernelType(
-                new_particles, current_particles, parallel=self.parallel,
-                num_cores=self.num_cores
-            )
+            Lkernel = self.LKernelType(new_particles, current_particles)
             reverse_logprob = list(self.exec.map(Lkernel.eval, current_particles))
 
         else:
@@ -76,8 +61,8 @@ class DiscreteVariableSMC():
                        forward_logprob, reverse_logprob):
 
         def update_weight_particle(current_particle, new_particle, logWeight,
-                forward_logprob, reverse_logprob):
-            
+                                   forward_logprob, reverse_logprob):
+
             current_target_logprob = self.target.eval(current_particle)
             new_target_logprob = self.target.eval(new_particle)
             new_logWeight = (new_target_logprob
@@ -106,7 +91,7 @@ class DiscreteVariableSMC():
             logNeff = calculateNeff(logWeights)
             print("Neff = ", math.exp(logNeff))
 
-            #Resample if Neff below threshold
+            # Resample if Neff below threshold
             if (logNeff < math.log(P) - math.log(2)):
                 print("Resampling...")
                 try:

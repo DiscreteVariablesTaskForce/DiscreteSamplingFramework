@@ -1,93 +1,28 @@
 import numpy as np
 import math
-from multiprocessing import Process, Manager
+from executor import Executor
 from scipy.special import logsumexp
 
 
 class DiscreteVariableOptimalLKernel:
     def __init__(self, current_particles, previous_particles,
-                 parallel=False, num_cores=None):
+                 executor=Executor()):
         self.current_particles = current_particles
         self.previous_particles = previous_particles
         self.proposalType = type(self.current_particles[0]).getProposalType()
-        self.parallel = parallel
-        self.num_cores = num_cores
+        self.exec = executor
 
         self.forward_proposals = [
             self.proposalType(particle) for particle in self.previous_particles
         ]
 
-        # If parallel, calculate eta and proposal_possible in parallel
-        # Then precalculate logprob
-        if (self.parallel):
-            current_particles_split = np.array_split(current_particles,
-                                                     self.num_cores)
+        self.eta = self.calculate_eta(previous_particles)
+        self.proposal_possible = self.calculate_proposal_possible(
+            previous_particles, current_particles, self.proposalType
+        )
 
-            with Manager() as manager:
-                proposal_possible = manager.list([
-                    manager.list(range(len(previous_particles)))
-                    for _ in range(len(current_particles))
-                ])
-                eta = manager.list(range(len(previous_particles)))
-
-                jobs = []
-                save_results_in = []  # indexes to save in for each core
-                counter = 0
-                for i in range(self.num_cores):
-                    save_results_in.append([])
-                    for p in range(len(current_particles_split[i])):
-                        save_results_in[i].append(counter)
-                        counter += 1
-                for i in range(self.num_cores):  # number of cores to use
-                    jobs.append(Process(
-                        target=self.get_eta_and_proposal_possible,
-                        args=[current_particles_split[i], previous_particles,
-                              proposal_possible, eta, save_results_in[i]]
-                    ))
-                for i in range(len(jobs)):
-                    jobs[i]. start()
-                for i in range(len(jobs)):
-                    jobs[i]. join()
-
-                labels = list(proposal_possible)
-                proposal_possible = []
-                for label in labels:
-                    proposal_possible.append(list(label))
-
-                self.proposal_possible = np.array(proposal_possible)
-                self.eta = list(eta)
-
-            # Now precalculate logprob in parallel
-            with Manager() as manager:
-                logprob = manager.list(range(len(current_particles)))
-
-                jobs = []
-                save_results_in = []  # indexes to save in for each core
-                counter = 0
-                for i in range(self.num_cores):
-                    save_results_in.append([])
-                    for p in range(len(current_particles_split[i])):
-                        save_results_in[i].append(counter)
-                        counter += 1
-                for i in range(self.num_cores):  # number of cores to use
-                    jobs.append(Process(
-                        target=self.get_logprob,
-                        args=[logprob, save_results_in[i]]
-                    ))
-                for i in range(len(jobs)):
-                    jobs[i]. start()
-                for i in range(len(jobs)):
-                    jobs[i]. join()
-                self.logprob = list(logprob)
-
-        else:
-            self.eta = self.calculate_eta(previous_particles)
-            self.proposal_possible = self.calculate_proposal_possible(
-                previous_particles, current_particles, self.proposalType
-            )
-
-            # Precalculate logprob
-            self.logprob = self.calculate_logprob(range(len(current_particles)))
+        # Precalculate logprob
+        self.logprob = self.calculate_logprob(range(len(current_particles)))
 
     def eval(self, p):
         return self.logprob[p]
