@@ -1,4 +1,5 @@
 import multiprocessing
+from mpi4py.futures import MPIPoolExecutor
 
 
 class Executor(object):
@@ -13,3 +14,12 @@ class Executor_MP(Executor):
     def map(self, f, *inputs):
         with multiprocessing.Pool(self.num_cores) as pool:
             return pool.map(f, *inputs)
+
+
+class Executor_MPI(Executor):
+    def __init__(self, num_workers):
+        self.num_workers = num_workers
+        self.executor = MPIPoolExecutor(max_workers=self.num_workers)
+
+    def map(self, f, *inputs):
+        return self.executor.map(f, *inputs)
