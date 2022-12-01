@@ -17,9 +17,8 @@ class Executor_MP(Executor):
 
 
 class Executor_MPI(Executor):
-    def __init__(self, num_workers):
-        self.num_workers = num_workers
-        self.executor = MPIPoolExecutor(max_workers=self.num_workers)
+    def __init__(self):
+        self.executor = MPIPoolExecutor()
 
     def map(self, f, *inputs):
         return self.executor.map(f, *inputs)
