@@ -26,23 +26,14 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def evolve_particle(self, particle):
-        forward_proposal = self.proposalType(particle)
-        new_particle = forward_proposal.sample()
-        forward_logprob = forward_proposal.eval(new_particle)
-
-        return new_particle, forward_logprob
-
     def evolve(self, particles):
         new_particles, forward_logprob = zip(*self.exec.map(
-            self.evolve_particle,
-            particles
+            evolve_particle,
+            particles,
+            [self.proposalType]*len(particles)
         ))
 
         return list(new_particles), list(forward_logprob)
-
-    def eval_L_particle(self, current_particle, new_particle):
-        return self.LKernelType(new_particle).eval(current_particle)
 
     def evaluate_LKernel(self, current_particles, new_particles):
         P = len(current_particles)
@@ -50,31 +41,19 @@ class DiscreteVariableSMC():
 
         if self.use_optimal_L:
             Lkernel = self.LKernelType(new_particles, current_particles)
-            reverse_logprob = list(self.exec.map(Lkernel.eval, current_particles))
+            reverse_logprob = list(self.exec.map(Lkernel.eval, range(P)))
 
         else:
-            reverse_logprob = list(self.exec.map(self.eval_L_particle, current_particles, new_particles))
+            reverse_logprob = list(self.exec.map(eval_L_particle, current_particles, new_particles, [self.LKernelType]*P))
 
         return reverse_logprob
 
     def update_weights(self, current_particles, new_particles, logWeights,
                        forward_logprob, reverse_logprob):
 
-        def update_weight_particle(current_particle, new_particle, logWeight,
-                                   forward_logprob, reverse_logprob):
-
-            current_target_logprob = self.target.eval(current_particle)
-            new_target_logprob = self.target.eval(new_particle)
-            new_logWeight = (new_target_logprob
-                             - current_target_logprob
-                             + reverse_logprob
-                             - forward_logprob
-                             + logWeight)
-            return new_logWeight
-
         new_logWeights = list(self.exec.map(
             update_weight_particle, current_particles, new_particles,
-            logWeights, forward_logprob, reverse_logprob
+            logWeights, forward_logprob, reverse_logprob, [self.target]*len(current_particles)
         ))
 
         return new_logWeights
@@ -119,6 +98,32 @@ class DiscreteVariableSMC():
             current_particles = new_particles
 
         return current_particles
+
+
+def evolve_particle(particle, proposalType):
+    forward_proposal = proposalType(particle)
+    new_particle = forward_proposal.sample()
+    forward_logprob = forward_proposal.eval(new_particle)
+
+    return new_particle, forward_logprob
+
+
+def eval_L_particle(current_particle, new_particle, LKernelType):
+    return LKernelType(new_particle).eval(current_particle)
+
+
+def update_weight_particle(current_particle, new_particle, logWeight,
+                           forward_logprob, reverse_logprob, target):
+
+    current_target_logprob = target.eval(current_particle)
+    new_target_logprob = target.eval(new_particle)
+    new_logWeight = (new_target_logprob
+                     - current_target_logprob
+                     + reverse_logprob
+                     - forward_logprob
+                     + logWeight)
+
+    return new_logWeight
 
 
 def calculateNeff(logWeights):
