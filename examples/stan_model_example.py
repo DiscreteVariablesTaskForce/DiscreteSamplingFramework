@@ -5,8 +5,6 @@ from scipy.stats import multivariate_normal
 from discretesampling.base.random import Random
 import math
 
-import matplotlib.pyplot as plt
-
 mixturemodel = stan_model(
     "examples/stanmodels/mixturemodel.stan"
 )
@@ -43,12 +41,3 @@ for i in range(niters):
     if (q < acceptance_probability):
         current = proposed
     samples.append(current)
-
-
-fig, axes = plt.subplots(4, 4)
-for j in range(param_length):
-    ax = axes.flat[j]
-    ax.plot([i for i in range(len(samples))], [x[j] for x in samples])
-
-plt.savefig("mixturemodel-trace.png")
-print("Done")
