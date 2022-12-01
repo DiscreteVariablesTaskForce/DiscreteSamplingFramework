@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from executor import Executor
+from .executor import Executor
 from scipy.special import logsumexp
 
 
