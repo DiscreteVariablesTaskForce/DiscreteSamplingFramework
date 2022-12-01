@@ -6,6 +6,8 @@ Python classes describing discrete variable sampling/proposals/targets
  - numpy
  - scipy
  - scikit-learn (for examples)
+ - mpi4py (for MPI-based parallelism)
+
 
 ## Variables and Distributions
 ### Discrete Variables
@@ -99,4 +101,27 @@ initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
 smcSampler = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 samples = smcSampler.sample(N=10,P=1000)
+```
+
+
+## Running with MPI
+
+The SMC sampler by default runs serially with the `Executor` executor. It can be optionally instatiated with
+an `Executor_MPI` executor:
+
+```python
+smcSampler = DiscreteVariableSMC(dt.Tree, target, initialProposal, executor=Executor_MPI())
+```
+See `examples/smc_MPI_example.py` for an example.
+
+In order to run with MPI, scripts must instead be run with `mpiexec`, e.g. to run with a
+master process with 16 workers:
+
+```bash
+mpiexec -n 1 -usize 17 python examples/smc_MPI_example.py
+```
+
+or for OpenMPI:
+```bash
+mpiexec -n 1 -host <hostname>:17 python examples/smc_MPI_example.py
 ```
