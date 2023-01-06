@@ -10,6 +10,7 @@ class TreeProposal(types.DiscreteVariableProposal):
         self.X_train = tree.X_train
         self.y_train = tree.y_train
         self.tree = copy.deepcopy(tree)
+        self.moves_prob = [0.4, 0.1, 0.1, 0.4]
 
     @classmethod
     def norm(self, tree):
@@ -24,7 +25,7 @@ class TreeProposal(types.DiscreteVariableProposal):
     def sample(self):
         # initialise the probabilities of each move
         moves = ["prune", "swap", "change", "grow"]  # noqa
-        moves_prob = [0.4, 0.1, 0.1, 0.4]
+        moves_prob = self.moves_prob
         if len(self.tree.tree) == 1:
             moves_prob = [0.0, 0.0, 0.5, 0.5]
         moves_probabilities = np.cumsum(moves_prob)
@@ -50,7 +51,7 @@ class TreeProposal(types.DiscreteVariableProposal):
 
     def eval(self, sampledTree):
         initialTree = self.tree
-        moves_prob = [0.4, 0.1, 0.1, 0.4]
+        moves_prob = self.moves_prob
         logprobability = -inf
         if len(initialTree.tree) == 1:
             moves_prob = [0.0, 0.0, 0.5, 0.5]
