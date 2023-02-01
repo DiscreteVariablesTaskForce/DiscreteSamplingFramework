@@ -28,7 +28,7 @@ class Tree(types.DiscreteVariable):
     def getTargetType(self):
         return TreeTarget
 
-    def grow(self, rng = RNG()):
+    def grow(self, rng=RNG()):
         action = "grow"
         self.lastAction = action
         '''
@@ -57,7 +57,7 @@ class Tree(types.DiscreteVariable):
 
         return self
 
-    def prune(self, rng = RNG()):
+    def prune(self, rng=RNG()):
         action = "prune"
         self.lastAction = action
         '''
@@ -122,7 +122,7 @@ class Tree(types.DiscreteVariable):
         self.leafs[:] = new_leafs[:]
         return self
 
-    def change(self, rng = RNG()):
+    def change(self, rng=RNG()):
         action = "change"
         self.lastAction = action
         '''
@@ -140,7 +140,7 @@ class Tree(types.DiscreteVariable):
 
         return self
 
-    def swap(self, rng = RNG()):
+    def swap(self, rng=RNG()):
         action = "swap"
         self.lastAction = action
         '''

@@ -34,11 +34,11 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, N, P, seed = 0):
+    def sample(self, N, P, seed=0):
 
         initialParticles = [self.initialProposal.sample() for p in range(P)]
-        rngs = [RNG(p + seed) for p in range(P+1)] # RNG for each particle
-        
+        rngs = [RNG(p + seed) for p in range(P+1)]  # RNG for each particle
+
         current_particles = initialParticles
         logWeights = [self.target.eval(p) - self.initialProposal.eval(p)
                       for p in initialParticles]
@@ -64,7 +64,7 @@ class DiscreteVariableSMC():
 
             # Sample new particles and calculate forward probabilities
             for p in range(P):
-                forward_proposal = self.proposalType(current_particles[p], rng = rngs[p+1])
+                forward_proposal = self.proposalType(current_particles[p], rng=rngs[p+1])
                 new_particles[p] = forward_proposal.sample()
                 forward_logprob[p] = forward_proposal.eval(new_particles[p])
 

@@ -5,7 +5,7 @@ import math
 
 
 class TreeInitialProposal(DiscreteVariableInitialProposal):
-    def __init__(self, X_train, y_train, rng = RNG()):
+    def __init__(self, X_train, y_train, rng=RNG()):
         self.X_train = X_train
         self.y_train = y_train
         self.rng = rng

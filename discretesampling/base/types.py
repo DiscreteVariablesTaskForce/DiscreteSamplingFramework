@@ -27,7 +27,7 @@ class DiscreteVariable:
 
 
 class DiscreteVariableProposal:
-    def __init__(self, values, probs, rng = RNG()):
+    def __init__(self, values, probs, rng=RNG()):
         # Check dims and probs are valid
         assert len(values) == len(probs), "Invalid PMF specified, x and p" +\
              " of different lengths"

@@ -6,7 +6,7 @@ from ...base import types
 
 
 class TreeProposal(types.DiscreteVariableProposal):
-    def __init__(self, tree, rng = RNG()):
+    def __init__(self, tree, rng=RNG()):
         self.X_train = tree.X_train
         self.y_train = tree.y_train
         self.tree = copy.deepcopy(tree)
@@ -34,19 +34,19 @@ class TreeProposal(types.DiscreteVariableProposal):
         newTree = copy.deepcopy(self.tree)
         if random_number < moves_probabilities[0]:
             # prune
-            newTree = newTree.prune(rng = self.rng)
+            newTree = newTree.prune(rng=self.rng)
 
         elif random_number < moves_probabilities[1]:
             # swap
-            newTree = newTree.swap(rng = self.rng)
+            newTree = newTree.swap(rng=self.rng)
 
         elif random_number < moves_probabilities[2]:
             # change
-            newTree = newTree.change(rng = self.rng)
+            newTree = newTree.change(rng=self.rng)
 
         else:
             # grow
-            newTree = newTree.grow(rng = self.rng)
+            newTree = newTree.grow(rng=self.rng)
 
         return newTree
 

@@ -11,7 +11,7 @@ class DiscreteVariableMCMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, N, seed = 0):
+    def sample(self, N, seed=0):
         initialSample = self.initialProposal.sample()
         current = initialSample
         rng = RNG(seed)
