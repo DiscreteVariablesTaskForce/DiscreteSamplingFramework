@@ -37,7 +37,7 @@ class DiscreteVariableSMC():
     def sample(self, N, P):
 
         initialParticles = [self.initialProposal.sample() for p in range(P)]
-        rngs = [RNG() for p in range(P+1)] # RNG for each particle
+        rngs = [RNG(p) for p in range(P+1)] # RNG for each particle
         
         current_particles = initialParticles
         logWeights = [self.target.eval(p) - self.initialProposal.eval(p)
