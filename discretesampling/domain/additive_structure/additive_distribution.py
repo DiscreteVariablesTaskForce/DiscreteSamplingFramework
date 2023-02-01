@@ -1,14 +1,15 @@
 from math import log, inf
 from .numbers import binomial, stirling
 from ...base import types
-from ...base.random import Random
+from ...base.random import RNG
 
 
 class AdditiveStructureProposal(types.DiscreteVariableProposal):
-    def __init__(self, current):
+    def __init__(self, current, rng = RNG()):
         self.current = current
         self.multi_subsets = [subset for subset in self.current.discrete_set
                               if len(subset) > 1]
+        self.rng = rng
 
     @classmethod
     def norm(self, x):
@@ -73,10 +74,10 @@ class AdditiveStructureProposal(types.DiscreteVariableProposal):
             return self.current.merge_subset(frac=1)
         elif len(self.current.discrete_set) == 1:
             return self.current.split_subset(frac=1)
-        elif Random().eval() < 0.5:
-            return self.current.merge_subset(frac=2)
+        elif self.rng.random() < 0.5:
+            return self.current.merge_subset(frac=2, rng = self.rng)
         else:
-            return self.current.split_subset(frac=2)
+            return self.current.split_subset(frac=2, rng = self.rng)
 
     @staticmethod
     def probability_merge(frac, num_set):

@@ -1,6 +1,6 @@
 import math
 import copy
-from ...base.random import Random
+from ...base.random import RNG
 
 
 class DiscreteVariableMCMC():
@@ -11,16 +11,17 @@ class DiscreteVariableMCMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, N):
+    def sample(self, N, seed = 0):
         initialSample = self.initialProposal.sample()
         current = initialSample
+        rng = RNG(seed)
 
         samples = []
         for i in range(N):
-            forward_proposal = self.proposalType(current)
+            forward_proposal = self.proposalType(current, rng)
             proposed = forward_proposal.sample()
 
-            reverse_proposal = self.proposalType(proposed)
+            reverse_proposal = self.proposalType(proposed, rng)
 
             forward_logprob = forward_proposal.eval(proposed)
             reverse_logprob = reverse_proposal.eval(current)
@@ -34,7 +35,7 @@ class DiscreteVariableMCMC():
                 log_acceptance_ratio = 0
             acceptance_probability = min(1, math.exp(log_acceptance_ratio))
 
-            q = Random().eval()
+            q = rng.random()
             # Accept/Reject
             if (q < acceptance_probability):
                 current = proposed

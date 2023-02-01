@@ -1,45 +1,22 @@
 from random import randint
-import random
+import numpy as np
 
+class RNG():
+    def __init__(self, seed = 0):
+        self.seed = seed
+        self.nprng = np.random.default_rng(seed)
 
-class Random(object):
-    def eval(self):
-        return random.random()
+    def random(self):
+        return self.nprng.random()
 
+    def randomInt(self,low,high):
+        if high == low:
+            return low
 
-class RandomInt(object):
-    def __init__(self, low, high):
-        self.low = low
-        self.high = high
+        return self.nprng.integers(low = low, high = high+1)
 
-    def eval(self):
-        return randint(self.low, self.high)
+    def randomChoice(self, choices):
+        return self.nprng.choice(choices)
 
-
-class RandomChoice(object):
-    def __init__(self, choices):
-        self.choices = choices
-
-    def eval(self):
-        return random.choice(self.choices)
-
-
-class RandomChoices(object):
-    def __init__(self, population, weights=None, cum_weights=None, k=1):
-        self.population = population
-        self.weights = weights
-        self.cum_weights = cum_weights
-        self.k = k
-
-    def eval(self):
-        return random.choices(population=self.population, weights=self.weights, cum_weights=self.cum_weights, k=self.k)
-
-
-def set_seed(seed):
-    """
-    :param seed: random seed
-    """
-    random.seed(seed)
-
-
-set_seed(42)
+    def randomChoices(self, population, weights=None, cum_weights=None, k=1):
+        return self.nprng.choice(population, size = k, replace = True, p = weights)

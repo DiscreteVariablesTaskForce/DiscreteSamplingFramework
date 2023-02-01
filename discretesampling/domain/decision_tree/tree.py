@@ -1,4 +1,4 @@
-from ...base.random import RandomInt
+from ...base.random import RNG
 from ...base import types
 from .tree_distribution import TreeProposal
 from .tree_target import TreeTarget
@@ -28,7 +28,7 @@ class Tree(types.DiscreteVariable):
     def getTargetType(self):
         return TreeTarget
 
-    def grow(self):
+    def grow(self, rng = RNG()):
         action = "grow"
         self.lastAction = action
         '''
@@ -36,13 +36,13 @@ class Tree(types.DiscreteVariable):
         holds their node index, the left and right leaf index, the node
         feature and threshold
         '''
-        random_index = RandomInt(0, len(self.leafs)-1).eval()
+        random_index = rng.randomInt(0, len(self.leafs)-1)
         leaf_to_grow = self.leafs[random_index]
 
         # generating a random faeture
-        feature = RandomInt(0, len(self.X_train[0])-1).eval()
+        feature = rng.randomInt(0, len(self.X_train[0])-1)
         # generating a random threshold
-        threshold = RandomInt(0, len(self.X_train)-1).eval()
+        threshold = rng.randomInt(0, len(self.X_train)-1)
         threshold = (self.X_train[threshold, feature])
 
         node = [leaf_to_grow, max(self.leafs)+1, max(self.leafs)+2, feature,
@@ -57,7 +57,7 @@ class Tree(types.DiscreteVariable):
 
         return self
 
-    def prune(self):
+    def prune(self, rng = RNG()):
         action = "prune"
         self.lastAction = action
         '''
@@ -65,10 +65,10 @@ class Tree(types.DiscreteVariable):
         we take the leafs 6 and 5 out, and the
         node 2, now becomes a leaf.
         '''
-        random_index = RandomInt(0, len(self.tree)-1).eval()
+        random_index = rng.randomInt(0, len(self.tree)-1)
         node_to_prune = self.tree[random_index]
         while random_index == 0:
-            random_index = RandomInt(0, len(self.tree)-1).eval()
+            random_index = rng.randomInt(0, len(self.tree)-1)
             node_to_prune = self.tree[random_index]
 
         if (node_to_prune[1] in self.leafs) and\
@@ -122,7 +122,7 @@ class Tree(types.DiscreteVariable):
         self.leafs[:] = new_leafs[:]
         return self
 
-    def change(self):
+    def change(self, rng = RNG()):
         action = "change"
         self.lastAction = action
         '''
@@ -131,29 +131,29 @@ class Tree(types.DiscreteVariable):
         chosen and then pick unoformly a node and change their features and
         thresholds
         '''
-        random_index = RandomInt(0, len(self.tree)-1).eval()
+        random_index = rng.randomInt(0, len(self.tree)-1)
         node_to_change = self.tree[random_index]
-        new_feature = RandomInt(0, len(self.X_train[0])-1).eval()
-        new_threshold = RandomInt(0, len(self.X_train)-1).eval()
+        new_feature = rng.randomInt(0, len(self.X_train[0])-1)
+        new_threshold = rng.randomInt(0, len(self.X_train)-1)
         node_to_change[3] = new_feature
         node_to_change[4] = self.X_train[new_threshold, new_feature]
 
         return self
 
-    def swap(self):
+    def swap(self, rng = RNG()):
         action = "swap"
         self.lastAction = action
         '''
         need to swap the features and the threshold among the 2 nodes
         '''
-        random_index_1 = RandomInt(0, len(self.tree)-1).eval()
-        random_index_2 = RandomInt(0, len(self.tree)-1).eval()
+        random_index_1 = rng.randomInt(0, len(self.tree)-1)
+        random_index_2 = rng.randomInt(0, len(self.tree)-1)
         node_to_swap1 = self.tree[random_index_1]
         node_to_swap2 = self.tree[random_index_2]
 
         # in case we choose the same node
         while node_to_swap1 == node_to_swap2:
-            random_index_2 = RandomInt(0, len(self.tree)-1).eval()
+            random_index_2 = rng.randomInt(0, len(self.tree)-1)
             node_to_swap2 = self.tree[random_index_2]
 
         temporary_feature = node_to_swap1[3]

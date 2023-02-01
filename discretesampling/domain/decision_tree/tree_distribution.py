@@ -1,16 +1,17 @@
 import numpy as np
 from math import log, inf
 import copy
-from ...base.random import Random
+from ...base.random import RNG
 from ...base import types
 
 
 class TreeProposal(types.DiscreteVariableProposal):
-    def __init__(self, tree):
+    def __init__(self, tree, rng = RNG()):
         self.X_train = tree.X_train
         self.y_train = tree.y_train
         self.tree = copy.deepcopy(tree)
         self.moves_prob = [0.4, 0.1, 0.1, 0.4]
+        self.rng = rng
 
     @classmethod
     def norm(self, tree):
@@ -28,24 +29,24 @@ class TreeProposal(types.DiscreteVariableProposal):
         moves_prob = self.moves_prob
         if len(self.tree.tree) == 1:
             moves_prob = [0.0, 0.0, 0.5, 0.5]
+        random_number = self.rng.random()
         moves_probabilities = np.cumsum(moves_prob)
-        random_number = Random().eval()
         newTree = copy.deepcopy(self.tree)
         if random_number < moves_probabilities[0]:
             # prune
-            newTree = newTree.prune()
+            newTree = newTree.prune(rng = self.rng)
 
         elif random_number < moves_probabilities[1]:
             # swap
-            newTree = newTree.swap()
+            newTree = newTree.swap(rng = self.rng)
 
         elif random_number < moves_probabilities[2]:
             # change
-            newTree = newTree.change()
+            newTree = newTree.change(rng = self.rng)
 
         else:
             # grow
-            newTree = newTree.grow()
+            newTree = newTree.grow(rng = self.rng)
 
         return newTree
 
