@@ -1,3 +1,5 @@
+import numpy as np
+
 from ...base.random import RNG
 from ...base import types
 from .tree_distribution import TreeProposal
@@ -166,3 +168,23 @@ class Tree(types.DiscreteVariable):
         node_to_swap2[4] = temporary_threshold
 
         return self
+
+    def set_lastAction(self, code):
+        if code == 0:
+            self.lastAction = "grow"
+        elif code == 1:
+            self.lastAction = "prune"
+        elif code == 2:
+            self.lastAction = "swap"
+        elif code == 3:
+            self.lastAction = "change"
+        else:
+            self.lastAction = ""
+
+    def set_tree(self, tree):
+        mask = ~np.isnan(tree)
+        self.tree = [tree[i:i+4].astype(int).tolist() + [tree[i+4]] for i in range(0, len(tree[mask].tolist()), 5)]
+
+    def set_leafs(self, leaves):
+        mask = ~np.isnan(leaves)
+        self.leafs = leaves[mask].tolist()

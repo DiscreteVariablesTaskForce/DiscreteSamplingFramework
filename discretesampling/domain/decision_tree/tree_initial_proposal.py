@@ -5,16 +5,16 @@ import math
 
 
 class TreeInitialProposal(DiscreteVariableInitialProposal):
-    def __init__(self, X_train, y_train, rng=RNG()):
+    def __init__(self, X_train, y_train):
         self.X_train = X_train
         self.y_train = y_train
-        self.rng = rng
+        #self.rng = rng
 
-    def sample(self):
+    def sample(self, rng):
         leafs = [1, 2]
 
-        feature = self.rng.randomInt(0, len(self.X_train[0])-1)
-        threshold = self.rng.randomInt(0, len(self.X_train)-1)
+        feature = rng.randomInt(0, len(self.X_train[0])-1)
+        threshold = rng.randomInt(0, len(self.X_train)-1)
         tree = [[0, 1, 2, feature, self.X_train[threshold, feature]]]
         return Tree(self.X_train, self.y_train, tree, leafs)
 
