@@ -42,18 +42,22 @@ except ZeroDivisionError:
 
 dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 try:
-    MPI.COMM_WORLD.Barrier()
-    start = MPI.Wtime()
-    treeSMCSamples = dtSMC.sample(10, 1024)
-    MPI.COMM_WORLD.Barrier()
-    end = MPI.Wtime()
-    treeSMCSamples = gather_all(treeSMCSamples)
+    for seed in range(1):
+        MPI.COMM_WORLD.Barrier()
+        start = MPI.Wtime()
+        # seed = np.random.randint(0, 32766)
+        if MPI.COMM_WORLD.Get_rank() == 0:
+            print("seed = ", seed)
+        treeSMCSamples = dtSMC.sample(10, 1 << 9, seed)
+        MPI.COMM_WORLD.Barrier()
+        end = MPI.Wtime()
+        treeSMCSamples = gather_all(treeSMCSamples)
 
-    smcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSMCSamples]
-    smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
+        smcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSMCSamples]
+        smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
 
-    if MPI.COMM_WORLD.Get_rank() == 0:
-        print("SMC mean accuracy: ", np.mean(smcAccuracy))
-        print("SMC run-time: ", end-start)
+        if MPI.COMM_WORLD.Get_rank() == 0:
+            print("SMC mean accuracy: ", np.mean(smcAccuracy))
+            print("SMC run-time: ", end-start)
 except ZeroDivisionError:
     print("SMC sampling failed due to division by zero")

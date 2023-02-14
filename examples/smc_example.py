@@ -25,7 +25,7 @@ if __name__ == "__main__":
                                 use_optimal_L=True, parallel=True, num_cores=10)
 
     try:
-        treeSamples = dtSMC.sample(N=10, P=100)
+        treeSamples = dtSMC.sample(10, 500)
 
         smc_acc = [dt.accuracy(y_test, dt.stats(x, X_test).predict(X_test))
                    for x in treeSamples]

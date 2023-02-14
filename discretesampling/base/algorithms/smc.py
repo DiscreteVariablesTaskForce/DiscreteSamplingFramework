@@ -7,7 +7,8 @@ import numpy as np
 import math
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
-from discretesampling.base.algorithms.smc_components.resampling import minimum_variance_resampling
+from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
+from discretesampling.base.algorithms.smc_components.logsumexp import log_sum_exp
 
 
 class DiscreteVariableSMC():
@@ -57,12 +58,8 @@ class DiscreteVariableSMC():
             if math.log(neff) < math.log(N) - math.log(2):
                 if MPI.COMM_WORLD.Get_rank() == 0:
                     print("Resampling...")
-                try:
-                    current_particles, logWeights = minimum_variance_resampling(current_particles, logWeights, mvrs_rng)  #resample(current_particles, logWeights, rngs[0])
-                except ValueError as error:
-                    raise RuntimeError('Weights do not sum to one, sum = '
-                                       + str(math.exp(logsumexp(logWeights)))) \
-                                       from error
+
+                current_particles, logWeights = systematic_resampling(current_particles, logWeights, mvrs_rng)  #resample(current_particles, logWeights, rngs[0])
 
             new_particles = copy.deepcopy(current_particles)
 

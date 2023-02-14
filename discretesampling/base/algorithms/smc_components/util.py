@@ -14,8 +14,9 @@ def pad(x):
     """
     def max_dimension(x):
         comm = MPI.COMM_WORLD
-        max_dim = np.zeros_like(1, dtype='i')
-        comm.Allreduce(sendbuf=[np.max(x), MPI.INT], recvbuf=[max_dim, MPI.INT], op=MPI.MAX)
+        local_max = np.max(x)
+        max_dim = np.zeros_like(1, dtype=local_max.dtype)
+        comm.Allreduce(sendbuf=[local_max, MPI.INT], recvbuf=[max_dim, MPI.INT], op=MPI.MAX)
         return max_dim
 
     def encode_move(last):
@@ -68,3 +69,30 @@ def gather_all(particles):
     restore(all_x, all_particles)
 
     return all_particles
+
+
+def print_all(x, ncopies):
+    comm = MPI.COMM_WORLD
+    loc_n = len(ncopies)
+    N = loc_n * comm.Get_size()
+    all_x = np.zeros([N, x.shape[1]], dtype='d')
+    all_ncopies = np.zeros(N, dtype=ncopies.dtype)
+
+    comm.Gather(sendbuf=[ncopies, MPI.INT], recvbuf=[all_ncopies, MPI.INT], root=0)
+    comm.Gather(sendbuf=[x, MPI.DOUBLE], recvbuf=[all_x, MPI.DOUBLE], root=0)
+
+    if comm.Get_rank() == 0:
+        print(all_x.transpose())
+        print(all_ncopies)
+
+
+def print_ncopies(ncopies, string=""):
+    comm = MPI.COMM_WORLD
+    loc_n = len(ncopies)
+    N = loc_n * comm.Get_size()
+    all_ncopies = np.zeros(N, dtype=ncopies.dtype)
+
+    comm.Gather(sendbuf=[ncopies, MPI.INT], recvbuf=[all_ncopies, MPI.INT], root=0)
+
+    if comm.Get_rank() == 0:
+        print(string, all_ncopies)

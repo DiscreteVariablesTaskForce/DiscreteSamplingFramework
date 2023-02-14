@@ -15,4 +15,6 @@ def log_sum_exp(array):
 
     MPI.COMM_WORLD.Allreduce(sendbuf=[logsumexp(array), MPI.DOUBLE], recvbuf=[log_sum, MPI.DOUBLE], op=op)
 
+    op.Free()
+
     return log_sum

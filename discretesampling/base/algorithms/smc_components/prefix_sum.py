@@ -9,7 +9,7 @@ def inclusive_prefix_sum(array):
     offset = np.zeros(1, dtype=array.dtype)
     if array.dtype == 'd':
         MPI_dtype = MPI.DOUBLE
-    elif array.dtype == 'i':
+    elif array.dtype == 'int32' or array.dtype == 'int64':
         MPI_dtype = MPI.INT
     else:
         MPI_dtype = MPI.DOUBLE
