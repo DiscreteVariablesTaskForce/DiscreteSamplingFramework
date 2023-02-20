@@ -42,7 +42,9 @@ except ZeroDivisionError:
 
 dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 try:
-    for seed in range(1):
+    runtimes = []
+    accuracies = []
+    for seed in range(2):
         MPI.COMM_WORLD.Barrier()
         start = MPI.Wtime()
         # seed = np.random.randint(0, 32766)
@@ -57,7 +59,12 @@ try:
         smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
 
         if MPI.COMM_WORLD.Get_rank() == 0:
-            print("SMC mean accuracy: ", np.mean(smcAccuracy))
-            print("SMC run-time: ", end-start)
+            accuracies.append(np.mean(smcAccuracy))
+            runtimes.append(end-start)
+            print("SMC mean accuracy: ", accuracies[-1])
+            print("SMC run-time: ", runtimes[-1])
+    if MPI.COMM_WORLD.Get_rank() == 0:
+        print("SMC mean of mean accuracies: ", np.mean(accuracies))
+        print("SMC median runtime: ", np.median(runtimes))
 except ZeroDivisionError:
     print("SMC sampling failed due to division by zero")
