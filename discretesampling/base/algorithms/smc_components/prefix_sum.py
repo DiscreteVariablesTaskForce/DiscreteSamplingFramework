@@ -5,14 +5,9 @@ import numpy as np
 def inclusive_prefix_sum(array):
     comm = MPI.COMM_WORLD
 
-    csum = np.cumsum(array)
+    csum = np.cumsum(array).astype(array.dtype)
     offset = np.zeros(1, dtype=array.dtype)
-    if array.dtype == 'd':
-        MPI_dtype = MPI.DOUBLE
-    elif array.dtype == 'int32' or array.dtype == 'int64':
-        MPI_dtype = MPI.INT
-    else:
-        MPI_dtype = MPI.DOUBLE
+    MPI_dtype = MPI._typedict[array.dtype.char]
     comm.Exscan(sendbuf=[csum[-1], MPI_dtype], recvbuf=[offset, MPI_dtype], op=MPI.SUM)
 
     return csum + offset

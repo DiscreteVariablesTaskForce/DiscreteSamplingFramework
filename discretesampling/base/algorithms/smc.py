@@ -8,7 +8,6 @@ import math
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
-from discretesampling.base.algorithms.smc_components.logsumexp import log_sum_exp
 
 
 class DiscreteVariableSMC():

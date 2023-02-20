@@ -17,7 +17,8 @@ class Tree(types.DiscreteVariable):
     def __eq__(self, x) -> bool:
         return (x.X_train == self.X_train).all() and\
                 (x.y_train == self.y_train).all() and\
-                x.tree == self.tree and x.leafs == self.leafs
+                x.tree == self.tree and x.leafs == self.leafs \
+                and x.lastAction == self.lastAction
 
     def __str__(self):
         return str(self.tree)
@@ -182,9 +183,7 @@ class Tree(types.DiscreteVariable):
             self.lastAction = ""
 
     def set_tree(self, tree):
-        mask = ~np.isnan(tree)
-        self.tree = [tree[i:i+4].astype(int).tolist() + [tree[i+4]] for i in range(0, len(tree[mask].tolist()), 5)]
+        self.tree = [tree[i:i+4].astype(int).tolist() + [tree[i+4]] for i in range(0, len(tree.tolist()), 5)]
 
     def set_leafs(self, leaves):
-        mask = ~np.isnan(leaves)
-        self.leafs = leaves[mask].tolist()
+        self.leafs = leaves.tolist()

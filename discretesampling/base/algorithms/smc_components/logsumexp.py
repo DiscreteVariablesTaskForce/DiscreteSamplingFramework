@@ -11,9 +11,10 @@ def LSE(xmem, ymem, dt):
 
 def log_sum_exp(array):
     op = MPI.Op.Create(LSE, commute=True)
-    log_sum = np.zeros_like(1, 'd')
+    log_sum = np.zeros_like(1, array.dtype)
+    MPI_dtype = MPI._typedict[array.dtype.char]
 
-    MPI.COMM_WORLD.Allreduce(sendbuf=[logsumexp(array), MPI.DOUBLE], recvbuf=[log_sum, MPI.DOUBLE], op=op)
+    MPI.COMM_WORLD.Allreduce(sendbuf=[logsumexp(array), MPI_dtype], recvbuf=[log_sum, MPI_dtype], op=op)
 
     op.Free()
 

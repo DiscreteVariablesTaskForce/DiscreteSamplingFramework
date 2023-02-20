@@ -24,14 +24,3 @@ def ess(logw):
 
     return 1 / inverse_neff
 
-
-"""
-def calculateNeff(logWeights):
-    tmp = np.array(logWeights)
-    non_zero_logWeights = tmp[tmp != -math.inf]
-    if (len(non_zero_logWeights) > 0):
-        return (logsumexp(non_zero_logWeights)
-                - logsumexp(2 * non_zero_logWeights))
-    else:
-        return -math.inf
-"""

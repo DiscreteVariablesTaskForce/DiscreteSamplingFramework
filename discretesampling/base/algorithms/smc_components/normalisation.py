@@ -27,14 +27,3 @@ def normalise(logw):
     log_wsum = log_sum_exp(logw[mask])
 
     return logw - log_wsum
-
-
-"""
-def normaliseLogWeights(logWeights):
-    tmp = np.array(logWeights)
-    non_zero_logWeights = tmp[tmp != -math.inf]
-    if (len(non_zero_logWeights) > 0):
-        tmp[tmp != -math.inf] = (non_zero_logWeights
-                                 - logsumexp(non_zero_logWeights))
-    return list(tmp)
-"""
