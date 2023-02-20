@@ -12,9 +12,9 @@ class DiscreteVariableMCMC():
         self.target = target
 
     def sample(self, N, seed=0):
-        initialSample = self.initialProposal.sample()
-        current = initialSample
         rng = RNG(seed)
+        initialSample = self.initialProposal.sample(rng)
+        current = initialSample
 
         samples = []
         for i in range(N):
