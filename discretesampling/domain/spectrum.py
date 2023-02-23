@@ -1,4 +1,5 @@
 from ..base import types
+from ..base.random import RNG
 from scipy.stats import nbinom
 
 
@@ -29,7 +30,7 @@ class SpectrumDimension(types.DiscreteVariable):
 
 # SpectrumDimensionProposal inherits from DiscreteVariableProposal
 class SpectrumDimensionProposal(types.DiscreteVariableProposal):
-    def __init__(self, startingDimension: SpectrumDimension):
+    def __init__(self, startingDimension: SpectrumDimension, rng=RNG()):
         startingValue = startingDimension.value
         values = []
         if startingValue > 1:
@@ -40,7 +41,7 @@ class SpectrumDimensionProposal(types.DiscreteVariableProposal):
         numDims = len(dims)
         probs = [1/numDims] * numDims
 
-        super().__init__(dims, probs)
+        super().__init__(dims, probs, rng=rng)
 
     @classmethod
     def norm(self, x):

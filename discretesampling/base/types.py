@@ -1,5 +1,5 @@
 import numpy as np
-import random
+from .random import RNG
 import math
 from .kernel import DiscreteVariableOptimalLKernel
 
@@ -27,7 +27,7 @@ class DiscreteVariable:
 
 
 class DiscreteVariableProposal:
-    def __init__(self, values, probs):
+    def __init__(self, values, probs, rng=RNG()):
         # Check dims and probs are valid
         assert len(values) == len(probs), "Invalid PMF specified, x and p" +\
              " of different lengths"
@@ -40,6 +40,7 @@ class DiscreteVariableProposal:
         self.x = values
         self.pmf = probs
         self.cmf = np.cumsum(probs)
+        self.rng = rng
 
     @classmethod
     def norm(self, x):
@@ -53,7 +54,7 @@ class DiscreteVariableProposal:
         return True
 
     def sample(self):
-        q = random.random()  # random unif(0,1)
+        q = self.rng.random()  # random unif(0,1)
         return self.x[np.argmax(self.cmf >= q)]
 
     def eval(self, y):

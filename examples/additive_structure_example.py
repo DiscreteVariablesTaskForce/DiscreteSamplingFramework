@@ -44,7 +44,3 @@ smc = [x.discrete_set for x in asSamplesSMC]
 mcmc.count(true_str)
 lkern.count(true_str)
 smc.count(true_str)
-
-len(np.unique(mcmc))
-len(np.unique(lkern))
-len(np.unique(smc))
