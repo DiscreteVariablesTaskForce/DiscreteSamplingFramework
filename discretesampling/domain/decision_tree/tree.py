@@ -7,12 +7,12 @@ from .tree_target import TreeTarget
 
 
 class Tree(types.DiscreteVariable):
-    def __init__(self, X_train, y_train, tree, leafs):
+    def __init__(self, X_train, y_train, tree, leafs, lastAction=""):
         self.X_train = X_train
         self.y_train = y_train
         self.tree = tree
         self.leafs = leafs
-        self.lastAction = ""
+        self.lastAction = lastAction
 
     def __eq__(self, x) -> bool:
         return (x.X_train == self.X_train).all() and\
@@ -170,20 +170,3 @@ class Tree(types.DiscreteVariable):
 
         return self
 
-    def set_lastAction(self, code):
-        if code == 0:
-            self.lastAction = "grow"
-        elif code == 1:
-            self.lastAction = "prune"
-        elif code == 2:
-            self.lastAction = "swap"
-        elif code == 3:
-            self.lastAction = "change"
-        else:
-            self.lastAction = ""
-
-    def set_tree(self, tree):
-        self.tree = [tree[i:i+4].astype(int).tolist() + [tree[i+4]] for i in range(0, len(tree.tolist()), 5)]
-
-    def set_leafs(self, leaves):
-        self.leafs = leaves.tolist()

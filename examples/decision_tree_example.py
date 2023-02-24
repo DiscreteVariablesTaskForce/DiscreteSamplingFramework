@@ -14,7 +14,7 @@ from sklearn.model_selection import train_test_split
 
 import numpy as np
 from mpi4py import MPI
-from discretesampling.base.algorithms.smc_components.util import gather_all
+from discretesampling.domain.decision_tree.util import gather_all
 
 data = datasets.load_wine()
 
@@ -32,7 +32,7 @@ N = 1 << 10
 T = 10
 num_MC_runs = 1
 
-
+"""
 dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
 try:
     runtimes = []
@@ -46,8 +46,8 @@ try:
         treeSamples = dtMCMC.sample(num_samples, seed=seed+num_samples*rank)
         MPI.COMM_WORLD.Barrier()
         end = MPI.Wtime()
-
-        treeSamples = gather_all(treeSamples)
+        if MPI.COMM_WORLD.Get_size() > 1:
+            treeSamples = gather_all(treeSamples)
         mcmcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSamples]
         mcmcAccuracy = [dt.accuracy(y_test, x) for x in mcmcLabels]
         #print("MCMC mean accuracy: ", np.mean(mcmcAccuracy[250:499]))
@@ -61,8 +61,8 @@ try:
         print("MCMC median runtime: ", np.median(runtimes))
 except ZeroDivisionError:
     print("MCMC sampling failed due to division by zero")
+"""
 
-'''
 dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 try:
     runtimes = []
@@ -92,4 +92,3 @@ try:
 except ZeroDivisionError:
     print("SMC sampling failed due to division by zero")
 
-'''
