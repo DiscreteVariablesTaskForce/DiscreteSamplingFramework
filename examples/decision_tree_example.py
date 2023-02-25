@@ -76,7 +76,8 @@ try:
         treeSMCSamples = dtSMC.sample(T, N, seed)
         MPI.COMM_WORLD.Barrier()
         end = MPI.Wtime()
-        treeSMCSamples = gather_all(treeSMCSamples)
+        if MPI.COMM_WORLD.Get_size() > 1:
+            treeSMCSamples = gather_all(treeSMCSamples)
 
         smcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSMCSamples]
         smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
