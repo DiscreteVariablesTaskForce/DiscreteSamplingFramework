@@ -2,6 +2,7 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/discretesampling/base/algorithms/smc_components/distributed_variable_size_redistribution" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/discretesampling/base/algorithms/smc_components/variable_size_redistribution" vcs="Git" />
   </component>
 </project>
