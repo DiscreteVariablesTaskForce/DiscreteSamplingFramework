@@ -1,7 +1,7 @@
 from mpi4py import MPI
 import numpy as np
 from discretesampling.base.algorithms.smc_components.prefix_sum import inclusive_prefix_sum
-from discretesampling.base.algorithms.smc_components.variable_size_redistribution.redistribution import redistribute
+from discretesampling.base.algorithms.smc_components.distributed_variable_size_redistribution.redistribution import redistribute
 
 
 def get_number_of_copies(logw, rng):
