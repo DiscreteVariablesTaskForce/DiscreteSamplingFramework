@@ -52,11 +52,11 @@ class DiscreteVariableSMC():
         for t in range(Tsmc):
             logWeights = normalise(logWeights)
             neff = ess(logWeights)
-            if MPI.COMM_WORLD.Get_rank() == 0:
-                print("Neff = ", neff)
+            #if MPI.COMM_WORLD.Get_rank() == 0:
+            #    print("Neff = ", neff)
             if math.log(neff) < math.log(N) - math.log(2):
-                if MPI.COMM_WORLD.Get_rank() == 0:
-                    print("Resampling...")
+                #if MPI.COMM_WORLD.Get_rank() == 0:
+                #    print("Resampling...")
 
                 current_particles, logWeights = systematic_resampling(current_particles, logWeights, mvrs_rng)  #resample(current_particles, logWeights, rngs[0])
 
