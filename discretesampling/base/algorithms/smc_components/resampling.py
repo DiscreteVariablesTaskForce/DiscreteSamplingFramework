@@ -16,7 +16,7 @@ def check_stability(ncopies):
     if sum_of_ncopies != N:
         # Find the index of the last particle to be copied
         idx = np.where(ncopies > 0)
-        idx = idx[0][-1]+rank*loc_n if len(idx[0]) > 0 else -1
+        idx = idx[0][-1]+rank*loc_n if len(idx[0]) > 0 else np.array([-1])
         idx_MPI_dtype = MPI._typedict[idx.dtype.char]
         max_idx = np.zeros(1, dtype=idx.dtype)
         comm.Allreduce(sendbuf=[idx, idx_MPI_dtype], recvbuf=[max_idx, idx_MPI_dtype], op=MPI.MAX)
