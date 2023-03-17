@@ -23,12 +23,14 @@ class TreeProposal(types.DiscreteVariableProposal):
     def heuristic(self, x, y):
         return y < x or abs(x-y) < 2
 
-    def sample(self):
+    def sample(self, num_nodes=10):
         # initialise the probabilities of each move
         moves = ["prune", "swap", "change", "grow"]  # noqa
         moves_prob = self.moves_prob
         if len(self.tree.tree) == 1:
             moves_prob = [0.0, 0.0, 0.5, 0.5]
+        elif len(self.tree.tree) >= num_nodes:
+            moves_prob = [0.2, 0.4, 0.4, 0.0]
         random_number = self.rng.random()
         moves_probabilities = np.cumsum(moves_prob)
         newTree = copy.deepcopy(self.tree)

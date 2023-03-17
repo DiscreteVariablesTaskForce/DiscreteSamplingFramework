@@ -30,11 +30,12 @@ N = 1 << 10
 T = 10
 num_MC_runs = 10
 
-MCMC = False
-SMC = True
+MCMC_one_to_many = False
+MCMC_many_to_one = True
+SMC = False
 DF = False
 
-if MCMC:
+if MCMC_one_to_many:
     try:
         runtimes = []
         accuracies = []
@@ -67,6 +68,49 @@ if MCMC:
 
             if MPI.COMM_WORLD.Get_rank() == 0:
                 runtimes.append(end-start)
+                print("MCMC mean accuracy: ", accuracies[-1])
+                print("MCMC run-time: ", runtimes[-1])
+        if MPI.COMM_WORLD.Get_rank() == 0:
+            print("MCMC mean of mean accuracies: ", np.mean(accuracies))
+            print("MCMC median runtime: ", np.median(runtimes))
+    except ZeroDivisionError:
+        print("MCMC sampling failed due to division by zero")
+
+if MCMC_many_to_one:
+    try:
+        runtimes = []
+        accuracies = []
+        for random_state in range(num_MC_runs):
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=random_state)
+
+            a = 0.01
+            b = 5
+            target = dt.TreeTarget(a, b)
+            initialProposal = dt.TreeInitialProposal(X_train, y_train)
+            dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
+
+            MPI.COMM_WORLD.Barrier()
+            start = MPI.Wtime()
+            P = MPI.COMM_WORLD.Get_size()
+            num_samples = int(N / P)
+
+            rank = MPI.COMM_WORLD.Get_rank()
+            mcmcAccuracy = []
+            for i in range(num_samples):
+                treeSamples = dtMCMC.sample(T, seed=num_samples * rank + i)
+                mcmcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSamples]
+                mcmcAccuracy += [dt.accuracy(y_test, x) for x in mcmcLabels]
+
+            accuracy = np.zeros(1, 'd')
+            MPI.COMM_WORLD.Allreduce(sendbuf=[np.sum(mcmcAccuracy), MPI.DOUBLE], recvbuf=[accuracy, MPI.DOUBLE],
+                                     op=MPI.SUM)
+            accuracies.append(accuracy / (N * T))
+
+            MPI.COMM_WORLD.Barrier()
+            end = MPI.Wtime()
+
+            if MPI.COMM_WORLD.Get_rank() == 0:
+                runtimes.append(end - start)
                 print("MCMC mean accuracy: ", accuracies[-1])
                 print("MCMC run-time: ", runtimes[-1])
         if MPI.COMM_WORLD.Get_rank() == 0:
