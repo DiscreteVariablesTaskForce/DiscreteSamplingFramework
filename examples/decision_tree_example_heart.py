@@ -31,8 +31,8 @@ T = 10
 num_MC_runs = 10
 
 MCMC_one_to_many = False
-MCMC_many_to_one = True
-SMC = False
+MCMC_many_to_one = False
+SMC = True
 DF = False
 
 if MCMC_one_to_many:
@@ -42,8 +42,8 @@ if MCMC_one_to_many:
         for random_state in range(num_MC_runs):
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=random_state)
 
-            a = 0.01
-            b = 5
+            a = 12
+            b = 3
             target = dt.TreeTarget(a, b)
             initialProposal = dt.TreeInitialProposal(X_train, y_train)
             dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
@@ -65,7 +65,7 @@ if MCMC_one_to_many:
         
             MPI.COMM_WORLD.Barrier()
             end = MPI.Wtime()
-
+            
             if MPI.COMM_WORLD.Get_rank() == 0:
                 runtimes.append(end-start)
                 print("MCMC mean accuracy: ", accuracies[-1])
@@ -73,6 +73,8 @@ if MCMC_one_to_many:
         if MPI.COMM_WORLD.Get_rank() == 0:
             print("MCMC mean of mean accuracies: ", np.mean(accuracies))
             print("MCMC median runtime: ", np.median(runtimes))
+            print("MCMC standard deviation of accuracies: ", np.std(accuracies))
+            print("MCMC standard deviation of runtimes: ", np.std(runtimes))
     except ZeroDivisionError:
         print("MCMC sampling failed due to division by zero")
 
@@ -83,7 +85,7 @@ if MCMC_many_to_one:
         for random_state in range(num_MC_runs):
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=random_state)
 
-            a = 0.01
+            a = 12
             b = 5
             target = dt.TreeTarget(a, b)
             initialProposal = dt.TreeInitialProposal(X_train, y_train)
@@ -97,7 +99,7 @@ if MCMC_many_to_one:
             rank = MPI.COMM_WORLD.Get_rank()
             mcmcAccuracy = []
             for i in range(num_samples):
-                treeSamples = dtMCMC.sample(T, seed=num_samples * rank + i)
+                treeSamples = dtMCMC.sample(T, seed=T*(num_samples * rank + i))
                 mcmcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSamples]
                 mcmcAccuracy += [dt.accuracy(y_test, x) for x in mcmcLabels]
 
@@ -111,34 +113,41 @@ if MCMC_many_to_one:
 
             if MPI.COMM_WORLD.Get_rank() == 0:
                 runtimes.append(end - start)
-                print("MCMC mean accuracy: ", accuracies[-1])
-                print("MCMC run-time: ", runtimes[-1])
+                print("MCM many to one mean accuracy: ", accuracies[-1])
+                print("MCMC many to one run-time: ", runtimes[-1])
         if MPI.COMM_WORLD.Get_rank() == 0:
-            print("MCMC mean of mean accuracies: ", np.mean(accuracies))
-            print("MCMC median runtime: ", np.median(runtimes))
+            print("MCMC many to one mean of mean accuracies: ", np.mean(accuracies))
+            print("MCMC many to one median runtime: ", np.median(runtimes))
+            print("MCMC many to one standard deviation of accuracies: ", np.std(accuracies))
+            print("MCMC many to one standard deviation of runtimes: ", np.std(runtimes))
     except ZeroDivisionError:
         print("MCMC sampling failed due to division by zero")
 
 if SMC:
     try:
         runtimes = []
+        tree_size = []
         accuracies = []
         for random_state in range(num_MC_runs):
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=7)
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=random_state)
 
-            a = 0.01
-            b = 5
+            a = 12
+            b = 2
             target = dt.TreeTarget(a, b)
             initialProposal = dt.TreeInitialProposal(X_train, y_train)
+            
             dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 
             MPI.COMM_WORLD.Barrier()
             start = MPI.Wtime()
 
             treeSMCSamples = dtSMC.sample(T, N)
-
+ 
+        
             smcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSMCSamples]
             smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
+
+
 
             accuracy = np.zeros(1, 'd')
             MPI.COMM_WORLD.Allreduce(sendbuf=[np.sum(smcAccuracy), MPI.DOUBLE], recvbuf=[accuracy, MPI.DOUBLE], op=MPI.SUM)
@@ -154,6 +163,8 @@ if SMC:
         if MPI.COMM_WORLD.Get_rank() == 0:
             print("SMC mean of mean accuracies: ", np.mean(accuracies))
             print("SMC median runtime: ", np.median(runtimes))
+            print("MCMC standard deviation of accuracies: ", np.std(accuracies))
+            print("MCMC standard deviation of runtimes: ", np.std(runtimes))
     except ZeroDivisionError:
         print("SMC sampling failed due to division by zero")
 

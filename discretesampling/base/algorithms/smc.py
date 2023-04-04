@@ -45,9 +45,9 @@ class DiscreteVariableSMC():
         mvrs_rng = RNG(seed)
         rngs = [RNG(i + self.rank*loc_n + 1 + seed) for i in range(loc_n)]  # RNG for each particle
 
-        initialParticles = [self.initialProposal.sample(rngs[i]) for i in range(loc_n)]
+        initialParticles = [self.initialProposal.sample(rngs[i], self.target) for i in range(loc_n)]
         current_particles = initialParticles
-        logWeights = np.array([self.target.eval(p) - self.initialProposal.eval(p) for p in initialParticles])
+        logWeights = np.array([self.target.eval(p) - self.initialProposal.eval(p, self.target) for p in initialParticles])
 
         for t in range(Tsmc):
             logWeights = normalise(logWeights)
