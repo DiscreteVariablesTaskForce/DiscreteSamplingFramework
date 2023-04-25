@@ -114,7 +114,7 @@ class CoinStackTarget(types.DiscreteVariableTarget):
     def __init__(self, mu, sigma):
         # NB as an over-dispersed Poisson
         self.p = mu/(sigma*sigma)
-        self.r = mu*mu/(sigma*sigma - mu)
+        self.n = mu*mu/(sigma*sigma - mu)
 
     def eval(self, x: CoinStack):
         # Evaluate logposterior at point x, P(x|D) \propto P(D|x)P(x)
