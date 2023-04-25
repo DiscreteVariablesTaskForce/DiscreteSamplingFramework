@@ -1,1 +1,1 @@
-__all__ = ["spectrum", "additive_structure", "decision_tree"]  # noqa
+__all__ = ["spectrum", "additive_structure", "decision_tree", "coin"]  # noqa
