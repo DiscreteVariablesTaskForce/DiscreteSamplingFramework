@@ -46,6 +46,7 @@ def pad(x):
     return np.hstack((x_new, np.atleast_2d(my_tree_dims).transpose(), np.atleast_2d(my_leaf_dims).transpose()))
 
 
+
 def restore(x, particles):
     def decode_move(code):
         if code == 0:
@@ -60,7 +61,7 @@ def restore(x, particles):
             return ""
 
     def extract_tree(tree):
-        return [tree[i:i+4].astype(int).tolist() + [tree[i+4]] for i in range(0, len(tree.tolist()), 5)]
+        return [tree[i:i+4].astype(int).tolist() + [tree[i + 4]] + [tree[i + 5].astype(int)] for i in range(0, len(tree.tolist()), 6)]
 
     def extract_leafs(leaves):
         return leaves.tolist()
