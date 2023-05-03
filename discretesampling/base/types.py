@@ -1,7 +1,8 @@
-import numpy as np
-from .random import RNG
 import math
-from .kernel import DiscreteVariableOptimalLKernel
+from pickle import loads, dumps
+import numpy as np
+from discretesampling.base.random import RNG
+from discretesampling.base.kernel import DiscreteVariableOptimalLKernel
 
 
 class DiscreteVariable:
@@ -24,7 +25,14 @@ class DiscreteVariable:
     @classmethod
     def getOptimalLKernelType(self):
         return DiscreteVariableOptimalLKernel
+    
+    @classmethod
+    def encode(self, x):
+        return dumps(x)
 
+    @classmethod
+    def decode(self, x):
+        return loads(x)
 
 class DiscreteVariableProposal:
     def __init__(self, values, probs):
