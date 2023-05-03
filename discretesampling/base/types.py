@@ -78,4 +78,10 @@ class DiscreteVariableTarget:
 
     def eval(self, x):
         logprob = -math.inf
+        logPrior = self.evaluatePrior(x)
+        logprob += logPrior
+        return logprob
+    
+    def evaluatePrior(self, x):
+        logprob = -math.inf
         return logprob
