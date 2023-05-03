@@ -41,6 +41,61 @@ class Tree(types.DiscreteVariable):
     def getTargetType(self):
         return TreeTarget
     
+    @classmethod
+    def encode(self, x):
+        def encode_move(last):
+            if last == "grow":
+                return 0
+            elif last == "prune":
+                return 1
+            elif last == "swap":
+                return 2
+            elif last == "change":
+                return 3
+            else:
+                return -1
+        
+        trees = [np.array(particle.tree).flatten() for particle in x]
+        leaves = [np.array(particle.leafs).flatten() for particle in x]
+        last_actions = [encode_move(particle.lastAction) for particle in x]
+        my_tree_dims = np.array([len(tree) for tree in trees])
+        my_leaf_dims = np.array([len(leaf) for leaf in leaves])
+        max_tree = max_dimension(x=my_tree_dims)
+        max_leaf = max_dimension(x=my_leaf_dims)
+
+        x_new = np.array([np.hstack((tree, np.repeat(-1.0, max_tree - len(tree)), last_action,
+                                    leaf, np.repeat(-1.0, max_leaf - len(leaf)), max_tree))
+                        for tree, last_action, leaf in zip(trees, last_actions, leaves)])
+        return x_new
+    
+    @classmethod
+    def decode(self, x, particles):
+        def decode_move(code):
+            if code == 0:
+                return "grow"
+            elif code == 1:
+                return "prune"
+            elif code == 2:
+                return "swap"
+            elif code == 3:
+                return "change"
+            else:
+                return ""
+
+        def extract_tree(tree):
+            return [tree[i:i+4].astype(int).tolist() + [tree[i + 4]] + [tree[i + 5].astype(int)] for i in range(0, len(tree.tolist()), 6)]
+
+        def extract_leafs(leaves):
+            return leaves.tolist()
+
+        my_leaf_dim = x[:, -1].astype(int)
+        my_tree_dim = x[:, -2].astype(int)
+        max_tree = int(x[0, -3])
+        return [Tree(particles[0].X_train, particles[0].y_train, extract_tree(x[i, 0:my_tree_dim[i]]),
+                    extract_leafs(x[i, max_tree+1:max_tree+1+my_leaf_dim[i]]), decode_move(x[i, max_tree]))
+                for i in range(len(particles))]
+
+        
     
     def depth_of_leaf(self, leaf):
         depth = 0
