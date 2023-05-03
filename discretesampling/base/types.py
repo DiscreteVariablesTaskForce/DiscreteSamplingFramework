@@ -27,7 +27,7 @@ class DiscreteVariable:
 
 
 class DiscreteVariableProposal:
-    def __init__(self, values, probs, rng=RNG()):
+    def __init__(self, values, probs):
         # Check dims and probs are valid
         assert len(values) == len(probs), "Invalid PMF specified, x and p" +\
              " of different lengths"
@@ -40,7 +40,6 @@ class DiscreteVariableProposal:
         self.x = values
         self.pmf = probs
         self.cmf = np.cumsum(probs)
-        self.rng = rng
 
     @classmethod
     def norm(self, x):
@@ -53,11 +52,11 @@ class DiscreteVariableProposal:
     def heuristic(self, x, y):
         return True
 
-    def sample(self):
-        q = self.rng.random()  # random unif(0,1)
+    def sample(self, rng=RNG(), target = None):
+        q = rng.random()  # random unif(0,1)
         return self.x[np.argmax(self.cmf >= q)]
 
-    def eval(self, y):
+    def eval(self, y, target = None):
         try:
             i = self.x.index(y)
             logp = math.log(self.pmf[i])
@@ -69,7 +68,8 @@ class DiscreteVariableProposal:
 
 # Exact same as proposal above
 class DiscreteVariableInitialProposal(DiscreteVariableProposal):
-    pass
+    def sample(self, rng = RNG(), target = None):
+        super().sample(rng)
 
 
 class DiscreteVariableTarget:

@@ -30,7 +30,7 @@ class SpectrumDimension(types.DiscreteVariable):
 
 # SpectrumDimensionProposal inherits from DiscreteVariableProposal
 class SpectrumDimensionProposal(types.DiscreteVariableProposal):
-    def __init__(self, startingDimension: SpectrumDimension, rng=RNG()):
+    def __init__(self, startingDimension: SpectrumDimension, rng = RNG()):
         startingValue = startingDimension.value
         values = []
         if startingValue > 1:
@@ -41,7 +41,7 @@ class SpectrumDimensionProposal(types.DiscreteVariableProposal):
         numDims = len(dims)
         probs = [1/numDims] * numDims
 
-        super().__init__(dims, probs, rng=rng)
+        super().__init__(dims, probs)
 
     @classmethod
     def norm(self, x):
