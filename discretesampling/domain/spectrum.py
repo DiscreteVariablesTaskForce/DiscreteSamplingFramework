@@ -70,5 +70,9 @@ class SpectrumDimensionTarget(types.DiscreteVariableTarget):
 
     def eval(self, x):
         # Evaluate logposterior at point x, P(x|D) \propto P(D|x)P(x)
-        target = nbinom(self.n, self.p).logpmf(x.value)
+        target = self.evaluatePrior(x)
         return target
+    
+    def evaluatePrior(self, x):
+        logprob = nbinom(self.n, self.p).logpmf(x.value)
+        return logprob
