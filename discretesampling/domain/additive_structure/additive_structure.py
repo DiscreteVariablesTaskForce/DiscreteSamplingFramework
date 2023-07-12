@@ -2,7 +2,6 @@ import numpy as np
 import copy
 from ...base import types
 from ...base.random import RNG
-import copy
 from .additive_distribution import AdditiveStructureProposal
 from .additive_target import AdditiveStructureTarget
 

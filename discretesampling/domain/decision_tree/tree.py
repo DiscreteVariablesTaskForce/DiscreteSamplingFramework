@@ -20,7 +20,7 @@ class Tree(types.DiscreteVariable):
 
     def __str__(self):
         return str(self.tree)
-    
+
     def __copy__(self):
         # Custom __copy__ to ensure tree and leaf structure are deep copied
         new_tree = Tree(
