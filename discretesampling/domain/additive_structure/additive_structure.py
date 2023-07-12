@@ -2,6 +2,7 @@ import numpy as np
 import copy
 from ...base import types
 from ...base.random import RNG
+import copy
 from .additive_distribution import AdditiveStructureProposal
 from .additive_target import AdditiveStructureTarget
 
@@ -9,6 +10,9 @@ from .additive_target import AdditiveStructureTarget
 class AdditiveStructure(types.DiscreteVariable):
     def __init__(self, discrete_set):
         self.discrete_set = discrete_set
+
+    def __copy__(self):
+        return AdditiveStructure(copy.deepcopy(self.discrete_set))
 
     @classmethod
     def getProposalType(self):
@@ -66,7 +70,7 @@ class AdditiveStructure(types.DiscreteVariable):
                  probability
         """
         if len(self.discrete_set) == 1:
-            return copy.deepcopy(self)
+            return copy.copy(self)
 
         index_1 = rng.randomInt(0, len(self.discrete_set)-1)
         remaining = list(range(len(self.discrete_set)))
