@@ -1,7 +1,9 @@
+import numpy as np
 from ...base.random import RNG
 from ...base import types
 import copy
 from ...base.util import max_dimension
+from .util import encode_move, decode_move, extract_tree, extract_leafs
 from .tree_distribution import TreeProposal
 from .tree_target import TreeTarget
 
@@ -44,18 +46,6 @@ class Tree(types.DiscreteVariable):
     
     @classmethod
     def encode(self, x):
-        def encode_move(last):
-            if last == "grow":
-                return 0
-            elif last == "prune":
-                return 1
-            elif last == "swap":
-                return 2
-            elif last == "change":
-                return 3
-            else:
-                return -1
-        
         trees = [np.array(particle.tree).flatten() for particle in x]
         leaves = [np.array(particle.leafs).flatten() for particle in x]
         last_actions = [encode_move(particle.lastAction) for particle in x]
@@ -71,24 +61,6 @@ class Tree(types.DiscreteVariable):
     
     @classmethod
     def decode(self, x, particles):
-        def decode_move(code):
-            if code == 0:
-                return "grow"
-            elif code == 1:
-                return "prune"
-            elif code == 2:
-                return "swap"
-            elif code == 3:
-                return "change"
-            else:
-                return ""
-
-        def extract_tree(tree):
-            return [tree[i:i+4].astype(int).tolist() + [tree[i + 4]] + [tree[i + 5].astype(int)] for i in range(0, len(tree.tolist()), 6)]
-
-        def extract_leafs(leaves):
-            return leaves.tolist()
-
         my_leaf_dim = x[:, -1].astype(int)
         my_tree_dim = x[:, -2].astype(int)
         max_tree = int(x[0, -3])
