@@ -1,6 +1,7 @@
 from ...base.random import RNG
 from ...base import types
 import copy
+from ...base.util import max_dimension
 from .tree_distribution import TreeProposal
 from .tree_target import TreeTarget
 
