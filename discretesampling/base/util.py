@@ -2,6 +2,12 @@ import numpy as np
 from mpi4py import MPI
 from discretesampling.domain.decision_tree.tree import Tree
 
+def max_dimension(x):
+        comm = MPI.COMM_WORLD
+        local_max = np.max(x)
+        max_dim = np.zeros_like(1, dtype=local_max.dtype)
+        comm.Allreduce(sendbuf=[local_max, MPI.INT], recvbuf=[max_dim, MPI.INT], op=MPI.MAX)
+        return max_dim
 
 def pad(x):
     """
@@ -13,12 +19,6 @@ def pad(x):
     :param x: particles organized as a list of lists
     :return x_new: particle organized as a numpy 2D array
     """
-    def max_dimension(x):
-        comm = MPI.COMM_WORLD
-        local_max = np.max(x)
-        max_dim = np.zeros_like(1, dtype=local_max.dtype)
-        comm.Allreduce(sendbuf=[local_max, MPI.INT], recvbuf=[max_dim, MPI.INT], op=MPI.MAX)
-        return max_dim
     
     encoded_particles = x[0].encode(x)
     dims = np.array([len(y) for y in encoded_particles])

@@ -2,6 +2,7 @@ import numpy as np
 
 from ...base.random import RNG
 from ...base import types
+from ...base.util import max_dimension
 from .tree_distribution import TreeProposal
 from .tree_target import TreeTarget
 
