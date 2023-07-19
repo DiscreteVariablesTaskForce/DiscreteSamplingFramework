@@ -1,5 +1,6 @@
 from ...base.random import RNG
 from ...base import types
+import copy
 from .tree_distribution import TreeProposal
 from .tree_target import TreeTarget
 
@@ -19,6 +20,16 @@ class Tree(types.DiscreteVariable):
 
     def __str__(self):
         return str(self.tree)
+
+    def __copy__(self):
+        # Custom __copy__ to ensure tree and leaf structure are deep copied
+        new_tree = Tree(
+            self.X_train,
+            self.y_train,
+            copy.deepcopy(self.tree),
+            copy.deepcopy(self.leafs)
+        )
+        return new_tree
 
     @classmethod
     def getProposalType(self):

@@ -57,8 +57,8 @@ class DiscreteVariableSMC():
                                        + str(math.exp(logsumexp(logWeights)))) \
                                        from error
 
-            new_particles = copy.deepcopy(current_particles)
-            new_logWeights = copy.deepcopy(logWeights)
+            new_particles = copy.copy(current_particles)
+            new_logWeights = copy.copy(logWeights)
 
             forward_logprob = np.zeros(len(current_particles))
 
