@@ -1,6 +1,5 @@
 import multiprocessing
 import copy
-from scipy.special import logsumexp
 from ...base.random import RNG
 from mpi4py import MPI
 import numpy as np
@@ -52,15 +51,16 @@ class DiscreteVariableSMC():
         for t in range(Tsmc):
             logWeights = normalise(logWeights)
             neff = ess(logWeights)
-            #if MPI.COMM_WORLD.Get_rank() == 0:
+            # if MPI.COMM_WORLD.Get_rank() == 0:
             #    print("Neff = ", neff)
             if math.log(neff) < math.log(N) - math.log(2):
-                #if MPI.COMM_WORLD.Get_rank() == 0:
+                # if MPI.COMM_WORLD.Get_rank() == 0:
                 #    print("Resampling...")
 
-                current_particles, logWeights = systematic_resampling(current_particles, logWeights, mvrs_rng)  #resample(current_particles, logWeights, rngs[0])
+                # resample(current_particles, logWeights, rngs[0])
+                current_particles, logWeights = systematic_resampling(current_particles, logWeights, mvrs_rng)
 
-            new_particles = copy.deepcopy(current_particles)
+            new_particles = copy.copy(current_particles)
 
             forward_logprob = np.zeros(len(current_particles))
 
@@ -90,4 +90,3 @@ class DiscreteVariableSMC():
             current_particles = new_particles
 
         return current_particles
-

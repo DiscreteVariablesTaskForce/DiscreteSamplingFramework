@@ -9,7 +9,7 @@ class TreeProposal(types.DiscreteVariableProposal):
     def __init__(self, tree, rng=RNG()):
         self.X_train = tree.X_train
         self.y_train = tree.y_train
-        self.tree = copy.deepcopy(tree)
+        self.tree = copy.copy(tree)
         self.moves_prob = [0.4, 0.1, 0.1, 0.4]
         self.rng = rng
 
@@ -33,7 +33,7 @@ class TreeProposal(types.DiscreteVariableProposal):
             moves_prob = [0.2, 0.4, 0.4, 0.0]
         random_number = self.rng.random()
         moves_probabilities = np.cumsum(moves_prob)
-        newTree = copy.deepcopy(self.tree)
+        newTree = copy.copy(self.tree)
         if random_number < moves_probabilities[0]:
             # prune
             newTree = newTree.prune(rng=self.rng)
