@@ -1,12 +1,11 @@
-import numpy as np
-from ...base.random import RNG
-from ...base import types
 import copy
-from ...base.util import max_dimension
-from .util import encode_move, decode_move, extract_tree, extract_leafs
-from .tree_distribution import TreeProposal
-from .tree_target import TreeTarget
-from .util import encode_move, decode_move, extract_leafs, extract_tree
+import numpy as np
+from discretesampling.base.random import RNG
+from discretesampling.base import types
+from discretesampling.base.util import encode_move, decode_move, extract_tree, extract_leafs
+from discretesampling.domain.decision_tree.tree_distribution import TreeProposal
+from discretesampling.domain.decision_tree.tree_target import TreeTarget
+
 
 class Tree(types.DiscreteVariable):
     def __init__(self, X_train, y_train, tree, leafs, lastAction=""):
@@ -15,13 +14,12 @@ class Tree(types.DiscreteVariable):
         self.tree = tree
         self.leafs = leafs
         self.lastAction = lastAction
-        
 
     def __eq__(self, x) -> bool:
         return (x.X_train == self.X_train).all() and\
-                (x.y_train == self.y_train).all() and\
-                x.tree == self.tree and x.leafs == self.leafs \
-                and x.lastAction == self.lastAction
+            (x.y_train == self.y_train).all() and\
+            x.tree == self.tree and x.leafs == self.leafs \
+            and x.lastAction == self.lastAction
 
     def __str__(self):
         return str(self.tree)
@@ -43,21 +41,21 @@ class Tree(types.DiscreteVariable):
     @classmethod
     def getTargetType(self):
         return TreeTarget
-    
+
     @classmethod
     def encode(cls, x):
         tree = np.array(x.tree).flatten()
-        leaves = np.array(x.leafs).flatten()
+        leafs = np.array(x.leafs).flatten()
         last_action = encode_move(x.lastAction)
         tree_dim = len(tree)
-        leaf_dim = len(leaves)
+        leaf_dim = len(leafs)
 
         x_new = np.hstack(
-            (np.array([tree_dim, leaf_dim, last_action]), tree , leaves)
+            (np.array([tree_dim, leaf_dim, last_action]), tree, leafs)
         )
 
         return x_new
-    
+
     @classmethod
     def decode(cls, x, particle):
         tree_dim = x[0].astype(int)
@@ -72,16 +70,14 @@ class Tree(types.DiscreteVariable):
             last_action
         )
 
-        
-    
     def depth_of_leaf(self, leaf):
         depth = 0
         for node in self.tree:
             if node[1] == leaf or node[2] == leaf:
                 depth = node[5]+1
-                
+
         return depth
-    
+
     def grow_leaf(self, index, rng=RNG()):
         action = "grow"
         self.lastAction = action

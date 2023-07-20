@@ -9,7 +9,8 @@ def encode_move(last):
         return 3
     else:
         return -1
-    
+
+
 def decode_move(code):
     if code == 0:
         return "grow"
@@ -22,15 +23,16 @@ def decode_move(code):
     else:
         return ""
 
+
 def extract_tree(encoded_tree):
     return [
-        encoded_tree[i:i+3].astype(int).tolist() # nodes
-        + [encoded_tree[i+3].astype(int)] # feature
-        + [encoded_tree[i+4]] # threshold
-        + [encoded_tree[i+5].astype(int)] # depth
+        encoded_tree[i:i+3].astype(int).tolist()  # nodes
+        + [encoded_tree[i+3].astype(int)]  # feature
+        + [encoded_tree[i+4]]  # threshold
+        + [encoded_tree[i+5].astype(int)]  # depth
         for i in range(0, len(encoded_tree.tolist()), 6)
     ]
 
-def extract_leafs(leaves):
-    return leaves.astype(int).tolist()
 
+def extract_leafs(leafs):
+    return leafs.astype(int).tolist()

@@ -23,4 +23,3 @@ def ess(logw):
     inverse_neff = np.exp(log_sum_exp(2*logw[mask]))
 
     return 1 / inverse_neff
-

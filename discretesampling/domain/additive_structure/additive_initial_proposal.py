@@ -23,11 +23,11 @@ class AdditiveStructureInitialProposal(types.DiscreteVariableInitialProposal):  
         probs = [1/self.bell_n for x in values]
         super().__init__(values, probs)
 
-    def eval(self, x: AdditiveStructure, target = None):
+    def eval(self, x: AdditiveStructure, target=None):
         # TODO: check that elems of x match self.elems
         logprob = -log(self.bell_n)
         return logprob
 
-    def sample(self, rng = RNG(), target = None):
+    def sample(self, rng=RNG(), target=None):
         x = super().sample()
         return x

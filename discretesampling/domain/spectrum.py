@@ -30,7 +30,7 @@ class SpectrumDimension(types.DiscreteVariable):
 
 # SpectrumDimensionProposal inherits from DiscreteVariableProposal
 class SpectrumDimensionProposal(types.DiscreteVariableProposal):
-    def __init__(self, startingDimension: SpectrumDimension, rng = RNG()):
+    def __init__(self, startingDimension: SpectrumDimension, rng=RNG()):
         startingValue = startingDimension.value
         values = []
         if startingValue > 1:
@@ -72,7 +72,7 @@ class SpectrumDimensionTarget(types.DiscreteVariableTarget):
         # Evaluate logposterior at point x, P(x|D) \propto P(D|x)P(x)
         target = self.evaluatePrior(x)
         return target
-    
+
     def evaluatePrior(self, x):
         logprob = nbinom(self.n, self.p).logpmf(x.value)
         return logprob

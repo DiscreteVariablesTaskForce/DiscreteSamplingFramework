@@ -10,8 +10,8 @@ class TreeProposal(types.DiscreteVariableProposal):
         self.X_train = tree.X_train
         self.y_train = tree.y_train
         self.tree = copy.copy(tree)
-        #self.moves_prob = [0.4, 0.1, 0.1, 0.4] # Good for chipman
-        self.moves_prob = [0.25, 0.1, 0.45, 0.25] # good for Poisson and heart l = 12, and diabetes l = 10
+        # self.moves_prob = [0.4, 0.1, 0.1, 0.4] # Good for chipman
+        self.moves_prob = [0.25, 0.1, 0.45, 0.25]  # good for Poisson and heart l = 12, and diabetes l = 10
         self.rng = rng
 
     @classmethod
@@ -23,7 +23,7 @@ class TreeProposal(types.DiscreteVariableProposal):
     # (and possibly at other times)
     def heuristic(self, x, y):
         return y < x or abs(x-y) < 2
-    
+
     def sample(self, num_nodes=10):
         # initialise the probabilities of each move
         moves = ["prune", "swap", "change", "grow"]  # noqa

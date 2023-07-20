@@ -25,7 +25,7 @@ class DiscreteVariable:
     @classmethod
     def getOptimalLKernelType(self):
         return DiscreteVariableOptimalLKernel
-    
+
     @classmethod
     def encode(self, x):
         return dumps(x)
@@ -34,11 +34,12 @@ class DiscreteVariable:
     def decode(self, x):
         return loads(x)
 
+
 class DiscreteVariableProposal:
     def __init__(self, values, probs):
         # Check dims and probs are valid
         assert len(values) == len(probs), "Invalid PMF specified, x and p" +\
-             " of different lengths"
+            " of different lengths"
         probs = np.array(probs)
         tolerance = np.sqrt(np.finfo(np.float64).eps)
         assert abs(1 - sum(probs)) < tolerance, "Invalid PMF specified," +\
@@ -60,11 +61,11 @@ class DiscreteVariableProposal:
     def heuristic(self, x, y):
         return True
 
-    def sample(self, rng=RNG(), target = None):
+    def sample(self, rng=RNG(), target=None):
         q = rng.random()  # random unif(0,1)
         return self.x[np.argmax(self.cmf >= q)]
 
-    def eval(self, y, target = None):
+    def eval(self, y, target=None):
         try:
             i = self.x.index(y)
             logp = math.log(self.pmf[i])
@@ -76,7 +77,7 @@ class DiscreteVariableProposal:
 
 # Exact same as proposal above
 class DiscreteVariableInitialProposal(DiscreteVariableProposal):
-    def sample(self, rng = RNG(), target = None):
+    def sample(self, rng=RNG(), target=None):
         super().sample(rng)
 
 
@@ -89,7 +90,7 @@ class DiscreteVariableTarget:
         logPrior = self.evaluatePrior(x)
         logprob += logPrior
         return logprob
-    
+
     def evaluatePrior(self, x):
         logprob = -math.inf
         return logprob

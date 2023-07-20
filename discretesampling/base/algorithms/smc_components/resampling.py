@@ -1,7 +1,11 @@
 from mpi4py import MPI
 import numpy as np
-from discretesampling.base.algorithms.smc_components.distributed_fixed_size_redistribution.prefix_sum import inclusive_prefix_sum
-from discretesampling.base.algorithms.smc_components.variable_size_redistribution import variable_size_redistribution
+from discretesampling.base.algorithms.smc_components.distributed_fixed_size_redistribution.prefix_sum import (
+    inclusive_prefix_sum
+)
+from discretesampling.base.algorithms.smc_components.variable_size_redistribution import (
+    variable_size_redistribution
+)
 
 
 def check_stability(ncopies):
@@ -41,7 +45,7 @@ def get_number_of_copies(logw, rng):
 
     ncopies = check_stability(ncopies)
 
-    return ncopies #.astype(int)
+    return ncopies  # .astype(int)
 
 
 def systematic_resampling(particles, logw, rng):

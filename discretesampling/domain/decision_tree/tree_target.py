@@ -31,59 +31,39 @@ class TreeTarget(types.DiscreteVariableTarget):
         '''
         for node in x.tree:
             logprobabilities.append(-math.log(len(x.X_train[0]))
-            - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
-               
-            )
+                                    - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
+                                    )
 
             # probabilities.append(math.log( 1/len(X_train[0]) *
             # 1/len(X_train[:]) ))
-            
-            #-math.log(len(x.X_train[0]))
-            #- math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
+
+            # -math.log(len(x.X_train[0]))
+            # - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
 
         logprobability = np.sum(logprobabilities)
         return (logprobability)
-    
-    
-    def evaluatePrior(self, x):#poisson
-        #print(len(x.tree))
+
+    def evaluatePrior(self, x):  # poisson
+        # print(len(x.tree))
         lam = self.a
         k = len(x.leafs)
         logprior = math.log(math.pow(lam, k) / ((math.exp(lam)-1) * math.factorial(k)))
 
-        #print(math.exp(logprior))
+        # print(math.exp(logprior))
         return logprior
-    
-    
+
     # def evaluatePrior(self, x):#chipman prior
     #     def p_node(a, b, d):
     #         return math.log(a / math.pow(1 + d, b))
-        
+
     #     def p_leaf(a, b, d):
     #         return math.log(1 - math.exp(p_node(a, b, d)))
-        
+
     #     logprior = 0
     #     for node in x.tree:
     #         logprior += p_node(self.a, self.b, node[5])
-        
+
     #     for leaf in x.leafs:
     #         d = x.depth_of_leaf(leaf)
     #         logprior += p_leaf(self.a, self.b, d)
     #     return logprior
-        
-    
-    
-    
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -3,22 +3,19 @@
 Created on Fri Nov  5 14:28:12 2021
 @author: efthi
 """
+from sklearn import metrics  # Import scikit-learn metrics module for accuracy calculation
+from mpi4py import MPI
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split
+from discretesampling.base.algorithms.decision_forest import decision_forest
+from discretesampling.base.algorithms import DiscreteVariableMCMC
+from discretesampling.base.algorithms import DiscreteVariableSMC
+from discretesampling.domain import decision_tree as dt
 import sys
 sys.path.append('../')  # Looks like mpiexec won't find discretesampling package without appending '../'
-from discretesampling.domain import decision_tree as dt
-from discretesampling.base.algorithms import DiscreteVariableSMC
-from discretesampling.base.algorithms import DiscreteVariableMCMC
-from discretesampling.base.algorithms.decision_forest import decision_forest
 
-from sklearn import datasets
-from sklearn.model_selection import train_test_split
-from sklearn import metrics #Import scikit-learn metrics module for accuracy calculation
-from sklearn import preprocessing
-import statistics
-
-import numpy as np
-import pandas as pd
-from mpi4py import MPI
 
 df = pd.read_csv(r"datasets_smc_mcmc_CART/heart.csv")
 y = df.Target
@@ -47,22 +44,22 @@ if MCMC_one_to_many:
             target = dt.TreeTarget(a, b)
             initialProposal = dt.TreeInitialProposal(X_train, y_train)
             dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
-        
+
             MPI.COMM_WORLD.Barrier()
             start = MPI.Wtime()
             P = MPI.COMM_WORLD.Get_size()
             num_samples = int(N*T / P)
-        
+
             rank = MPI.COMM_WORLD.Get_rank()
             treeSamples = dtMCMC.sample(num_samples, seed=num_samples*rank)
-        
+
             mcmcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSamples]
             mcmcAccuracy = [dt.accuracy(y_test, x) for x in mcmcLabels]
-        
+
             accuracy = np.zeros(1, 'd')
             MPI.COMM_WORLD.Allreduce(sendbuf=[np.sum(mcmcAccuracy), MPI.DOUBLE], recvbuf=[accuracy, MPI.DOUBLE], op=MPI.SUM)
             accuracies.append(accuracy/(N*T))
-        
+
             MPI.COMM_WORLD.Barrier()
             end = MPI.Wtime()
 
