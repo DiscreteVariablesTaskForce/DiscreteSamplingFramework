@@ -1,6 +1,7 @@
 import numpy as np
 from ...base.random import RNG
 from ...base import types
+import copy
 from ...base.util import max_dimension
 from .util import encode_move, decode_move, extract_tree, extract_leafs
 from .tree_distribution import TreeProposal
@@ -24,6 +25,16 @@ class Tree(types.DiscreteVariable):
 
     def __str__(self):
         return str(self.tree)
+
+    def __copy__(self):
+        # Custom __copy__ to ensure tree and leaf structure are deep copied
+        new_tree = Tree(
+            self.X_train,
+            self.y_train,
+            copy.deepcopy(self.tree),
+            copy.deepcopy(self.leafs)
+        )
+        return new_tree
 
     @classmethod
     def getProposalType(self):
@@ -234,4 +245,3 @@ class Tree(types.DiscreteVariable):
         node_to_swap2[4] = temporary_threshold
 
         return self
-

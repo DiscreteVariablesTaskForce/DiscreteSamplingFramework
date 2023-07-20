@@ -43,6 +43,6 @@ class DiscreteVariableMCMC():
                 # Do nothing
                 pass
 
-            samples.append(copy.deepcopy(current))
+            samples.append(copy.copy(current))
 
         return samples
