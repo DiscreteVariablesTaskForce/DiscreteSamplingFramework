@@ -6,7 +6,7 @@ from ...base.util import max_dimension
 from .util import encode_move, decode_move, extract_tree, extract_leafs
 from .tree_distribution import TreeProposal
 from .tree_target import TreeTarget
-
+from .util import encode_move, decode_move, extract_leafs, extract_tree
 
 class Tree(types.DiscreteVariable):
     def __init__(self, X_train, y_train, tree, leafs, lastAction=""):
@@ -45,28 +45,32 @@ class Tree(types.DiscreteVariable):
         return TreeTarget
     
     @classmethod
-    def encode(self, x):
-        trees = [np.array(particle.tree).flatten() for particle in x]
-        leaves = [np.array(particle.leafs).flatten() for particle in x]
-        last_actions = [encode_move(particle.lastAction) for particle in x]
-        my_tree_dims = np.array([len(tree) for tree in trees])
-        my_leaf_dims = np.array([len(leaf) for leaf in leaves])
-        max_tree = max_dimension(x=my_tree_dims)
-        max_leaf = max_dimension(x=my_leaf_dims)
+    def encode(cls, x):
+        tree = np.array(x.tree).flatten()
+        leaves = np.array(x.leafs).flatten()
+        last_action = encode_move(x.lastAction)
+        tree_dim = len(tree)
+        leaf_dim = len(leaves)
 
-        x_new = np.array([np.hstack((tree, np.repeat(-1.0, max_tree - len(tree)), last_action,
-                                    leaf, np.repeat(-1.0, max_leaf - len(leaf)), max_tree))
-                        for tree, last_action, leaf in zip(trees, last_actions, leaves)])
+        x_new = np.hstack(
+            (np.array([tree_dim, leaf_dim, last_action]), tree , leaves)
+        )
+
         return x_new
     
     @classmethod
-    def decode(self, x, particles):
-        my_leaf_dim = x[:, -1].astype(int)
-        my_tree_dim = x[:, -2].astype(int)
-        max_tree = int(x[0, -3])
-        return [Tree(particles[0].X_train, particles[0].y_train, extract_tree(x[i, 0:my_tree_dim[i]]),
-                    extract_leafs(x[i, max_tree+1:max_tree+1+my_leaf_dim[i]]), decode_move(x[i, max_tree]))
-                for i in range(len(particles))]
+    def decode(cls, x, particle):
+        tree_dim = x[0].astype(int)
+        leaf_dim = x[1].astype(int)
+        last_action = decode_move(x[2].astype(int))
+
+        return Tree(
+            particle.X_train,
+            particle.y_train,
+            extract_tree(x[3:(3+tree_dim)]),
+            extract_leafs(x[(3+tree_dim):(3+tree_dim+leaf_dim)]),
+            last_action
+        )
 
         
     

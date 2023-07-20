@@ -24,9 +24,6 @@ class TreeProposal(types.DiscreteVariableProposal):
     def heuristic(self, x, y):
         return y < x or abs(x-y) < 2
     
-     
-
-
     def sample(self, num_nodes=10):
         # initialise the probabilities of each move
         moves = ["prune", "swap", "change", "grow"]  # noqa

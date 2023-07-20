@@ -1,6 +1,5 @@
 import numpy as np
 from mpi4py import MPI
-from discretesampling.domain.decision_tree.tree import Tree
 
 def max_dimension(x):
         comm = MPI.COMM_WORLD
@@ -16,14 +15,15 @@ def pad(x):
     This function computes the size of the biggest particle, and extend the other particles with NaNs until all
     particles have the same size
 
-    :param x: particles organized as a list of lists
-    :return x_new: particle organized as a numpy 2D array
+    :param x: particles organized as a list of objects
+    :return x_new: particle organized as an encoded and padded numpy 2D array
     """
     
-    encoded_particles = x[0].encode(x)
+    encoded_particles = [x[0].encode(particle) for particle in x]
     dims = np.array([len(y) for y in encoded_particles])
     max_dim = max_dimension(dims)
-    padded = np.hstack((encoded_particles, np.atleast_2d(max_dim).transpose()))
+    paddings = [np.full((max_dim - dim), -1) for dim in dims]
+    padded = np.vstack([np.hstack((particle,padding)) for (particle, padding) in zip(encoded_particles, paddings)])
     return padded
     
 def restore(x, particles):
@@ -36,9 +36,9 @@ def restore(x, particles):
     :return decoded_x
     """ 
     # remove padding
-    restored_x = x
-    decoded_x = particles[0].decode(x, particles)
-    decoded_x
+    decoded_x = [particles[0].decode(encoded_tree, particles[0]) for encoded_tree in x]
+
+    return decoded_x
 
 
 def gather_all(particles):
