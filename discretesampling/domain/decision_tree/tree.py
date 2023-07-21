@@ -2,7 +2,7 @@ import copy
 import numpy as np
 from discretesampling.base.random import RNG
 from discretesampling.base import types
-from discretesampling.base.util import encode_move, decode_move, extract_tree, extract_leafs
+from discretesampling.domain.decision_tree.util import encode_move, decode_move, extract_tree, extract_leafs
 from discretesampling.domain.decision_tree.tree_distribution import TreeProposal
 from discretesampling.domain.decision_tree.tree_target import TreeTarget
 
