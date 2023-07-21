@@ -2,6 +2,7 @@ from math import log
 from discretesampling.domain.additive_structure.numbers import bell
 from sympy.utilities.iterables import multiset_partitions
 from ...base import types
+from discretesampling.base.random import RNG
 from discretesampling.domain.additive_structure.additive_structure import AdditiveStructure
 
 
@@ -27,6 +28,6 @@ class AdditiveStructureInitialProposal(types.DiscreteVariableInitialProposal):  
         logprob = -log(self.bell_n)
         return logprob
 
-    def sample(self):
-        x = super().sample()
+    def sample(self, rng=RNG()):
+        x = super().sample(rng)
         return x
