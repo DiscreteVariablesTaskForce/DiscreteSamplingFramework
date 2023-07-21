@@ -78,7 +78,7 @@ class DiscreteVariableProposal:
 # Exact same as proposal above
 class DiscreteVariableInitialProposal(DiscreteVariableProposal):
     def sample(self, rng=RNG(), target=None):
-        super().sample(rng)
+        return super().sample(rng)
 
 
 class DiscreteVariableTarget:
