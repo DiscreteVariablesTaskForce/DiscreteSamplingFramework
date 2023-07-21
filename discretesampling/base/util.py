@@ -39,7 +39,7 @@ def restore(x, particles):
     :return decoded_x
     """
     # remove padding
-    decoded_x = [particles[0].decode(encoded_tree, particles[0]) for encoded_tree in x]
+    decoded_x = [particles[0].decode(encoded_particle, particles[0]) for encoded_particle in x]
 
     return decoded_x
 
