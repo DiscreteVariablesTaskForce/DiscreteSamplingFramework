@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from sklearn import datasets
 from discretesampling.domain.decision_tree import Tree
 from discretesampling.domain.decision_tree.util import encode_move, decode_move, extract_tree, extract_leafs
@@ -15,10 +16,10 @@ def build_tree(tree, leafs):
 
 @pytest.mark.parametrize(
     "tree,expected",
-    [(build_tree([[0, 1, 2, 2, 2.3, 0]], [1, 2]), [6, 2, -1, 0, 1, 2, 2, 2.3, 0, 1, 2]),
-     (build_tree([[0, 1, 2, 3, 15.2, 0]], [1, 2]), [6, 2, -1, 0, 1, 2, 3, 15.2, 0, 1, 2]),
+    [(build_tree([[0, 1, 2, 2, 2.3, 0]], [1, 2]), np.array([6, 2, -1, 0, 1, 2, 2, 2.3, 0, 1, 2])),
+     (build_tree([[0, 1, 2, 3, 15.2, 0]], [1, 2]), np.array([6, 2, -1, 0, 1, 2, 3, 15.2, 0, 1, 2])),
      (build_tree([[0, 1, 2, 3, 15.2, 0], [2, 3, 4, 8, 1.64, 1]], [1, 3, 4]),
-      [12, 3, -1, 0, 1, 2, 3, 15.2, 0, 2, 3, 4, 8, 1.64, 1, 1, 3, 4.])]
+      np.array([12, 3, -1, 0, 1, 2, 3, 15.2, 0, 2, 3, 4, 8, 1.64, 1, 1, 3, 4.]))]
 )
 def test_encode_tree(tree, expected):
     encoded_tree = tree.encode(tree)
@@ -40,9 +41,9 @@ def test_encode_move(move, expected):
 
 @pytest.mark.parametrize(
     "encoded_tree,expected",
-    [([6, 2, -1, 0, 1, 2, 2, 2.3, 0, 1, 2], [[0, 1, 2, 2, 2.3, 0]]),
-     ([6, 2, -1, 0, 1, 2, 3, 15.2, 0, 1, 2], [[0, 1, 2, 3, 15.2, 0]]),
-     ([12, 3, -1, 0, 1, 2, 3, 15.2, 0, 2, 3, 4, 8, 1.64, 1, 1, 3, 4], [[0, 1, 2, 3, 15.2, 0], [2, 3, 4, 8, 1.64, 1]])]
+    [(np.array([0, 1, 2, 2, 2.3, 0]), [[0, 1, 2, 2, 2.3, 0]]),
+     (np.array([0, 1, 2, 3, 15.2, 0]), [[0, 1, 2, 3, 15.2, 0]]),
+     (np.array([0, 1, 2, 3, 15.2, 0, 2, 3, 4, 8, 1.64, 1]), [[0, 1, 2, 3, 15.2, 0], [2, 3, 4, 8, 1.64, 1]])]
 )
 def test_extract_tree(encoded_tree, expected):
     extracted_tree = extract_tree(encoded_tree)
@@ -51,9 +52,9 @@ def test_extract_tree(encoded_tree, expected):
 
 @pytest.mark.parametrize(
     "encoded_tree,expected",
-    [([6, 2, -1, 0, 1, 2, 2, 2.3, 0, 1, 2], [1, 2]),
-     ([6, 2, -1, 0, 1, 2, 3, 15.2, 0, 1, 2], [1, 2]),
-     ([12, 3, -1, 0, 1, 2, 3, 15.2, 0, 2, 3, 4, 8, 1.64, 1, 1, 3, 4], [1, 3, 4])]
+    [(np.array([1., 2.]), [1, 2]),
+     (np.array([1., 2.]), [1, 2]),
+     (np.array([1., 3., 4.]), [1, 3, 4])]
 )
 def test_extract_leafs(encoded_tree, expected):
     extracted_leafs = extract_leafs(encoded_tree)
