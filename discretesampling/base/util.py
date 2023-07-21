@@ -23,8 +23,9 @@ def pad(x):
 
     encoded_particles = [x[0].encode(particle) for particle in x]
     dims = np.array([len(y) for y in encoded_particles])
+    encoded_type = encoded_particles[0].dtype
     max_dim = max_dimension(dims)
-    paddings = [np.full((max_dim - dim), -1) for dim in dims]
+    paddings = [np.full((max_dim - dim), -1, encoded_type) for dim in dims]
     padded = np.vstack([np.hstack((particle, padding)) for (particle, padding) in zip(encoded_particles, paddings)])
     return padded
 

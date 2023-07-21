@@ -29,21 +29,13 @@ class DiscreteVariable:
     @classmethod
     def encode(self, x):
         encoded = np.array(bytearray(dumps(x)))
-        encoded_size = encoded.size
-        encoded_size_bytes = encoded_size.to_bytes((encoded_size.bit_length() + 7) // 8, "big")
-        encoded = np.hstack(
-            (np.array(bytearray(encoded_size_bytes)),  # size of encoded object in bytes
-             [np.uint8(0)],  # zero byte to mark end of size
-             encoded)  # encoded object
-        )
         return encoded
 
     @classmethod
     def decode(self, x, particle):
-        zero_index = np.argwhere(x == 0)[0][0]
-        size_bytes = x[0:zero_index]
-        encoded_size = int.from_bytes(bytes(size_bytes), "big")
-        encoded = x[(zero_index+1):(zero_index+1+encoded_size)]
+        pickle_stopcode = 0x2e
+        end_of_pickle_data = np.argwhere(x == pickle_stopcode)[-1][0] + 1
+        encoded = x[0:end_of_pickle_data]
         decoded = loads(bytes(encoded))
         return decoded
 
