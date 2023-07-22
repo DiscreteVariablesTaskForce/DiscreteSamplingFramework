@@ -10,6 +10,10 @@ class AdditiveStructure(types.DiscreteVariable):
     def __init__(self, discrete_set):
         self.discrete_set = discrete_set
 
+    def __eq__(self, x) -> bool:
+        return len(x.discrete_set) == len(self.discrete_set) and\
+            all([x.discrete_set[i] == self.discrete_set[i] for i in range(len(self.discrete_set))])
+
     def __copy__(self):
         return AdditiveStructure(copy.deepcopy(self.discrete_set))
 

@@ -25,4 +25,3 @@ class RNG():
 
     def randomChoices(self, population, weights=None, cum_weights=None, k=1):
         return self.nprng.choice(population, size=k, replace=True, p=weights)
-

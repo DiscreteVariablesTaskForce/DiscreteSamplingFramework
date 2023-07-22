@@ -10,7 +10,8 @@ class TreeProposal(types.DiscreteVariableProposal):
         self.X_train = tree.X_train
         self.y_train = tree.y_train
         self.tree = copy.copy(tree)
-        self.moves_prob = [0.4, 0.1, 0.1, 0.4]
+        # self.moves_prob = [0.4, 0.1, 0.1, 0.4] # Good for chipman
+        self.moves_prob = [0.25, 0.1, 0.45, 0.25]  # good for Poisson and heart l = 12, and diabetes l = 10
         self.rng = rng
 
     @classmethod
@@ -30,7 +31,7 @@ class TreeProposal(types.DiscreteVariableProposal):
         if len(self.tree.tree) == 1:
             moves_prob = [0.0, 0.0, 0.5, 0.5]
         elif len(self.tree.tree) >= num_nodes:
-            moves_prob = [0.2, 0.4, 0.4, 0.0]
+            moves_prob = [0.1, 0.1, 0.8, 0.0]
         random_number = self.rng.random()
         moves_probabilities = np.cumsum(moves_prob)
         newTree = copy.copy(self.tree)
