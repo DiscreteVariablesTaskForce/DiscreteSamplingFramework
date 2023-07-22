@@ -32,3 +32,11 @@ jobs:
     - name: Run examples
       run: |
         for f in examples/*.py; do python "$f"; done
+    - name: Get number of CPU cores
+        uses: SimenB/github-actions-cpu-cores@v1
+        id: cpu-cores
+    - name: Run MPI examples
+      run: |
+        for f in examples/mpi/*.py do \
+          mpiexec =n ${{ steps.cpu-cores.outputs.count }} python "$f"; \
+        done
