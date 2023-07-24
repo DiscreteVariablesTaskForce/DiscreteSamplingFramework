@@ -19,7 +19,7 @@ class rw():
         param_length = self.stan_model.num_unconstrained_parameters(current_data)
         mu = [0 for i in range(param_length)]
         sigma = np.identity(param_length) * 1
-        proposed_continuous[0:param_length] = current_continuous[0:param_length] + self.rng.multivariate_normal(mu, sigma)
+        proposed_continuous[0:param_length] = current_continuous[0:param_length] + self.rng.randomMvNormal(mu, sigma)
 
         return proposed_continuous, 0, 0  # zeros added for consistency with NUTS method
 
