@@ -32,11 +32,17 @@ def test_log_normalise(array, expected):
 
 @pytest.mark.parametrize(
     "particles,logw,expected",
-    [([1, 2, 3], np.array([-np.log(1), -np.inf, -np.inf]), [1, 1, 1])]
+
+    [([1, 2, 3], np.array([-np.log(3), -np.log(3), -np.log(3)]), [1, 2, 3]),
+     ([1, 2, 3], np.array([np.log(1), -np.inf, -np.inf]), [1, 1, 1]),
+     ([1, 2, 3], np.array([np.log(0.5), np.log(0.5), -np.inf]), [1, 2, 2]),
+     ([1, 2, 3, 4], np.array([np.log(0.5), -np.inf, np.log(0.5), -np.inf]), [1, 1, 3, 3])]
 )
 def test_systematic_resampling(particles, logw, expected):
     N = len(particles)
     new_particles, new_logw = systematic_resampling(particles, logw, rng=RNG(1), exec=Executor())
-    assert (new_particles == expected) and all(new_logw == -np.log(N))
+    values_equal = all(x == y for x, y in zip(new_particles, expected))
+    weights_equal = all(new_logw == np.full((N,), -np.log(N)))
+    assert values_equal and weights_equal
 
 # TODO: check_stability, get_number_of_copies
