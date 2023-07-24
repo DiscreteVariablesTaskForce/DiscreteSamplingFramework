@@ -32,7 +32,7 @@ except RuntimeError:
     print("AdditiveStructureTarget is not yet implemented for SMC")
 
 
-asSMCLkern = DiscreteVariableSMC(addstruct.AdditiveStructure, target, initialProposal, use_optimal_L=True)
+asSMCLkern = DiscreteVariableSMC(addstruct.AdditiveStructure, target, initialProposal, use_optimal_L=False)
 asSamplesLk = asSMCLkern.sample(5, 10)
 
 
