@@ -1,6 +1,6 @@
 import numpy as np
 from discretesampling.base.random import RNG
-from discretesampling.base.executor import Executor, Executor_MPI
+from discretesampling.base.executor import Executor
 
 
 def check_stability(ncopies, exec=Executor()):
