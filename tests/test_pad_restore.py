@@ -3,7 +3,8 @@ import numpy as np
 from sklearn import datasets
 from discretesampling.domain.decision_tree import Tree
 from discretesampling.base.util import pad, restore, gather_all
-from discretesampling.base.executor import Executor, Executor_MPI
+from discretesampling.base.executor.executor import Executor
+from discretesampling.base.executor.executor_MPI import Executor_MPI
 
 
 def build_tree(tree, leafs):
@@ -46,8 +47,16 @@ def test_pad(particles, expected):
 )
 @pytest.mark.mpi
 def test_pad_MPI(particles, expected):
-    padded_particles = pad(particles, exec=Executor_MPI())
-    assert all((padded_particles == expected).flatten())
+    exec = Executor_MPI()
+    N = len(particles)
+    loc_n = int(N/exec.P)
+    indexes = [i + exec.rank*loc_n for i in range(loc_n)]
+    local_particles = [particles[i] for i in indexes]
+
+    padded_particles = pad(local_particles, exec=exec)
+    return_shape = [N, padded_particles.shape[1]]
+    all_padded_particles = exec.gather(padded_particles, return_shape)
+    assert all((all_padded_particles == expected).flatten())
 
 
 @pytest.mark.parametrize(
