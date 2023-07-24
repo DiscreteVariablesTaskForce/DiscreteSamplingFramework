@@ -1,39 +1,19 @@
-import itertools
 from mpi4py import MPI
 import numpy as np
-from discretesampling.base.algorithms.smc_components.distributed_fixed_size_redistribution.prefix_sum import (
+from scipy.special import logsumexp
+from discretesampling.base.executor.executor import Executor
+from discretesampling.base.executor.MPI.distributed_fixed_size_redistribution.prefix_sum import (
     inclusive_prefix_sum
 )
-from discretesampling.base.algorithms.smc_components.variable_size_redistribution import (
+from discretesampling.base.executor.MPI.variable_size_redistribution import (
     variable_size_redistribution
 )
 
 
-class Executor(object):
-    def __init__(self):
-        self.P = 1
-        self.rank = 1
-
-    def max(self, x):
-        return np.max(x)
-
-    def sum(self, x):
-        return np.sum(x)
-
-    def gather(self, x, all_x_shape):
-        return x
-
-    def bcast(self, x):
-        pass
-
-    def cumsum(self, x):
-        return np.cumsum(x)
-
-    def redistribute(self, particles, ncopies):
-        particles = list(itertools.chain.from_iterable(
-            [[particles[i]]*ncopies[i] for i in range(len(particles))]
-        ))
-        return particles
+def LSE(xmem, ymem, dt):
+    x = np.frombuffer(xmem, dtype='d')
+    y = np.frombuffer(ymem, dtype='d')
+    y[:] = logsumexp(np.hstack((x, y)))
 
 
 class Executor_MPI(Executor):
@@ -45,8 +25,8 @@ class Executor_MPI(Executor):
     def max(self, x):
         local_max = np.max(x)
         x_dtype = MPI._typedict[x.dtype.char]
-        max_dim = np.zeros_like(1, dtype=x_dtype)
-        self.comm.Allreduce(sendbuf=[local_max, MPI.INT], recvbuf=[max_dim, MPI.INT], op=MPI.MAX)
+        max_dim = np.zeros_like(1, dtype=x.dtype)
+        self.comm.Allreduce(sendbuf=[local_max, x_dtype], recvbuf=[max_dim, x_dtype], op=MPI.MAX)
         return max_dim
 
     def sum(self, x):
@@ -63,6 +43,18 @@ class Executor_MPI(Executor):
 
     def bcast(self, x):
         self.comm.Bcast(buf=[x, MPI._typedict[x.dtype.char]], root=0)
+
+    def logsumexp(self, x):
+        op = MPI.Op.Create(LSE, commute=True)
+        log_sum = np.zeros_like(1, x.dtype)
+        MPI_dtype = MPI._typedict[x.dtype.char]
+        leaf_node = np.array([-np.inf]).astype(x.dtype) if len(x) == 0 else logsumexp(x)
+
+        MPI.COMM_WORLD.Allreduce(sendbuf=[leaf_node, MPI_dtype], recvbuf=[log_sum, MPI_dtype], op=op)
+
+        op.Free()
+
+        return log_sum
 
     def cumsum(self, x):
         return inclusive_prefix_sum(x)

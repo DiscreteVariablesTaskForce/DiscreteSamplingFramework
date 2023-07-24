@@ -1,8 +1,7 @@
 import numpy as np
-from discretesampling.base.algorithms.smc_components.logsumexp import log_sum_exp
 
 
-def normalise(logw):
+def normalise(logw, exec):
     """
     Description
     -----------
@@ -24,6 +23,6 @@ def normalise(logw):
 
     mask = np.invert(np.isneginf(logw))  # mask to filter out any weight = 0 (or -inf in log-scale)
 
-    log_wsum = log_sum_exp(logw[mask])
+    log_wsum = exec.logsumexp(logw[mask])
 
     return logw - log_wsum

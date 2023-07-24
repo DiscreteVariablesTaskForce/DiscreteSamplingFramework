@@ -2,7 +2,7 @@ import copy
 import numpy as np
 import math
 from discretesampling.base.random import RNG
-from discretesampling.base.executor import Executor
+from discretesampling.base.executor.executor import Executor
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
@@ -12,11 +12,11 @@ class DiscreteVariableSMC():
 
     def __init__(self, variableType, target, initialProposal,
                  use_optimal_L=False,
-                 parallel=Executor()):
+                 exec=Executor()):
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
         self.use_optimal_L = use_optimal_L
-        self.parallel = parallel
+        self.exec = exec
 
         if use_optimal_L:
             self.LKernelType = variableType.getOptimalLKernelType()
@@ -29,8 +29,8 @@ class DiscreteVariableSMC():
         self.target = target
 
     def sample(self, Tsmc, N, seed=0):
-        loc_n = int(N/self.parallel.P)
-        rank = self.parallel.rank
+        loc_n = int(N/self.exec.P)
+        rank = self.exec.rank
         mvrs_rng = RNG(seed)
         rngs = [RNG(i + rank*loc_n + 1 + seed) for i in range(loc_n)]  # RNG for each particle
 
@@ -43,7 +43,8 @@ class DiscreteVariableSMC():
             neff = ess(logWeights)
 
             if math.log(neff) < math.log(N) - math.log(2):
-                current_particles, logWeights = systematic_resampling(current_particles, logWeights, mvrs_rng)
+                current_particles, logWeights = systematic_resampling(
+                    current_particles, logWeights, mvrs_rng, exec=self.exec)
 
             new_particles = copy.copy(current_particles)
 
@@ -57,7 +58,7 @@ class DiscreteVariableSMC():
 
             if self.use_optimal_L:
                 Lkernel = self.LKernelType(
-                    new_particles, current_particles, parallel=self.parallel,
+                    new_particles, current_particles, parallel=self.exec,
                     num_cores=self.num_cores
                 )
             for i in range(loc_n):

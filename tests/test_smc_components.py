@@ -2,9 +2,8 @@ import pytest
 import numpy as np
 
 from discretesampling.base.random import RNG
-from discretesampling.base.executor import Executor
+from discretesampling.base.executor.executor import Executor
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
-from discretesampling.base.algorithms.smc_components.logsumexp import log_sum_exp
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
 from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
 
@@ -16,17 +15,8 @@ from discretesampling.base.algorithms.smc_components.resampling import systemati
      (np.array([np.log(1.0), -np.inf]), 1.0)]  # two weights, 1,0
 )
 def test_ess(logw, expected_ess):
-    calc_ess = ess(logw)
+    calc_ess = ess(logw, exec=Executor())
     np.testing.assert_almost_equal(calc_ess, expected_ess)  # use almost_equal for numerical inaccuracy
-
-
-@pytest.mark.parametrize(
-    "array,expected",
-    [(np.array([0.0, 0.0]), np.log(2))]
-)
-def test_log_sum_exp(array, expected):
-    lse = log_sum_exp(array)
-    np.testing.assert_almost_equal(lse, expected)  # use almost equal for numerical inaccuracy
 
 
 @pytest.mark.parametrize(
@@ -36,7 +26,7 @@ def test_log_sum_exp(array, expected):
      ]
 )
 def test_log_normalise(array, expected):
-    normalised_array = normalise(array)
+    normalised_array = normalise(array, exec=Executor())
     np.testing.assert_allclose(normalised_array, expected)  # use allclose for numerical inaccuracy
 
 

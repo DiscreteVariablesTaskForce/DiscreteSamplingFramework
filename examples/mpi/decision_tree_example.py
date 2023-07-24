@@ -1,18 +1,9 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Nov  5 14:28:12 2021
-@author: efthi
-"""
-from discretesampling.base.util import gather_all
-from mpi4py import MPI
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn import datasets
 from discretesampling.base.algorithms import DiscreteVariableSMC
 from discretesampling.domain import decision_tree as dt
-import sys
-sys.path.append('../')  # Looks like mpiexec won't find discretesampling package without appending '../'
-
+from discretesampling.base.executor.executor_MPI import Executor_MPI
 
 data = datasets.load_wine()
 
@@ -30,7 +21,7 @@ N = 1 << 10
 T = 10
 num_MC_runs = 1
 
-dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
+dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal, False, exec=Executor_MPI())
 try:
     runtimes = []
     accuracies = []
