@@ -1,9 +1,12 @@
 import pytest
 import numpy as np
 
+from discretesampling.base.random import RNG
+from discretesampling.base.executor import Executor
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.logsumexp import log_sum_exp
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
+from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
 
 
 @pytest.mark.parametrize(
@@ -37,4 +40,13 @@ def test_log_normalise(array, expected):
     np.testing.assert_allclose(normalised_array, expected)  # use allclose for numerical inaccuracy
 
 
-# TODO: check_stability, get_number_of_copies, systematic_resampling
+@pytest.mark.parametrize(
+    "particles,logw,expected",
+    [([1, 2, 3], np.array([-np.log(1), -np.inf, -np.inf]), [1, 1, 1])]
+)
+def test_systematic_resampling(particles, logw, expected):
+    N = len(particles)
+    new_particles, new_logw = systematic_resampling(particles, logw, rng=RNG(1), exec=Executor())
+    assert (new_particles == expected) and all(new_logw == -np.log(N))
+
+# TODO: check_stability, get_number_of_copies

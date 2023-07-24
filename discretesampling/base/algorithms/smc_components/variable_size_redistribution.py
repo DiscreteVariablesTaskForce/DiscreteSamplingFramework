@@ -4,8 +4,8 @@ from discretesampling.base.algorithms.smc_components.distributed_fixed_size_redi
 )
 
 
-def variable_size_redistribution(particles, ncopies):
-    x = pad(particles)
+def variable_size_redistribution(particles, ncopies, exec):
+    x = pad(particles, exec)
 
     x = fixed_size_redistribution(x, ncopies)
 

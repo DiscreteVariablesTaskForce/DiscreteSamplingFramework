@@ -1,9 +1,8 @@
-import multiprocessing
 import copy
-from ...base.random import RNG
-from mpi4py import MPI
 import numpy as np
 import math
+from discretesampling.base.random import RNG
+from discretesampling.base.executor import Executor
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
@@ -13,21 +12,11 @@ class DiscreteVariableSMC():
 
     def __init__(self, variableType, target, initialProposal,
                  use_optimal_L=False,
-                 parallel=False,
-                 num_cores=None):
+                 parallel=Executor()):
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
         self.use_optimal_L = use_optimal_L
         self.parallel = parallel
-        self.num_cores = num_cores
-        self.P = MPI.COMM_WORLD.Get_size()  # number of MPI nodes/ranks
-        self.rank = MPI.COMM_WORLD.Get_rank()
-
-        if (self.parallel and (num_cores is None)):
-            num_cores = multiprocessing.cpu_count()
-            print("WARNING: `parallel=True` but `num_cores` not specified; "
-                  + "setting `num_cores = ", num_cores, "`")
-            self.num_cores = num_cores
 
         if use_optimal_L:
             self.LKernelType = variableType.getOptimalLKernelType()
@@ -40,9 +29,10 @@ class DiscreteVariableSMC():
         self.target = target
 
     def sample(self, Tsmc, N, seed=0):
-        loc_n = int(N/self.P)
+        loc_n = int(N/self.parallel.P)
+        rank = self.parallel.rank
         mvrs_rng = RNG(seed)
-        rngs = [RNG(i + self.rank*loc_n + 1 + seed) for i in range(loc_n)]  # RNG for each particle
+        rngs = [RNG(i + rank*loc_n + 1 + seed) for i in range(loc_n)]  # RNG for each particle
 
         initialParticles = [self.initialProposal.sample(rngs[i], self.target) for i in range(loc_n)]
         current_particles = initialParticles
@@ -51,13 +41,8 @@ class DiscreteVariableSMC():
         for t in range(Tsmc):
             logWeights = normalise(logWeights)
             neff = ess(logWeights)
-            # if MPI.COMM_WORLD.Get_rank() == 0:
-            #    print("Neff = ", neff)
-            if math.log(neff) < math.log(N) - math.log(2):
-                # if MPI.COMM_WORLD.Get_rank() == 0:
-                #    print("Resampling...")
 
-                # resample(current_particles, logWeights, rngs[0])
+            if math.log(neff) < math.log(N) - math.log(2):
                 current_particles, logWeights = systematic_resampling(current_particles, logWeights, mvrs_rng)
 
             new_particles = copy.copy(current_particles)

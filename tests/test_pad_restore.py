@@ -2,7 +2,8 @@ import pytest
 import numpy as np
 from sklearn import datasets
 from discretesampling.domain.decision_tree import Tree
-from discretesampling.base.util import pad, restore
+from discretesampling.base.util import pad, restore, gather_all
+from discretesampling.base.executor import Executor, Executor_MPI
 
 
 def build_tree(tree, leafs):
@@ -27,7 +28,25 @@ def build_tree(tree, leafs):
     )]
 )
 def test_pad(particles, expected):
-    padded_particles = pad(particles)
+    padded_particles = pad(particles, exec=Executor())
+    assert all((padded_particles == expected).flatten())
+
+
+@pytest.mark.parametrize(
+    "particles,expected",
+    [(  # two particles of same dim
+        [build_tree([[0, 1, 2, 2, 2.3, 0]], [1, 2]), build_tree([[0, 1, 2, 3, 15.2, 0]], [1, 2])],
+        np.array([[6, 2, -1, 0, 1, 2, 2, 2.3, 0, 1, 2], [6, 2, -1, 0, 1, 2, 3, 15.2, 0, 1, 2]])
+    ),
+        (  # two particles of different dims
+        [build_tree([[0, 1, 2, 2, 2.3, 0]], [1, 2]), build_tree([[0, 1, 2, 3, 15.2, 0], [2, 3, 4, 8, 1.64, 1]], [1, 3, 4])],
+        np.array([[6, 2, -1, 0, 1, 2, 2, 2.3, 0, 1, 2, -1, -1, -1, -1, -1, -1, -1],
+                 [12, 3, -1, 0, 1, 2, 3, 15.2, 0, 2, 3, 4, 8, 1.64, 1, 1, 3, 4]])
+    )]
+)
+@pytest.mark.mpi
+def test_pad_MPI(particles, expected):
+    padded_particles = pad(particles, exec=Executor_MPI())
     assert all((padded_particles == expected).flatten())
 
 
@@ -58,6 +77,20 @@ def test_restore(padded_particles, expected):
     )]
 )
 def test_pad_restore(particles):
-    padded_particles = pad(particles)
+    padded_particles = pad(particles, exec=Executor())
     new_particles = restore(padded_particles, [build_tree([0, 1, 2, 1, 1], [1, 2])])
+    assert particles == new_particles
+
+
+@pytest.mark.parametrize(
+    "particles",
+    [(  # two particles of same dim
+        [build_tree([[0, 1, 2, 2, 2.3, 0]], [1, 2]), build_tree([[0, 1, 2, 3, 15.2, 0]], [1, 2])]
+    ),
+        (  # two particles of different dims
+        [build_tree([[0, 1, 2, 2, 2.3, 0]], [1, 2]), build_tree([[0, 1, 2, 3, 15.2, 0], [2, 3, 4, 8, 1.64, 1]], [1, 3, 4])]
+    )]
+)
+def test_gather_all(particles):
+    new_particles = gather_all(particles, exec=Executor())
     assert particles == new_particles
