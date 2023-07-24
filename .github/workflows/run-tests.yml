@@ -32,3 +32,9 @@ jobs:
     - name: Run examples
       run: |
         py.test -svx tests/
+    - name: Get number of CPU cores
+      uses: SimenB/github-actions-cpu-cores@v1
+      id: cpu-cores
+    - name: Run MPI tests
+      run: |
+        mpiexec -n ${{ steps.cpu-cores.outputs.count }} pytest -svx --with-mpi; \
