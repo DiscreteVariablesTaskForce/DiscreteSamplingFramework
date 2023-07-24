@@ -1,7 +1,7 @@
 import numpy as np
 import copy
 from ...base import types
-from ...base.random import RandomChoice, RandomChoices, RandomInt
+from ...base.random import RNG
 from .additive_distribution import AdditiveStructureProposal
 from .additive_target import AdditiveStructureTarget
 
@@ -9,6 +9,9 @@ from .additive_target import AdditiveStructureTarget
 class AdditiveStructure(types.DiscreteVariable):
     def __init__(self, discrete_set):
         self.discrete_set = discrete_set
+
+    def __copy__(self):
+        return AdditiveStructure(copy.deepcopy(self.discrete_set))
 
     @classmethod
     def getProposalType(self):
@@ -18,7 +21,7 @@ class AdditiveStructure(types.DiscreteVariable):
     def getTargetType(self):
         return AdditiveStructureTarget
 
-    def split_subset(self, frac):
+    def split_subset(self, frac, rng=RNG()):
         """
         :param discrete_set: initial set
         :param frac: 1 or 2 indicating the probability of choosing split
@@ -34,13 +37,13 @@ class AdditiveStructure(types.DiscreteVariable):
             return single_subsets
 
         # Get a random subset from the list
-        index = RandomInt(0, len(multi_subsets)-1).eval()
+        index = rng.randomInt(0, len(multi_subsets)-1)
         subset_to_split = np.array(multi_subsets[index])
 
         # assign each element to a subset
-        split_vec = RandomChoices([True, False], k=len(subset_to_split)).eval()
+        split_vec = rng.randomChoices([True, False], k=len(subset_to_split))
         while np.sum(split_vec) == 0 or np.sum(np.logical_not(split_vec)) == 0:
-            split_vec = RandomChoices([True, False], k=len(subset_to_split)).eval()
+            split_vec = rng.randomChoices([True, False], k=len(subset_to_split))
 
         multi_subsets.pop(index)
         multi_subsets.append(list(subset_to_split[split_vec]))
@@ -58,7 +61,7 @@ class AdditiveStructure(types.DiscreteVariable):
 
         return AdditiveStructure(new_set)
 
-    def merge_subset(self, frac):
+    def merge_subset(self, frac, rng=RNG()):
         """
         :param discrete_set: initial set
         :param frac: 1 or 2 indicating the probability of choosing merge
@@ -66,12 +69,12 @@ class AdditiveStructure(types.DiscreteVariable):
                  probability
         """
         if len(self.discrete_set) == 1:
-            return copy.deepcopy(self)
+            return copy.copy(self)
 
-        index_1 = RandomInt(0, len(self.discrete_set)-1).eval()
+        index_1 = rng.randomInt(0, len(self.discrete_set)-1)
         remaining = list(range(len(self.discrete_set)))
         remaining.pop(index_1)
-        index_2 = RandomChoice(remaining).eval()
+        index_2 = rng.randomChoice(remaining)
 
         first_subset = self.discrete_set[index_1]
         second_subset = self.discrete_set[index_2]

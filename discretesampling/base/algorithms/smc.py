@@ -3,7 +3,7 @@ import numpy as np
 import math
 import copy
 from scipy.special import logsumexp
-from ...base.random import RandomChoices
+from ...base.random import RNG
 
 
 class DiscreteVariableSMC():
@@ -34,9 +34,10 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, N, P):
+    def sample(self, N, P, seed=0):
 
         initialParticles = [self.initialProposal.sample() for p in range(P)]
+        rngs = [RNG(p + seed) for p in range(P+1)]  # RNG for each particle
 
         current_particles = initialParticles
         logWeights = [self.target.eval(p) - self.initialProposal.eval(p)
@@ -49,21 +50,21 @@ class DiscreteVariableSMC():
                 print("Resampling...")
                 try:
                     current_particles, logWeights = resample(
-                        current_particles, logWeights
+                        current_particles, logWeights, rngs[0]
                     )
                 except ValueError as error:
                     raise RuntimeError('Weights do not sum to one, sum = '
                                        + str(math.exp(logsumexp(logWeights)))) \
                                        from error
 
-            new_particles = copy.deepcopy(current_particles)
-            new_logWeights = copy.deepcopy(logWeights)
+            new_particles = copy.copy(current_particles)
+            new_logWeights = copy.copy(logWeights)
 
             forward_logprob = np.zeros(len(current_particles))
 
             # Sample new particles and calculate forward probabilities
             for p in range(P):
-                forward_proposal = self.proposalType(current_particles[p])
+                forward_proposal = self.proposalType(current_particles[p], rng=rngs[p+1])
                 new_particles[p] = forward_proposal.sample()
                 forward_logprob[p] = forward_proposal.eval(new_particles[p])
 
@@ -116,14 +117,14 @@ def normaliseLogWeights(logWeights):
     return list(tmp)
 
 
-def resample(particles, logWeights):
+def resample(particles, logWeights, rng):
     P = len(particles)
     indexes = range(P)
     weights = np.zeros(P)
     for i in range(P):
         weights[i] = math.exp(logWeights[i])
 
-    new_indexes = RandomChoices(indexes, weights=weights, k=P).eval()
+    new_indexes = rng.randomChoices(indexes, weights=weights, k=P)
     new_particles = [particles[i] for i in new_indexes]
     new_logWeights = np.full(len(new_particles), -math.log(P))
 

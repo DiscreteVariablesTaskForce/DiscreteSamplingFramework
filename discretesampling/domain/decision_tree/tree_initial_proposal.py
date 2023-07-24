@@ -1,19 +1,20 @@
-from discretesampling.base.random import RandomInt
+from discretesampling.base.random import RNG
 from ...base.types import DiscreteVariableInitialProposal
 from .tree import Tree
 import math
 
 
 class TreeInitialProposal(DiscreteVariableInitialProposal):
-    def __init__(self, X_train, y_train):
+    def __init__(self, X_train, y_train, rng=RNG()):
         self.X_train = X_train
         self.y_train = y_train
+        self.rng = rng
 
     def sample(self):
         leafs = [1, 2]
 
-        feature = RandomInt(0, len(self.X_train[0])-1).eval()
-        threshold = RandomInt(0, len(self.X_train)-1).eval()
+        feature = self.rng.randomInt(0, len(self.X_train[0])-1)
+        threshold = self.rng.randomInt(0, len(self.X_train)-1)
         tree = [[0, 1, 2, feature, self.X_train[threshold, feature]]]
         return Tree(self.X_train, self.y_train, tree, leafs)
 
