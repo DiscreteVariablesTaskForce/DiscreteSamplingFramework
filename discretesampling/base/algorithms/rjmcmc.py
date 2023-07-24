@@ -2,8 +2,8 @@ import math
 import copy
 import numpy as np
 from scipy.special import logsumexp
-from ...base.random import Random
-from ...base.algorithms.continuous_samplers import rw, nuts
+from discretesampling.base.random import RNG
+from discretesampling.base.algorithms.continuous_samplers import rw, nuts
 
 
 class DiscreteVariableRJMCMC():
@@ -27,7 +27,7 @@ class DiscreteVariableRJMCMC():
         self.always_update = always_update
         self.update_probability = update_probability
 
-        self.rng = np.random.default_rng()
+        self.rng = RNG()
 
         # initialise samplers for continuous parameters
         if self.continuous_update == "random_walk":
@@ -42,7 +42,7 @@ class DiscreteVariableRJMCMC():
 
     def propose(self, current_discrete, current_continuous):
         proposed_discrete = current_discrete
-        q = Random().eval()
+        q = self.rng.random()
         r0 = 0
         r1 = 0
         # Update vs Birth/death
@@ -89,13 +89,13 @@ class DiscreteVariableRJMCMC():
             if log_acceptance_ratio > 0:
                 log_acceptance_ratio = 0
             acceptance_probability = min(1, math.exp(log_acceptance_ratio))
-            q = Random().eval()
+            q = self.rng.random()
             # Accept/Reject
             if (q < acceptance_probability):
                 current_discrete = proposed_discrete
                 current_continuous = proposed_continuous
             print("Iteration {}, params = {}".format(i, current_continuous))
-            samples.append([copy.deepcopy(current_discrete), current_continuous])
+            samples.append([copy.copy(current_discrete), current_continuous])
 
         return samples
 

@@ -1,6 +1,6 @@
 import copy
 import numpy as np
-from discretesampling.base.random import RandomInt
+from discretesampling.base.random import RNG
 
 import discretesampling.domain.spectrum as spec
 
@@ -38,7 +38,7 @@ class continuous_proposal():
         self.forward_logprob = None
         self.to_remove = None
 
-    def sample(self, x, params, y, rng):
+    def sample(self, x, params, y, rng=RNG()):
         dim_x = x.value
         dim_y = y.value
 
@@ -62,17 +62,17 @@ class continuous_proposal():
             n_new_components = dim_y - dim_x
 
             if dim_x > 0:
-                theta_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
-                mu_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
-                sigma_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
+                theta_new = rng.randomMvNormal(np.zeros(n_new_components), np.identity(n_new_components))
+                mu_new = rng.randomMvNormal(np.zeros(n_new_components), np.identity(n_new_components))
+                sigma_new = rng.randomMvNormal(np.zeros(n_new_components), np.identity(n_new_components))
 
                 mvn = multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
                 forward_logprob = mvn.logpdf(theta_new) + mvn.logpdf(mu_new) + mvn.logpdf(sigma_new)
             else:
                 # initial proposal
-                theta_new = rng.multivariate_normal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
-                mu_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
-                sigma_new = rng.multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
+                theta_new = rng.randomMvNormal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
+                mu_new = rng.randomMvNormal(np.zeros(n_new_components), np.identity(n_new_components))
+                sigma_new = rng.randomMvNormal(np.zeros(n_new_components), np.identity(n_new_components))
 
                 mvn = multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
                 mvn_theta = multivariate_normal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
@@ -83,7 +83,7 @@ class continuous_proposal():
             self.proposed_continuous = params_temp
         elif (dim_x > dim_y):
             # randomly choose one to remove
-            to_remove = RandomInt(0, dim_x-2).eval()  # really need to sort out simplex vs. real param indexing
+            to_remove = rng.randomInt(0, dim_x-2)  # really need to sort out simplex vs. real param indexing
             # birth of component could happen multiple ways (i.e. different n_new_components)
             # so I think the reverse_logprob will only be approximate - seems like there might
             # be a proof for the summed pdf values of the series of Gaussians that we can use?
