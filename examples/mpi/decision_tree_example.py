@@ -1,9 +1,11 @@
 import numpy as np
+from mpi4py import MPI
 from sklearn.model_selection import train_test_split
 from sklearn import datasets
 from discretesampling.base.algorithms import DiscreteVariableSMC
 from discretesampling.domain import decision_tree as dt
 from discretesampling.base.executor.executor_MPI import Executor_MPI
+from discretesampling.base.util import gather_all
 
 data = datasets.load_wine()
 
@@ -21,7 +23,8 @@ N = 1 << 10
 T = 10
 num_MC_runs = 1
 
-dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal, False, exec=Executor_MPI())
+exec = Executor_MPI()
+dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal, False, exec=exec)
 try:
     runtimes = []
     accuracies = []
@@ -35,7 +38,7 @@ try:
         MPI.COMM_WORLD.Barrier()
         end = MPI.Wtime()
         if MPI.COMM_WORLD.Get_size() > 1:
-            treeSMCSamples = gather_all(treeSMCSamples)
+            treeSMCSamples = gather_all(treeSMCSamples, exec)
 
         smcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSMCSamples]
         smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
