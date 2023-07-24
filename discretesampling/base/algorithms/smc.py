@@ -39,8 +39,8 @@ class DiscreteVariableSMC():
         logWeights = np.array([self.target.eval(p) - self.initialProposal.eval(p, self.target) for p in initialParticles])
 
         for t in range(Tsmc):
-            logWeights = normalise(logWeights)
-            neff = ess(logWeights)
+            logWeights = normalise(logWeights, self.exec)
+            neff = ess(logWeights, self.exec)
 
             if math.log(neff) < math.log(N) - math.log(2):
                 current_particles, logWeights = systematic_resampling(

@@ -60,4 +60,4 @@ class Executor_MPI(Executor):
         return inclusive_prefix_sum(x)
 
     def redistribute(self, particles, ncopies):
-        return variable_size_redistribution(particles, ncopies)
+        return variable_size_redistribution(particles, ncopies, self)
