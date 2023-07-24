@@ -38,6 +38,6 @@ jobs:
       id: cpu-cores
     - name: Run MPI examples
       run: |
-        for f in examples/mpi/*.py do \
-          mpiexec =n ${{ steps.cpu-cores.outputs.count }} python "$f"; \
+        for f in examples/mpi/*.py; do \
+          mpiexec -n ${{ steps.cpu-cores.outputs.count }} python "$f"; \
         done
