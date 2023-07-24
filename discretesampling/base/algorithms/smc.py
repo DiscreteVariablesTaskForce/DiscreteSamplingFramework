@@ -58,8 +58,7 @@ class DiscreteVariableSMC():
 
             if self.use_optimal_L:
                 Lkernel = self.LKernelType(
-                    new_particles, current_particles, parallel=self.exec,
-                    num_cores=self.num_cores
+                    new_particles, current_particles, parallel=self.exec, num_cores=1
                 )
             for i in range(loc_n):
                 if self.use_optimal_L:
