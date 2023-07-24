@@ -48,6 +48,7 @@ def test_pad(particles, expected):
 @pytest.mark.mpi
 def test_pad_MPI(particles, expected):
     exec = Executor_MPI()
+    particles = particles * exec.P  # copy particles to ensure there is more than one per rank
     N = len(particles)
     loc_n = int(N/exec.P)
     indexes = [i + exec.rank*loc_n for i in range(loc_n)]
@@ -56,6 +57,7 @@ def test_pad_MPI(particles, expected):
     padded_particles = pad(local_particles, exec=exec)
     return_shape = [N, padded_particles.shape[1]]
     all_padded_particles = exec.gather(padded_particles, return_shape)
+    expected = np.tile(expected, [exec.P, 1])  # tile expected result to match
     assert all((all_padded_particles == expected).flatten())
 
 
