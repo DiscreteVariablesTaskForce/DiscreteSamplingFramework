@@ -1,7 +1,9 @@
 import pytest
 import numpy as np
 from discretesampling.base.random import RNG
-from discretesampling.domain.spectrum import SpectrumDimension, SpectrumDimensionInitialProposal, SpectrumDimensionProposal, SpectrumDimensionTarget
+from discretesampling.domain.spectrum import (
+    SpectrumDimension, SpectrumDimensionInitialProposal, SpectrumDimensionProposal, SpectrumDimensionTarget
+)
 
 
 @pytest.mark.parametrize(
