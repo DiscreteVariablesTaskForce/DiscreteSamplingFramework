@@ -53,7 +53,7 @@ class SpectrumDimensionProposal(types.DiscreteVariableProposal):
         return abs(y-x) == 1
 
 
-class SpectrumDimensionInitialProposal(types.DiscreteVariableProposal):
+class SpectrumDimensionInitialProposal(types.DiscreteVariableInitialProposal):
     def __init__(self, max):
         dims = [SpectrumDimension(x+1) for x in range(max)]
         numDims = len(dims)
