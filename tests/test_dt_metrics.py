@@ -1,5 +1,7 @@
 import pytest
-from discretesampling.domain.decision_tree import calculate_leaf_occurences, Tree
+from discretesampling.domain.decision_tree import (
+    calculate_leaf_occurences, Tree, accuracy, stats
+)
 from collections import Counter
 from sklearn import datasets
 
@@ -13,6 +15,11 @@ def build_tree(feature, threshold):
 
     tree = [[0, 1, 2, feature, X[threshold, feature]]]
     return Tree(X, y, tree, leafs)
+
+
+def get_X_test():
+    data = datasets.load_wine()
+    return data.data[0:5, :]
 
 
 @pytest.mark.parametrize(
@@ -39,3 +46,26 @@ def build_tree(feature, threshold):
 def test_calculate_leaf_occurences(tree, expected):
     leafs_possibilities_for_prediction = calculate_leaf_occurences(tree)
     assert leafs_possibilities_for_prediction == expected
+
+
+@pytest.mark.parametrize(
+    "y_test,labels,expected",
+    [([1, 1, 0, 0, 0], [1, 1, 0, 0, 0], 100.0),
+     ([0, 0, 0, 0, 0], [1, 1, 0, 0, 0], 60.0),
+     ([0, 0, 0, 0, 0], [1, 1, 1, 1, 0], 20.0)]
+)
+def test_accuracy(y_test, labels, expected):
+    acc = accuracy(y_test, labels)
+    assert expected == acc
+
+
+@pytest.mark.parametrize(
+    "tree,X_test,expected",
+    [(build_tree(2, 10), get_X_test(), [0, 1, 0, 0, 0]),
+     (build_tree(2, 20), get_X_test(), [0, 1, 0, 0, 0]),
+     (build_tree(4, 10), get_X_test(), [0, 1, 1, 0, 0])]
+)
+def test_stats_predict(tree, X_test, expected):
+    stat = stats(tree, X_test)
+    pred = stat.predict(X_test)
+    assert expected == pred
