@@ -21,7 +21,7 @@ class AdditiveStructureProposal(types.DiscreteVariableProposal):
     # (and possibly at other times)
     def heuristic(self, x, y):
         # At most ones more or one fewer sets
-        return abs(y-x) < 2
+        return abs(y-x) == 1
 
     def eval(self, proposed):
         # For now assume there is a valid move
