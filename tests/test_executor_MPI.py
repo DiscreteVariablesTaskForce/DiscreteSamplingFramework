@@ -48,6 +48,21 @@ def test_executor_sum(x, expected):
 
 
 @pytest.mark.parametrize(
+    "x",  # Only functions for equal numbers per core
+    [(np.array([1, 2, 3, 4, 5, 6])),
+     (np.array([1, 1, 1, 1, 1, 1])),
+     (np.array([0.0, 0.0, 1.23, 4.56]))]
+)
+def test_executor_gather(x):
+    all_x_shape = x.shape
+    exec = Executor_MPI()
+    first, last = split_across_cores(len(x), exec.P, exec.rank)
+    local_x = x[first:(last+1)]
+    all_x = exec.gather(local_x, all_x_shape)
+    assert all(x == all_x)
+
+
+@pytest.mark.parametrize(
     "x,expected",
     [(np.array([np.log(1.0)]), 0.0),  # single weight
      (np.array([np.log(0.5), np.log(0.5)]), 0.0),  # two even weights, 0.5,0.5
@@ -86,5 +101,5 @@ def test_redistribute(particles, ncopies, expected):
     local_particles = particles[first:(last+1)]
     local_ncopies = ncopies[first:(last+1)]
     local_new_particles = exec.redistribute(local_particles, local_ncopies)
-    new_particles = exec.gather(local_new_particles, )
-    assert new_particles == expected
+    local_expected = expected[first:(last+1)]
+    assert local_new_particles == local_expected
