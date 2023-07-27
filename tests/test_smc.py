@@ -7,8 +7,8 @@ from discretesampling.domain import spectrum
 
 @pytest.mark.parametrize(
     "seed,T,N,expected",
-    [(0, 3, 10, [spectrum.SpectrumDimension(i) for i in [6, 6, 8, 8, 12, 10, 12, 12, 14, 14]]),
-     (1, 3, 10, [spectrum.SpectrumDimension(i) for i in [12, 14, 14, 12, 10, 12, 19, 14, 14, 16]])]
+    [(0, 3, 10, [spectrum.SpectrumDimension(i) for i in [15, 13, 15, 15, 15, 2, 6, 6, 18, 16]]),
+     (1, 3, 10, [spectrum.SpectrumDimension(i) for i in [13, 15, 15, 6, 2, 8, 8, 8, 6, 6]])]
 )
 def test_smc(seed, T, N, expected):
     target = spectrum.SpectrumDimensionTarget(10, 3.4)  # NB with mean 10 and variance 3.4^2
