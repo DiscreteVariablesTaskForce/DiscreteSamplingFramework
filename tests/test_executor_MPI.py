@@ -87,7 +87,8 @@ def test_cumsum(x, expected):
     first, last = np.array(split_across_cores(len(x), exec.P, exec.rank))
     local_x = x[first:(last+1)]
     calc = exec.cumsum(local_x)
-    assert all(calc == expected)
+    local_expected = expected[first:(last+1)]
+    assert all(calc == local_expected)
 
 
 @pytest.mark.parametrize(
