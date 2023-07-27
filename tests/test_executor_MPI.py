@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from discretesampling.base.types import DiscreteVariable
-from discretesampling.base.executor.executor import Executor
+from discretesampling.base.executor.executor_MPI import Executor_MPI
 
 
 class ExampleParticleClass(DiscreteVariable):
@@ -12,6 +12,13 @@ class ExampleParticleClass(DiscreteVariable):
         return self.x == other.x
 
 
+def split_across_cores(N, P, rank):
+    local_n = int(np.ceil(N/P))
+    first = rank*local_n
+    last = np.min([first+local_n-1, N-1])
+    return first, last
+
+
 @pytest.mark.parametrize(
     "x,expected",
     [(np.array([1, 2, 3, 4, 5]), 5),
@@ -19,7 +26,10 @@ class ExampleParticleClass(DiscreteVariable):
      (np.array([0.0, 0.0, 1.23]), 1.23)]
 )
 def test_executor_max(x, expected):
-    max_x = Executor().max(x)
+    exec = Executor_MPI()
+    first, last = np.array(split_across_cores(len(x), exec.P, exec.rank))
+    local_x = x[first:(last+1)]
+    max_x = exec.max(local_x)
     assert expected == max_x
 
 
@@ -30,20 +40,11 @@ def test_executor_max(x, expected):
      (np.array([0.0, 0.0, 1.23]), 1.23)]
 )
 def test_executor_sum(x, expected):
-    sum_x = Executor().sum(x)
+    exec = Executor_MPI()
+    first, last = np.array(split_across_cores(len(x), exec.P, exec.rank))
+    local_x = x[first:(last+1)]
+    sum_x = exec.sum(local_x)
     assert expected == sum_x
-
-
-@pytest.mark.parametrize(
-    "x",
-    [(np.array([1, 2, 3, 4, 5])),
-     (np.array([1, 1, 1, 1, 1])),
-     (np.array([0.0, 0.0, 1.23]))]
-)
-def test_executor_gather(x):
-    all_x_shape = x.shape
-    all_x = Executor().gather(x, all_x_shape)
-    assert all(x == all_x)
 
 
 @pytest.mark.parametrize(
@@ -54,7 +55,10 @@ def test_executor_gather(x):
      (np.array([np.log(1e5), np.log(1e-5), -np.inf]), 11.512925465070229)]
 )
 def test_logsumexp(x, expected):
-    calc = Executor().logsumexp(x)
+    exec = Executor_MPI()
+    first, last = np.array(split_across_cores(len(x), exec.P, exec.rank))
+    local_x = x[first:(last+1)]
+    calc = exec.logsumexp(local_x)
     np.testing.assert_almost_equal(calc, expected)  # use almost_equal for numerical inaccuracy
 
 
@@ -64,7 +68,10 @@ def test_logsumexp(x, expected):
      (np.array([-1, -2, -3, -4, -5]), np.array([-1, -3, -6, -10, -15]))]
 )
 def test_cumsum(x, expected):
-    calc = Executor().cumsum(x)
+    exec = Executor_MPI()
+    first, last = np.array(split_across_cores(len(x), exec.P, exec.rank))
+    local_x = x[first:(last+1)]
+    calc = exec.cumsum(local_x)
     assert all(calc == expected)
 
 
@@ -74,5 +81,10 @@ def test_cumsum(x, expected):
         [0, 2, 1, 0, 2]), [ExampleParticleClass(x) for x in ["b", "b", "c", "e", "e"]])]
 )
 def test_redistribute(particles, ncopies, expected):
-    new_particles = Executor().redistribute(particles, ncopies)
+    exec = Executor_MPI()
+    first, last = np.array(split_across_cores(len(particles), exec.P, exec.rank))
+    local_particles = particles[first:(last+1)]
+    local_ncopies = ncopies[first:(last+1)]
+    local_new_particles = exec.redistribute(local_particles, local_ncopies)
+    new_particles = exec.gather(local_new_particles, )
     assert new_particles == expected
