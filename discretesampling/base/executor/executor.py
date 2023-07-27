@@ -6,7 +6,7 @@ from scipy.special import logsumexp
 class Executor(object):
     def __init__(self):
         self.P = 1
-        self.rank = 1
+        self.rank = 0
 
     def max(self, x):
         return np.max(x)
