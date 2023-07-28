@@ -18,8 +18,7 @@ class Tree(types.DiscreteVariable):
     def __eq__(self, x) -> bool:
         return (x.X_train == self.X_train).all() and\
             (x.y_train == self.y_train).all() and\
-            x.tree == self.tree and x.leafs == self.leafs \
-            and x.lastAction == self.lastAction
+            x.tree == self.tree and x.leafs == self.leafs
 
     def __str__(self):
         return str(self.tree)
