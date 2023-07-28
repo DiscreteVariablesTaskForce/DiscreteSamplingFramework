@@ -35,7 +35,7 @@ class DiscreteVariable:
     def decode(self, x, particle):
         pickle_stopcode = 0x2e
         end_of_pickle_data = np.argwhere(x == pickle_stopcode)[-1][0] + 1
-        encoded = x[0:end_of_pickle_data]
+        encoded = np.array(x[0:end_of_pickle_data], dtype=np.uint8)
         decoded = loads(bytes(encoded))
         return decoded
 
