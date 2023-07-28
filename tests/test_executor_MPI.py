@@ -19,6 +19,7 @@ def split_across_cores(N, P, rank):
     return first, last
 
 
+@pytest.mark.mpi
 @pytest.mark.parametrize(
     "x,expected",
     [(np.array([1, 2, 3, 4, 5]), 5),
@@ -33,6 +34,7 @@ def test_executor_max(x, expected):
     assert expected == max_x
 
 
+@pytest.mark.mpi
 @pytest.mark.parametrize(
     "x,expected",
     [(np.array([1, 2, 3, 4, 5]), 15),
@@ -47,6 +49,7 @@ def test_executor_sum(x, expected):
     assert expected == sum_x
 
 
+@pytest.mark.mpi
 @pytest.mark.parametrize(
     "x",  # Only functions for equal numbers per core
     [(np.array([1, 2, 3, 4, 5, 6])),
@@ -62,6 +65,7 @@ def test_executor_gather(x):
     assert all(x == all_x)
 
 
+@pytest.mark.mpi
 @pytest.mark.parametrize(
     "x,expected",
     [(np.array([np.log(1.0)]), 0.0),  # single weight
@@ -77,6 +81,7 @@ def test_logsumexp(x, expected):
     np.testing.assert_almost_equal(calc, expected)  # use almost_equal for numerical inaccuracy
 
 
+@pytest.mark.mpi
 @pytest.mark.parametrize(
     "x,expected",
     [(np.array([1, 2, 3, 4, 5]), np.array([1, 3, 6, 10, 15])),
@@ -91,6 +96,7 @@ def test_cumsum(x, expected):
     assert all(calc == local_expected)
 
 
+@pytest.mark.mpi
 @pytest.mark.parametrize(
     "particles,ncopies,expected",  # Only functions for equal numbers per core
     [([ExampleParticleClass(x) for x in ["a", "b", "c", "d", "e", "f"]], np.array(
