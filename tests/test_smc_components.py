@@ -1,11 +1,18 @@
 import pytest
 import numpy as np
-
 from discretesampling.base.random import RNG
 from discretesampling.base.executor.executor import Executor
+from discretesampling.base.executor.executor_MPI import Executor_MPI
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
-from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
+from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling, check_stability
+
+
+def split_across_cores(N, P, rank):
+    local_n = int(np.ceil(N/P))
+    first = rank*local_n
+    last = np.min([first+local_n-1, N-1])
+    return first, last
 
 
 @pytest.mark.parametrize(
@@ -46,4 +53,36 @@ def test_systematic_resampling(particles, logw, expected):
     assert values_equal
     np.testing.assert_almost_equal(new_logw, expected_logw)
 
-# TODO: check_stability, get_number_of_copies
+
+@pytest.mark.parametrize(
+    "ncopies,expected",
+    [(np.array([0, 2, 1, 0, 2, 1]), np.array([0, 2, 1, 0, 2, 1])),
+     (np.array([0, 2, 2, 0, 2, 1]), np.array([0, 2, 2, 0, 2, 0])),
+     (np.array([0, 2, 1, 0, 1, 1]), np.array([0, 2, 1, 0, 1, 2]))]
+)
+def test_check_stability(ncopies, expected):
+    exec = Executor()
+    first, last = np.array(split_across_cores(len(ncopies), exec.P, exec.rank))
+    local_ncopies = ncopies[first:(last+1)]
+    local_check_ncopies = check_stability(local_ncopies, exec)
+    local_expected = expected[first:(last+1)]
+    assert all(local_check_ncopies == local_expected)
+
+
+@pytest.mark.mpi
+@pytest.mark.parametrize(
+    "ncopies,expected",
+    [(np.array([0, 2, 1, 0, 2, 1]), np.array([0, 2, 1, 0, 2, 1])),
+     (np.array([0, 2, 2, 0, 2, 1]), np.array([0, 2, 2, 0, 2, 0])),
+     (np.array([0, 2, 1, 0, 1, 1]), np.array([0, 2, 1, 0, 1, 2]))]
+)
+def test_check_stability_MPI(ncopies, expected):
+    exec = Executor_MPI()
+    first, last = np.array(split_across_cores(len(ncopies), exec.P, exec.rank))
+    local_ncopies = ncopies[first:(last+1)]
+    local_check_ncopies = check_stability(local_ncopies, exec)
+    local_expected = expected[first:(last+1)]
+    assert all(local_check_ncopies == local_expected)
+
+# TODO:
+# get_number_of_copies
