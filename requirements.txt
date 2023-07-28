@@ -7,3 +7,5 @@ mpi4py
 flake8
 pytest
 pytest-mpi
+pytest-cov
+coverage
