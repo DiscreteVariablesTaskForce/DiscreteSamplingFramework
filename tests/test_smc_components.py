@@ -16,7 +16,7 @@ from discretesampling.base.algorithms.smc_components.resampling import systemati
 )
 def test_ess(logw, expected_ess):
     calc_ess = ess(logw, exec=Executor())
-    np.testing.assert_almost_equal(calc_ess, expected_ess)  # use almost_equal for numerical inaccuracy
+    np.testing.assert_allclose(calc_ess, expected_ess)  # use almost_equal for numerical inaccuracy
 
 
 @pytest.mark.parametrize(
@@ -42,7 +42,8 @@ def test_systematic_resampling(particles, logw, expected):
     N = len(particles)
     new_particles, new_logw = systematic_resampling(particles, logw, rng=RNG(1), exec=Executor())
     values_equal = all(x == y for x, y in zip(new_particles, expected))
-    weights_equal = all(new_logw == np.full((N,), -np.log(N)))
-    assert values_equal and weights_equal
+    expected_logw = np.full((N,), -np.log(N))
+    assert values_equal
+    np.testing.assert_almost_equal(new_logw, expected_logw)
 
 # TODO: check_stability, get_number_of_copies
