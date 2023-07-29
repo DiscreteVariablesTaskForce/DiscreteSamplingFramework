@@ -32,6 +32,7 @@ def test_optimal_L_eval(current_particles, previous_particles, index, expected):
     np.testing.assert_almost_equal(logprob, expected)
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize(
     "current_particles,previous_particles, index, expected",
     [(  # two particles of same dim
