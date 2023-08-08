@@ -70,13 +70,19 @@ class continuous_proposal():
                 forward_logprob = mvn.logpdf(theta_new) + mvn.logpdf(mu_new) + mvn.logpdf(sigma_new)
             else:
                 # initial proposal
-                theta_new = rng.randomMvNormal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
+                theta_new = []
+                theta_logprob = 0.0
+                if n_new_components > 1:
+                  theta_new = rng.randomMvNormal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
+                  mvn_theta = multivariate_normal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
+                  theta_logprob = mvn_theta.logpdf(theta_new)
+
                 mu_new = rng.randomMvNormal(np.zeros(n_new_components), np.identity(n_new_components))
                 sigma_new = rng.randomMvNormal(np.zeros(n_new_components), np.identity(n_new_components))
 
                 mvn = multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
-                mvn_theta = multivariate_normal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
-                forward_logprob = mvn_theta.logpdf(theta_new) + mvn.logpdf(mu_new) + mvn.logpdf(sigma_new)
+                
+                forward_logprob = theta_logprob + mvn.logpdf(mu_new) + mvn.logpdf(sigma_new)
             self.forward_logprob = forward_logprob
 
             params_temp = np.concatenate((np.array(theta), theta_new, np.array(mu), mu_new, np.array(sigma), sigma_new))
@@ -147,7 +153,7 @@ rjmcmc = DiscreteVariableRJMCMC(
     spec.SpectrumDimensionTarget(3, 2),
     model,
     data_function,
-    continuous_proposal(),
+    continuous_proposal,
     "random_walk",
     False,
     False,
@@ -157,7 +163,7 @@ rjmcmc = DiscreteVariableRJMCMC(
 )
 
 n_chains = 4
-samples = [rjmcmc.sample(100) for c in range(n_chains)]
+samples = [rjmcmc.sample(10) for c in range(n_chains)]
 
 dims = [[x[0].value for x in chain] for chain in samples]
 

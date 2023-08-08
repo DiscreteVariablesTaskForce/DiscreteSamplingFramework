@@ -9,7 +9,7 @@ from discretesampling.base.algorithms.continuous_samplers import rw, nuts
 class DiscreteVariableRJMCMC():
 
     def __init__(self, variableType, discrete_target,
-                 stan_model, data_function, continuous_proposal, continuous_update="NUTS", accept_reject=False,
+                 stan_model, data_function, continuous_proposal_type, continuous_update="NUTS", accept_reject=False,
                  always_update=False, do_warmup=True, update_probability=0.5, initialProposal=None, warmup_iters=100):
 
         self.variableType = variableType
@@ -20,7 +20,7 @@ class DiscreteVariableRJMCMC():
         self.data_function = data_function
 
         self.data_function = data_function
-        self.continuous_proposal = continuous_proposal
+        self.continuous_proposal_type = continuous_proposal_type
         self.continuous_update = continuous_update
         self.stan_model = stan_model
         self.accept_reject = accept_reject
@@ -74,6 +74,7 @@ class DiscreteVariableRJMCMC():
 
     def sample(self, N):
         current_discrete = self.initialProposal.sample()
+        self.continuous_proposal = self.continuous_proposal_type()
         if hasattr(current_discrete.value, "__len__"):
             empty_discrete = self.variableType(np.zeros(current_discrete.value.shape()))
         else:
