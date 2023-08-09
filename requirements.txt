@@ -1,9 +1,13 @@
 sympy
 numpy
 scipy
-flake8
 scikit-learn
 pandas
-pytest
 cmdstanpy
 bridgestan
+mpi4py
+flake8
+pytest
+pytest-mpi
+pytest-cov
+coverage

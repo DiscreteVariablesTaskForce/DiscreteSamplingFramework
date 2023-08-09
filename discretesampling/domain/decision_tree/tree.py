@@ -1,22 +1,24 @@
-from ...base.random import RNG
-from ...base import types
 import copy
-from .tree_distribution import TreeProposal
-from .tree_target import TreeTarget
+import numpy as np
+from discretesampling.base.random import RNG
+from discretesampling.base import types
+from discretesampling.domain.decision_tree.util import encode_move, decode_move, extract_tree, extract_leafs
+from discretesampling.domain.decision_tree.tree_distribution import TreeProposal
+from discretesampling.domain.decision_tree.tree_target import TreeTarget
 
 
 class Tree(types.DiscreteVariable):
-    def __init__(self, X_train, y_train, tree, leafs):
+    def __init__(self, X_train, y_train, tree, leafs, lastAction=""):
         self.X_train = X_train
         self.y_train = y_train
         self.tree = tree
         self.leafs = leafs
-        self.lastAction = ""
+        self.lastAction = lastAction
 
     def __eq__(self, x) -> bool:
         return (x.X_train == self.X_train).all() and\
-                (x.y_train == self.y_train).all() and\
-                x.tree == self.tree and x.leafs == self.leafs
+            (x.y_train == self.y_train).all() and\
+            x.tree == self.tree and x.leafs == self.leafs
 
     def __str__(self):
         return str(self.tree)
@@ -39,6 +41,71 @@ class Tree(types.DiscreteVariable):
     def getTargetType(self):
         return TreeTarget
 
+    @classmethod
+    def encode(cls, x):
+        tree = np.array(x.tree).flatten()
+        leafs = np.array(x.leafs).flatten()
+        last_action = encode_move(x.lastAction)
+        tree_dim = len(tree)
+        leaf_dim = len(leafs)
+
+        x_new = np.hstack(
+            (np.array([tree_dim, leaf_dim, last_action]), tree, leafs)
+        )
+
+        return x_new
+
+    @classmethod
+    def decode(cls, x, particle):
+        tree_dim = x[0].astype(int)
+        leaf_dim = x[1].astype(int)
+        last_action = decode_move(x[2].astype(int))
+
+        return Tree(
+            particle.X_train,
+            particle.y_train,
+            extract_tree(x[3:(3+tree_dim)]),
+            extract_leafs(x[(3+tree_dim):(3+tree_dim+leaf_dim)]),
+            last_action
+        )
+
+    def depth_of_leaf(self, leaf):
+        depth = 0
+        for node in self.tree:
+            if node[1] == leaf or node[2] == leaf:
+                depth = node[5]+1
+
+        return depth
+
+    def grow_leaf(self, index, rng=RNG()):
+        action = "grow"
+        self.lastAction = action
+        '''
+        grow tree by just simply creating the individual nodes. each node
+        holds their node index, the left and right leaf index, the node
+        feature and threshold
+        '''
+        random_index = index
+        leaf_to_grow = self.leafs[random_index]
+
+        # generating a random feature
+        feature = rng.randomInt(0, len(self.X_train[0])-1)
+        # generating a random threshold
+        threshold = rng.randomInt(0, len(self.X_train)-1)
+        threshold = (self.X_train[threshold, feature])
+        depth = self.depth_of_leaf(leaf_to_grow)
+        node = [leaf_to_grow, max(self.leafs)+1, max(self.leafs)+2, feature,
+                threshold, depth]
+
+        # add the new leafs on the leafs array
+        self.leafs.append(max(self.leafs)+1)
+        self.leafs.append(max(self.leafs)+1)
+        # delete from leafs the new node
+        self.leafs.remove(leaf_to_grow)
+        self.tree.append(node)
+
+        return self
+
     def grow(self, rng=RNG()):
         action = "grow"
         self.lastAction = action
@@ -50,14 +117,14 @@ class Tree(types.DiscreteVariable):
         random_index = rng.randomInt(0, len(self.leafs)-1)
         leaf_to_grow = self.leafs[random_index]
 
-        # generating a random faeture
+        # generating a random feature
         feature = rng.randomInt(0, len(self.X_train[0])-1)
         # generating a random threshold
         threshold = rng.randomInt(0, len(self.X_train)-1)
         threshold = (self.X_train[threshold, feature])
-
+        depth = self.depth_of_leaf(leaf_to_grow)
         node = [leaf_to_grow, max(self.leafs)+1, max(self.leafs)+2, feature,
-                threshold]
+                threshold, depth]
 
         # add the new leafs on the leafs array
         self.leafs.append(max(self.leafs)+1)

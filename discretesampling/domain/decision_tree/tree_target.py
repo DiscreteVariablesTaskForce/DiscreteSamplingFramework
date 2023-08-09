@@ -30,28 +30,40 @@ class TreeTarget(types.DiscreteVariableTarget):
             (1/number of features) * (1/(upper bound-lower bound))
         '''
         for node in x.tree:
-            logprobabilities.append(
-                -math.log(len(x.X_train[0]))
-                - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
-            )
+            logprobabilities.append(-math.log(len(x.X_train[0]))
+                                    - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
+                                    )
 
             # probabilities.append(math.log( 1/len(X_train[0]) *
             # 1/len(X_train[:]) ))
 
+            # -math.log(len(x.X_train[0]))
+            # - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
+
         logprobability = np.sum(logprobabilities)
         return (logprobability)
 
-    def evaluatePrior(self, x):
-        i = len(x.tree) - 1
-        depth = 0
-        while i >= 0:
-            node = x.tree[i]
-            next_node = x.tree[i-1]
-            if node[0] == next_node[1]:
-                depth += 1
-            if node[0] == next_node[2]:
-                depth += 1
-            i -= 1
-        depth = depth + 1
-        logprior = math.log(self.a) - self.b*math.log(1+depth)
-        return (logprior)
+    def evaluatePrior(self, x):  # poisson
+        # print(len(x.tree))
+        lam = self.a
+        k = len(x.leafs)
+        logprior = math.log(math.pow(lam, k) / ((math.exp(lam)-1) * math.factorial(k)))
+
+        # print(math.exp(logprior))
+        return logprior
+
+    # def evaluatePrior(self, x):#chipman prior
+    #     def p_node(a, b, d):
+    #         return math.log(a / math.pow(1 + d, b))
+
+    #     def p_leaf(a, b, d):
+    #         return math.log(1 - math.exp(p_node(a, b, d)))
+
+    #     logprior = 0
+    #     for node in x.tree:
+    #         logprior += p_node(self.a, self.b, node[5])
+
+    #     for leaf in x.leafs:
+    #         d = x.depth_of_leaf(leaf)
+    #         logprior += p_leaf(self.a, self.b, d)
+    #     return logprior
