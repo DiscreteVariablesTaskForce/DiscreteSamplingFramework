@@ -5,10 +5,9 @@ Created on Fri Aug 11 09:24:14 2023
 @author: efthi
 """
 
-import math
-import numpy as np
 from discretesampling.domain.decision_tree.tree_target import TreeTarget
 from discretesampling.domain.decision_tree.regression_metrics import regression_likelihood
+
 
 class RegressionTreeTarget(TreeTarget):
     def eval(self, x):
@@ -19,5 +18,3 @@ class RegressionTreeTarget(TreeTarget):
         # p(T)
         target3 = self.evaluatePrior(x)
         return (target1+target2+target3)
-        
-        
