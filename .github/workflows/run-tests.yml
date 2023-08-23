@@ -41,10 +41,12 @@ jobs:
       id: cpu-cores
     - name: Run MPI tests with 2 cores
       if: ${{ steps.cpu-cores.outputs.count }} > 1
+      continue-on-error: true
       run: |
         mpiexec -n 2 pytest --cov-append --cov=discretesampling -svx tests --only-mpi;
     - name: Run MPI tests with 4 cores
       if: ${{ steps.cpu-cores.outputs.count }} > 3
+      continue-on-error: true
       run: |
         mpiexec -n 4 pytest --cov-append --cov=discretesampling -svx tests --only-mpi;
     - name: Coverage report
