@@ -22,9 +22,9 @@ def split_across_cores(N, P, rank):
 @pytest.mark.mpi
 @pytest.mark.parametrize(
     "x,expected",
-    [(np.array([1, 2, 3, 4, 5]), 5),
-     (np.array([1, 1, 1, 1, 1]), 1),
-     (np.array([0.0, 0.0, 1.23]), 1.23)]
+    [(np.array([1, 2, 3, 4, 5, 6, 7, 8]), 8),
+     (np.array([1, 1, 1, 1, 1, 1, 1, 1]), 1),
+     (np.array([0.0, 0.0, 1.23, 0.0, 0.0, 0.0, 0.0]), 1.23)]
 )
 def test_executor_max(x, expected):
     exec = Executor_MPI()
@@ -37,9 +37,9 @@ def test_executor_max(x, expected):
 @pytest.mark.mpi
 @pytest.mark.parametrize(
     "x,expected",
-    [(np.array([1, 2, 3, 4, 5]), 15),
-     (np.array([1, 1, 1, 1, 1]), 5),
-     (np.array([0.0, 0.0, 1.23]), 1.23)]
+    [(np.array([1, 2, 3, 4, 5, 6, 7, 8]), 36.0),
+     (np.array([1, 1, 1, 1, 1, 1, 1, 1]), 8),
+     (np.array([0.0, 0.0, 1.23, 0.0, 0.0, 0.0, 0.0, 0.0]), 1.23)]
 )
 def test_executor_sum(x, expected):
     exec = Executor_MPI()
@@ -52,9 +52,9 @@ def test_executor_sum(x, expected):
 @pytest.mark.mpi
 @pytest.mark.parametrize(
     "x",  # Only functions for equal numbers per core
-    [(np.array([1, 2, 3, 4, 5, 6])),
-     (np.array([1, 1, 1, 1, 1, 1])),
-     (np.array([0.0, 0.0, 1.23, 4.56]))]
+    [(np.array([1, 2, 3, 4, 5, 6, 7, 8])),
+     (np.array([1, 1, 1, 1, 1, 1, 1, 1])),
+     (np.array([0.0, 0.0, 1.23, 4.56, 7.89, 0.0, 1.23, 0.0]))]
 )
 def test_executor_gather(x):
     all_x_shape = x.shape
@@ -68,10 +68,9 @@ def test_executor_gather(x):
 @pytest.mark.mpi
 @pytest.mark.parametrize(
     "x,expected",
-    [(np.array([np.log(1.0)]), 0.0),  # single weight
-     (np.array([np.log(0.5), np.log(0.5)]), 0.0),  # two even weights, 0.5,0.5
-     (np.array([np.log(1.0), -np.inf]), 0.0),  # two weights, 1,0
-     (np.array([np.log(1e5), np.log(1e-5), -np.inf]), 11.512925465070229)]
+    [(np.array([-np.log(8)]*8), 0.0),  # eight even weights
+     (np.array([np.log(1.0), -np.inf, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf]), 0.0),  # 8 weights, 1,0,...,0
+     (np.array([np.log(1e5), np.log(1e-5), -np.inf, np.log(1e10), 0.0, np.log(1e-2), -np.inf, 0.0]), 23.025860930091458)]
 )
 def test_logsumexp(x, expected):
     exec = Executor_MPI()
@@ -84,8 +83,8 @@ def test_logsumexp(x, expected):
 @pytest.mark.mpi
 @pytest.mark.parametrize(
     "x,expected",
-    [(np.array([1, 2, 3, 4, 5]), np.array([1, 3, 6, 10, 15])),
-     (np.array([-1, -2, -3, -4, -5]), np.array([-1, -3, -6, -10, -15]))]
+    [(np.array([1, 2, 3, 4, 5, 6, 7, 8]), np.array([1, 3, 6, 10, 15, 21, 28, 36])),
+     (np.array([-1, -2, -3, -4, -5, -6, -7, -8]), np.array([-1, -3, -6, -10, -15, -21, -28, -36]))]
 )
 def test_cumsum(x, expected):
     exec = Executor_MPI()
@@ -99,8 +98,8 @@ def test_cumsum(x, expected):
 @pytest.mark.mpi
 @pytest.mark.parametrize(
     "particles,ncopies,expected",  # Only functions for equal numbers per core
-    [([ExampleParticleClass(x) for x in ["a", "b", "c", "d", "e", "f"]], np.array(
-        [0, 2, 1, 0, 2, 1]), [ExampleParticleClass(x) for x in ["b", "b", "c", "e", "e", "f"]])]
+    [([ExampleParticleClass(x) for x in ["a", "b", "c", "d", "e", "f", "g", "h"]], np.array(
+        [0, 2, 1, 0, 2, 1, 0, 2]), [ExampleParticleClass(x) for x in ["b", "b", "c", "e", "e", "f", "h", "h"]])]
 )
 def test_redistribute(particles, ncopies, expected):
     exec = Executor_MPI()

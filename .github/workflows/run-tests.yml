@@ -12,6 +12,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
     - uses: webfactory/ssh-agent@v0.8.0
       with:
@@ -34,18 +35,18 @@ jobs:
         pip install -e .
     - name: Run tests
       run: |
-        pytest --cov=discretesampling -sv tests/
+        pytest --cov=discretesampling -svx tests/
     - name: Get number of CPU cores
       uses: SimenB/github-actions-cpu-cores@v1
       id: cpu-cores
     - name: Run MPI tests with 2 cores
       if: ${{ steps.cpu-cores.outputs.count }} > 1
       run: |
-        mpiexec -n 2 pytest --cov-append --cov=discretesampling -sv tests --only-mpi;
+        mpiexec -n 2 pytest --cov-append --cov=discretesampling -svx tests --only-mpi;
     - name: Run MPI tests with 4 cores
       if: ${{ steps.cpu-cores.outputs.count }} > 3
       run: |
-        mpiexec -n 4 pytest --cov-append --cov=discretesampling -sv tests --only-mpi;
+        mpiexec -n 4 pytest --cov-append --cov=discretesampling -svx tests --only-mpi;
     - name: Coverage report
       run: |
         coverage report;
