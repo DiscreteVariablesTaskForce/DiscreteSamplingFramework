@@ -26,7 +26,7 @@ def check_stability(ncopies, exec=Executor()):
 def get_number_of_copies(logw, rng=RNG(), exec=Executor()):
     N = len(logw) * exec.P
 
-    cdf = exec.cumsum(np.exp(logw)*N)
+    cdf = calculate_cdf(logw, exec)
     cdf_of_i_minus_one = cdf - np.reshape(np.exp(logw) * N, newshape=cdf.shape)
 
     u = np.array(rng.uniform(0.0, 1.0), dtype=logw.dtype)
@@ -35,6 +35,11 @@ def get_number_of_copies(logw, rng=RNG(), exec=Executor()):
     ncopies = check_stability(ncopies, exec)
 
     return ncopies  # .astype(int)
+
+
+def calculate_cdf(logw, exec=Executor()):
+    N = len(logw) * exec.P
+    return exec.cumsum(np.exp(logw)*N)
 
 
 def systematic_resampling(particles, logw, rng, exec=Executor()):
