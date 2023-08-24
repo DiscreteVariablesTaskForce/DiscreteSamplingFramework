@@ -95,6 +95,22 @@ def test_cumsum(x, expected):
     assert all(calc == local_expected)
 
 
+@pytest.mark.parametrize(
+    "x",
+    [(np.array([1., 2., 3., 4., 5., 6., 7., 8.])),
+     (np.array([-1., -2., -3., -4., -5, -6., -7., -8.]))]
+)
+def test_logcumsumexp(x):
+    exec = Executor_MPI()
+    expected = np.logaddexp.accumulate(x)
+    first, last = np.array(split_across_cores(len(x), exec.P, exec.rank))
+    local_x = x[first:(last+1)]
+
+    calc = exec.logcumsumexp(local_x)
+    local_expected = expected[first:(last+1)]
+    np.testing.assert_array_equal(calc, local_expected)
+
+
 @pytest.mark.mpi
 @pytest.mark.parametrize(
     "particles,ncopies,expected",  # Only functions for equal numbers per core

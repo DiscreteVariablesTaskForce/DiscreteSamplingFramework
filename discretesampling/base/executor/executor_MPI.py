@@ -59,5 +59,8 @@ class Executor_MPI(Executor):
     def cumsum(self, x):
         return inclusive_prefix_sum(x)
 
+    def logcumsumexp(self, x):
+        return np.log(self.cumsum(np.exp(x)))
+
     def redistribute(self, particles, ncopies):
         return variable_size_redistribution(particles, ncopies, self)
