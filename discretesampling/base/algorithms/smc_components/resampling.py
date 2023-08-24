@@ -39,7 +39,7 @@ def get_number_of_copies(logw, rng=RNG(), exec=Executor()):
 
 def calculate_cdf(logw, exec=Executor()):
     N = len(logw) * exec.P
-    return exec.cumsum(np.exp(logw)*N)
+    return np.exp(exec.logcumsumexp(logw)) * N
 
 
 def systematic_resampling(particles, logw, rng, exec=Executor()):
