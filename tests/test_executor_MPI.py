@@ -77,7 +77,7 @@ def test_logsumexp(x, expected):
     first, last = np.array(split_across_cores(len(x), exec.P, exec.rank))
     local_x = x[first:(last+1)]
     calc = exec.logsumexp(local_x)
-    np.testing.assert_almost_equal(calc, expected)  # use almost_equal for numerical inaccuracy
+    np.testing.assert_almost_equal(calc, expected, 12)  # use almost_equal for numerical inaccuracy
 
 
 @pytest.mark.mpi
@@ -99,7 +99,8 @@ def test_cumsum(x, expected):
 @pytest.mark.parametrize(
     "x",
     [(np.array([1., 2., 3., 4., 5., 6., 7., 8.])),
-     (np.array([-1., -2., -3., -4., -5, -6., -7., -8.]))]
+     (np.array([-1., -2., -3., -4., -5, -6., -7., -8.])),
+     (np.array(range(1, 1025)) * 1.0)]
 )
 def test_logcumsumexp(x):
     exec = Executor_MPI()
@@ -109,7 +110,7 @@ def test_logcumsumexp(x):
 
     calc = exec.logcumsumexp(local_x)
     local_expected = expected[first:(last+1)]
-    np.testing.assert_array_equal(calc, local_expected)
+    np.testing.assert_array_almost_equal(calc, local_expected, 12)
 
 
 @pytest.mark.mpi

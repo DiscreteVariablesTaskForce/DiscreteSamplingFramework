@@ -3,7 +3,8 @@ import numpy as np
 from scipy.special import logsumexp
 from discretesampling.base.executor.executor import Executor
 from discretesampling.base.executor.MPI.distributed_fixed_size_redistribution.prefix_sum import (
-    inclusive_prefix_sum
+    inclusive_prefix_sum,
+    inclusive_prefix_logsumexp
 )
 from discretesampling.base.executor.MPI.variable_size_redistribution import (
     variable_size_redistribution
@@ -60,7 +61,7 @@ class Executor_MPI(Executor):
         return inclusive_prefix_sum(x)
 
     def logcumsumexp(self, x):
-        return np.log(self.cumsum(np.exp(x)))
+        return inclusive_prefix_logsumexp(x)
 
     def redistribute(self, particles, ncopies):
         return variable_size_redistribution(particles, ncopies, self)
