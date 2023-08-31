@@ -32,18 +32,18 @@ try:
     mcmcLabels = [dt.RegressionStats(x, X_test).regression_predict(X_test) for x in treeSamples]
     mcmcAccuracy = [dt.accuracy_mse(y_test, x) for x in mcmcLabels]
 
-    print("MCMC mean accuracy: ", np.mean(mcmcAccuracy[250:499]))
+    print("MCMC mean MSE: ", np.mean(mcmcAccuracy[250:499]))
 except ZeroDivisionError:
     print("MCMC sampling failed due to division by zero")
 
 
 dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 try:
-    treeSMCSamples = dtSMC.sample(100, 10)
+    treeSMCSamples = dtSMC.sample(1024, 10)
 
     smcLabels = [dt.RegressionStats(x, X_test).regression_predict(X_test) for x in treeSMCSamples]
     smcAccuracy = [dt.accuracy_mse(y_test, x) for x in smcLabels]
 
-    print("SMC mean accuracy: ", np.mean(smcAccuracy))
+    print("SMC mean MSE: ", np.mean(smcAccuracy))
 except ZeroDivisionError:
     print("SMC sampling failed due to division by zero")

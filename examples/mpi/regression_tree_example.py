@@ -16,7 +16,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random
 
 a = 0.01
 b = 5
-target = dt.TreeTarget(a, b)
+target = dt.RegressionTreeTarget(a, b)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
 N = 1 << 10
@@ -28,22 +28,19 @@ dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal, False, exec=exec)
 try:
     MPI.COMM_WORLD.Barrier()
     start = MPI.Wtime()
-
     if MPI.COMM_WORLD.Get_rank() == 0:
         print("seed = ", seed)
     treeSMCSamples = dtSMC.sample(T, N, seed)
-
     MPI.COMM_WORLD.Barrier()
     end = MPI.Wtime()
-
     if MPI.COMM_WORLD.Get_size() > 1:
         treeSMCSamples = gather_all(treeSMCSamples, exec)
 
-    smcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSMCSamples]
-    smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
+    smcLabels = [dt.RegressionStats(x, X_test).regression_predict(X_test) for x in treeSMCSamples]
+    smcAccuracy = [dt.accuracy_mse(y_test, x) for x in smcLabels]
 
     if MPI.COMM_WORLD.Get_rank() == 0:
-        print("SMC mean accuracy: ", np.mean(smcAccuracy))
+        print("SMC mean MSE accuracy: ", np.mean(smcAccuracy))
         print("SMC run-time: ", end-start)
 except ZeroDivisionError:
     print("SMC sampling failed due to division by zero")
