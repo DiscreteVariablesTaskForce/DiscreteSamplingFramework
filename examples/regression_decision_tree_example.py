@@ -13,10 +13,26 @@ from sklearn.model_selection import train_test_split
 
 import numpy as np
 
-data = datasets.load_wine()
+# data = datasets.load_wine()
 
-X = data.data
-y = data.target
+# X = data.data
+# y = data.target
+
+
+
+import pandas as pd
+df = pd.read_csv(r"C:\Users\efthi\OneDrive\Desktop\PhD\regression_datasets\Walmart.csv")
+#df = df.sample(n=1000)
+df=df.drop(["Date"], axis = 1)
+df = df.dropna()
+# df.day=df.day.astype('category').cat.codes
+# df.month=df.month.astype('category').cat.codes
+
+
+y = df.Unemployment
+X = df.drop(['Unemployment'], axis=1)
+X = X.to_numpy()
+y = y.to_numpy()
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=5)
 
@@ -27,23 +43,23 @@ initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
 dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
 try:
-    treeSamples = dtMCMC.sample(500)
+    treeSamples = dtMCMC.sample(100)
 
-    mcmcLabels = [dt.RegressionStats(x, X_test).regression_predict(X_test) for x in treeSamples]
-    mcmcAccuracy = [dt.accuracy_mse(y_test, x) for x in mcmcLabels]
+    mcmcLabels = dt.RegressionStats(treeSamples, X_test).predict(X_test, use_majority=True)
+    mcmcAccuracy = [dt.accuracy_mse(y_test, mcmcLabels) ]
 
-    print("MCMC mean MSE: ", np.mean(mcmcAccuracy[250:499]))
+    print("MCMC mean MSE: ", (mcmcAccuracy))
 except ZeroDivisionError:
     print("MCMC sampling failed due to division by zero")
 
 
-dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
-try:
-    treeSMCSamples = dtSMC.sample(1024, 10)
+# dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
+# try:
+#     treeSMCSamples = dtSMC.sample(1024, 10)
 
-    smcLabels = [dt.RegressionStats(x, X_test).regression_predict(X_test) for x in treeSMCSamples]
-    smcAccuracy = [dt.accuracy_mse(y_test, x) for x in smcLabels]
+#     smcLabels = [dt.RegressionStats(x, X_test).regression_predict(X_test) for x in treeSMCSamples]
+#     smcAccuracy = [dt.accuracy_mse(y_test, x) for x in smcLabels]
 
-    print("SMC mean MSE: ", np.mean(smcAccuracy))
-except ZeroDivisionError:
-    print("SMC sampling failed due to division by zero")
+#     print("SMC mean MSE: ", np.mean(smcAccuracy))
+# except ZeroDivisionError:
+#     print("SMC sampling failed due to division by zero")

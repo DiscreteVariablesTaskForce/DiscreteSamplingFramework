@@ -12,11 +12,19 @@ from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
 import numpy as np
+import pandas as pd
 
-data = datasets.load_wine()
+df = pd.read_csv(r"C:\Users\efthi\OneDrive\Desktop\PhD\datasets_smc_mcmc_CART\abalone.csv")
 
-X = data.data
-y = data.target
+y = df.Target
+X = df.drop(['Target'], axis=1)
+X = X.to_numpy()
+y = y.to_numpy()
+
+# data = datasets.load_wine()
+
+# X = data.data
+# y = data.target
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=5)
 
@@ -25,25 +33,27 @@ b = 5
 target = dt.TreeTarget(a, b)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
-dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
-try:
-    treeSamples = dtMCMC.sample(500)
+# dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
+# try:
+#     treeSamples = dtMCMC.sample(500)
 
-    mcmcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSamples]
-    mcmcAccuracy = [dt.accuracy(y_test, x) for x in mcmcLabels]
+#     mcmcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSamples]
+#     mcmcAccuracy = [dt.accuracy(y_test, x) for x in mcmcLabels]
 
-    print("MCMC mean accuracy: ", np.mean(mcmcAccuracy[250:499]))
-except ZeroDivisionError:
-    print("MCMC sampling failed due to division by zero")
+#     print("MCMC mean accuracy: ", np.mean(mcmcAccuracy[250:499]))
+# except ZeroDivisionError:
+#     print("MCMC sampling failed due to division by zero")
 
 
 dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 try:
-    treeSMCSamples = dtSMC.sample(10, 1000)
+    treeSMCSamples = dtSMC.sample(25, 100)
 
-    smcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSMCSamples]
-    smcAccuracy = [dt.accuracy(y_test, x) for x in smcLabels]
-
+    smcLabels = dt.stats(treeSMCSamples, X_test).predict(X_test, use_majority=True)
+    smcAccuracy = [dt.accuracy(y_test, smcLabels)]
+    #majority_voting_acc = [dt.accuracy(y_test, majority_voting_labels)]
     print("SMC mean accuracy: ", np.mean(smcAccuracy))
+    #print("SMC majority accuracy: ", (majority_voting_acc))
+    
 except ZeroDivisionError:
     print("SMC sampling failed due to division by zero")
