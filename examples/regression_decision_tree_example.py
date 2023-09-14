@@ -53,13 +53,13 @@ except ZeroDivisionError:
     print("MCMC sampling failed due to division by zero")
 
 
-# dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
-# try:
-#     treeSMCSamples = dtSMC.sample(1024, 10)
+dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
+try:
+    treeSMCSamples = dtSMC.sample(10, 10)
 
-#     smcLabels = [dt.RegressionStats(x, X_test).regression_predict(X_test) for x in treeSMCSamples]
-#     smcAccuracy = [dt.accuracy_mse(y_test, x) for x in smcLabels]
+    smcLabels = dt.RegressionStats(treeSMCSamples, X_test).predict(X_test, use_majority=True)
+    smcAccuracy = [dt.accuracy_mse(y_test, smcLabels)]
 
-#     print("SMC mean MSE: ", np.mean(smcAccuracy))
-# except ZeroDivisionError:
-#     print("SMC sampling failed due to division by zero")
+    print("SMC mean MSE: ", (smcAccuracy))
+except ZeroDivisionError:
+    print("SMC sampling failed due to division by zero")

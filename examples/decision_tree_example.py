@@ -14,17 +14,17 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 import pandas as pd
 
-df = pd.read_csv(r"C:\Users\efthi\OneDrive\Desktop\PhD\datasets_smc_mcmc_CART\abalone.csv")
+# df = pd.read_csv(r"C:\Users\efthi\OneDrive\Desktop\PhD\datasets_smc_mcmc_CART\abalone.csv")
 
-y = df.Target
-X = df.drop(['Target'], axis=1)
-X = X.to_numpy()
-y = y.to_numpy()
+# y = df.Target
+# X = df.drop(['Target'], axis=1)
+# X = X.to_numpy()
+# y = y.to_numpy()
 
-# data = datasets.load_wine()
+data = datasets.load_wine()
 
-# X = data.data
-# y = data.target
+X = data.data
+y = data.target
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=5)
 
@@ -33,21 +33,20 @@ b = 5
 target = dt.TreeTarget(a, b)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
-# dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
-# try:
-#     treeSamples = dtMCMC.sample(500)
+dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
+try:
+    treeSamples = dtMCMC.sample(500)
 
-#     mcmcLabels = [dt.stats(x, X_test).predict(X_test) for x in treeSamples]
-#     mcmcAccuracy = [dt.accuracy(y_test, x) for x in mcmcLabels]
-
-#     print("MCMC mean accuracy: ", np.mean(mcmcAccuracy[250:499]))
-# except ZeroDivisionError:
-#     print("MCMC sampling failed due to division by zero")
+    mcmcLabels = dt.stats(treeSamples, X_test).predict(X_test, use_majority=True)
+    mcmcAccuracy = [dt.accuracy(y_test, mcmcLabels)]
+    print("MCMC mean accuracy: ", (mcmcAccuracy))
+except ZeroDivisionError:
+    print("MCMC sampling failed due to division by zero")
 
 
 dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 try:
-    treeSMCSamples = dtSMC.sample(25, 100)
+    treeSMCSamples = dtSMC.sample(10, 1000)
 
     smcLabels = dt.stats(treeSMCSamples, X_test).predict(X_test, use_majority=True)
     smcAccuracy = [dt.accuracy(y_test, smcLabels)]
