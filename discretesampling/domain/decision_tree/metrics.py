@@ -1,75 +1,114 @@
 import math
 import numpy as np
 import collections
+import pandas as pd
 
 
 class stats():
-    def __init__(self, tree, X_test):
-        self.X_train = tree.X_train
-        self.y_train = tree.y_train
-        self.tree = tree
+    def __init__(self, trees, X_test):
+        self.trees = trees
 
-    def predict(self, X_test):
-        leaf_possibilities = getLeafPossibilities(self.tree)
-        leafs = sorted(self.tree.leafs)
+    def getLeafPossibilities(self, x):
+        target1, leafs_possibilities_for_prediction = calculate_leaf_occurences(x)
+        return leafs_possibilities_for_prediction
+    
+    def majority_voting_predict(self, smcLabels): #this function should be moved to a more appropriate place
         labels = []
+        predictions = pd.DataFrame(smcLabels)
+        for column in predictions:
+            labels.append(predictions[column].mode())
+        labels =  pd.DataFrame(labels)
+        labels = labels.values.tolist()
+        labels1 = []
+        if len(labels[0])>1:
+            for label in labels:
+                labels1.append(label[0])
+            # acc = dt.accuracy(y_test, labels1)
+            labels = labels1
+        # else:        
+            # acc = dt.accuracy(y_test, labels)
+        
+        return labels
+
+    def predict(self, X_test, use_majority):
+        all_labels_from_all_trees = []
+        for tree in self.trees:
+            all_labels_from_this_trees = self.predict_for_one_tree(tree, X_test)
+            all_labels_from_all_trees.append(all_labels_from_this_trees)
+
+        if use_majority:
+            return self.majority_voting_predict(all_labels_from_all_trees)
+        else:
+            return all_labels_from_all_trees
+
+    def predict_for_one_tree(self, tree, X_test):
+        all_labels_for_this_tree = []
+        leaf_possibilities = self.getLeafPossibilities(tree)
+        leafs = sorted(tree.leafs)
         for datum in X_test:
-            # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-            flag = "false"
-            current_node = self.tree.tree[0]
-            label_max = -1
-            # make sure that we are not in leafs. current_node[0] is the node
-            while current_node[0] not in leafs and flag == "false":
-                if datum[current_node[3]] > current_node[4]:
-                    for node in self.tree.tree:
-                        if node[0] == current_node[2]:
-                            current_node = node
-                            break
-                        if current_node[2] in leafs:
-                            leaf = current_node[2]
-                            flag = "true"
-                            indice = leafs.index(leaf)
-                            for x, y in leaf_possibilities[indice].items():
-                                if y == label_max:
-                                    actual_label = 1
+            label_for_this_datum = self.predict_for_one_datum(tree, leafs, leaf_possibilities, datum)
+            all_labels_for_this_tree.append(label_for_this_datum)
+        return all_labels_for_this_tree
 
-                                if y > label_max:
-                                    label_max = y
-                                    actual_label = x
+    def predict_for_one_datum(self, tree, leafs, leaf_possibilities ,datum):
+        
+        labels = []
+        flag = "false"
+        current_node = tree.tree[0]
+        label_max = -1
+        # make sure that we are not in leafs. current_node[0] is the node
+        while current_node[0] not in leafs and flag == "false":
+            if datum[current_node[3]] > current_node[4]:
+                for node in tree.tree:
+                    if node[0] == current_node[2]:
+                        current_node = node
+                        break
+                    if current_node[2] in leafs:
+                        leaf = current_node[2]
+                        flag = "true"
+                        indice = leafs.index(leaf)
+                        for x, y in leaf_possibilities[indice].items():
+                            if y == label_max:
+                                actual_label = 1
 
-                            labels.append(actual_label)
-                            break
+                            if y > label_max:
+                                label_max = y
+                                actual_label = x
 
-                else:
-                    for node in self.tree.tree:
-                        if node[0] == current_node[1]:
-                            current_node = node
-                            break
-                        if current_node[1] in leafs:
-                            leaf = current_node[1]
-                            flag = "true"
-                            indice = leafs.index(leaf)
-                            for x, y in leaf_possibilities[indice].items():
-                                if y == label_max:
-                                    actual_label = 1
+                        labels.append(actual_label)
+                        break
 
-                                if y > label_max:
-                                    label_max = y
-                                    actual_label = x
+            else:
+                for node in tree.tree:
+                    if node[0] == current_node[1]:
+                        current_node = node
+                        break
+                    if current_node[1] in leafs:
+                        leaf = current_node[1]
+                        flag = "true"
+                        indice = leafs.index(leaf)
+                        for x, y in leaf_possibilities[indice].items():
+                            if y == label_max:
+                                actual_label = 1
 
-                            labels.append(actual_label)
-                            break
+                            if y > label_max:
+                                label_max = y
+                                actual_label = x
 
-            if current_node in leafs:
-                indice = current_node.index(current_node)
-                # find in the dictionary which is the highest probable label
-                for x, y in leaf_possibilities[indice].items():
-                    if y == label_max:
-                        actual_label = 1
+                        labels.append(actual_label)
+                        break
 
-                    if y > label_max:
-                        label_max = y
-                        actual_label = x
+        if current_node in leafs:
+            indice = current_node.index(current_node)
+            # find in the dictionary which is the highest probable label
+            for x, y in leaf_possibilities[indice].items():
+                if y == label_max:
+                    actual_label = 1
+
+                if y > label_max:
+                    label_max = y
+                    actual_label = x
+
         return (labels)
 
 
@@ -90,9 +129,9 @@ def accuracy(y_test, labels):
         return acc
 
 
-def getLeafPossibilities(x):
-    target1, leafs_possibilities_for_prediction = calculate_leaf_occurences(x)
-    return leafs_possibilities_for_prediction
+
+
+
 
 
 # Π(Y_i|T,theta,x_i)

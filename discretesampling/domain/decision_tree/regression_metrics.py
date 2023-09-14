@@ -9,42 +9,44 @@ from discretesampling.domain.decision_tree.metrics import stats
 
 
 class RegressionStats(stats):
-    def regression_predict(self, X_test):
-        leaf_possibilities = getLeafPossibilities(self.tree)
-        leafs = sorted(self.tree.leafs)
-        labels = []
-        for datum in X_test:
-            # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-            flag = "false"
-            current_node = self.tree.tree[0]
-            # label_max = -1
-            # make sure that we are not in leafs. current_node[0] is the node
-            while current_node[0] not in leafs and flag == "false":
-                if datum[current_node[3]] > current_node[4]:
-                    for node in self.tree.tree:
-                        if node[0] == current_node[2]:
-                            current_node = node
-                            break
-                        if current_node[2] in leafs:
-                            leaf = current_node[2]
-                            flag = "true"
-                            indice = leafs.index(leaf)
-                            # print(leaf_possibilities[indice])
-                            labels.append(leaf_possibilities[indice])
-                            break
+    def getLeafPossibilities(self, x):
+        target1, leafs_possibilities_for_prediction = regression_likelihood(x)
+        return leafs_possibilities_for_prediction
 
-                else:
-                    for node in self.tree.tree:
-                        if node[0] == current_node[1]:
-                            current_node = node
-                            break
-                        if current_node[1] in leafs:
-                            leaf = current_node[1]
-                            flag = "true"
-                            indice = leafs.index(leaf)
-                            # print(leaf_possibilities[indice])
-                            labels.append(leaf_possibilities[indice])
-                            break
+    def majority_voting_predict(self, labels):
+        return np.mean(labels, axis=0)
+
+    def predict_for_one_datum(self, tree, leafs, leaf_possibilities, datum):
+        labels = []
+        # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+        flag = "false"
+        current_node = tree.tree[0]
+        while current_node[0] not in leafs and flag == "false":
+            if datum[current_node[3]] > current_node[4]:
+                for node in tree.tree:
+                    if node[0] == current_node[2]:
+                        current_node = node
+                        break
+                    if current_node[2] in leafs:
+                        leaf = current_node[2]
+                        flag = "true"
+                        indice = leafs.index(leaf)
+                        # print(leaf_possibilities[indice])
+                        labels.append(leaf_possibilities[indice])
+                        break
+
+            else:
+                for node in tree.tree:
+                    if node[0] == current_node[1]:
+                        current_node = node
+                        break
+                    if current_node[1] in leafs:
+                        leaf = current_node[1]
+                        flag = "true"
+                        indice = leafs.index(leaf)
+                        # print(leaf_possibilities[indice])
+                        labels.append(leaf_possibilities[indice])
+                        break
         return (labels)
 
 
@@ -56,12 +58,6 @@ def accuracy_mse(y_test, labels):
         squared_error.append((y_test[i]-labels[i])**2)
     # print(np.sum(squared_error)/len(y_test))
     return (np.sum(squared_error)/len(y_test))
-
-
-def getLeafPossibilities(x):
-    target1, leafs_possibilities_for_prediction = regression_likelihood(x)
-    return leafs_possibilities_for_prediction
-
 
 # Π(Y_i|T,theta,x_i)
 def regression_likelihood(x):
