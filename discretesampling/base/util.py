@@ -1,17 +1,24 @@
 import numpy as np
+from discretesampling.base.types import DiscreteVariable
+from discretesampling.base.executor import Executor
 
 
-def pad(x, exec):
+def pad(x: list[DiscreteVariable], exec: Executor = Executor()) -> np.ndarray:
+    """Encode a list of particles to a :class numpy.ndarray: and pad to size
+    of the largest particle.
+
+    Parameters
+    ----------
+    x : list[DiscreteVariable]
+        List of particles to encode.
+    exec : Executor, optional
+        Executor engine, by default Executor()
+
+    Returns
+    -------
+    np.ndarray
+        Numpy array containing encoded and padded particles.
     """
-    Description
-    -----------
-    This function computes the size of the biggest particle, and extend the other particles with NaNs until all
-    particles have the same size
-
-    :param x: particles organized as a list of objects
-    :return x_new: particle organized as an encoded and padded numpy 2D array
-    """
-
     encoded_particles = [x[0].encode(particle) for particle in x]
     dims = np.array([len(y) for y in encoded_particles])
     encoded_type = encoded_particles[0].dtype
@@ -21,22 +28,41 @@ def pad(x, exec):
     return padded
 
 
-def restore(x, particles):
-    """
-    Description
-    -----------
-    This function unpacks padded particles and decodes them
+def restore(x: np.ndarray, particles: list[DiscreteVariable]) -> list[DiscreteVariable]:
+    """Unpack and decode an array of encoded particles.
 
-    :param x: encoded, padded particles
-    :return decoded_x
+    Parameters
+    ----------
+    x : np.ndarray
+        Numpy array of encoded particles.
+    particles : list[DiscreteVariable]
+        List of particles of type which `x` should be decoded to.
+
+    Returns
+    -------
+    list[DiscreteVariable]
+        List of decoded particles.
     """
-    # remove padding
     decoded_x = [particles[0].decode(encoded_particle, particles[0]) for encoded_particle in x]
 
     return decoded_x
 
 
-def gather_all(particles, exec):
+def gather_all(particles: list[DiscreteVariable], exec: Executor = Executor()):
+    """Gather particles from all nodes of an executor engine.
+
+    Parameters
+    ----------
+    particles : list[DiscreteVariable]
+        _description_
+    exec : Executor, optional
+        _description_, by default Executor()
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     loc_n = len(particles)
     N = loc_n * exec.P
 

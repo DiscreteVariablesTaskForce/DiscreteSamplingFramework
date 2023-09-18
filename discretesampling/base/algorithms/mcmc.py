@@ -1,17 +1,51 @@
 import math
 import copy
-from ...base.random import RNG
+from discretesampling.base.random import RNG
+from discretesampling.base.types import DiscreteVariable, DiscreteVariableInitialProposal, DiscreteVariableTarget
 
 
 class DiscreteVariableMCMC():
+    """Implementation of MCMC sampler for discrete variables.
+    """
 
-    def __init__(self, variableType, target, initialProposal):
+    def __init__(
+        self,
+        variableType: DiscreteVariable,
+        target: DiscreteVariableTarget,
+        initialProposal: DiscreteVariableInitialProposal
+    ):
+        """Constructor method
+
+        Parameters
+        ----------
+        variableType : DiscreteVariable
+            Type of variables
+        target : DiscreteVariableTarget
+            Target (or posterior) distribution to sample from.
+        initialProposal : DiscreteVariableInitialProposal
+            Proposal distribution of initial samples.
+        """
+
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, N, seed=0):
+    def sample(self, N: int, seed: int = 0) -> list[DiscreteVariable]:
+        """Generate samples from the MCMC sampler.
+
+        Parameters
+        ----------
+        N : int
+            Number of iterations to run.
+        seed : int, optional
+            Random seed, by default 0
+
+        Returns
+        -------
+        list[DiscreteVariable]
+            Generated MCMC samples.
+        """
         rng = RNG(seed)
         initialSample = self.initialProposal.sample(rng)
         current = initialSample

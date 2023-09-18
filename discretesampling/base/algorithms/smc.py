@@ -13,6 +13,21 @@ class DiscreteVariableSMC():
     def __init__(self, variableType, target, initialProposal,
                  use_optimal_L=False,
                  exec=Executor()):
+        """_summary_
+
+        Parameters
+        ----------
+        variableType : _type_
+            _description_
+        target : _type_
+            _description_
+        initialProposal : _type_
+            _description_
+        use_optimal_L : bool, optional
+            _description_, by default False
+        exec : _type_, optional
+            _description_, by default Executor()
+        """        """"""
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
         self.use_optimal_L = use_optimal_L
@@ -28,7 +43,23 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, Tsmc, N, seed=0):
+    def sample(self, Tsmc: int, N: int, seed: int = 0):
+        """Generate samples from the SMC sampler.
+
+        Parameters
+        ----------
+        Tsmc : int
+            Number of iterations to run SMC sampler for.
+        N : int
+            Number of particles
+        seed : int, optional
+            Random seed, by default 0
+
+        Returns
+        -------
+        : list[DiscreteVariable]
+            List of generated samples of type specified in constructor.
+        """        """"""
         loc_n = int(N/self.exec.P)
         rank = self.exec.rank
         mvrs_rng = RNG(seed)
