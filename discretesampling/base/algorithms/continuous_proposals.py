@@ -1,11 +1,11 @@
 import copy
 import numpy as np
 from scipy.special import logsumexp
-from ...base.random import Random
+from ...base.random import RNG
 from ...base.util import u2c, c2u_array
 
 
-def sample_offsets(grid_size, min_vals, max_vals):
+def sample_offsets(grid_size, min_vals, max_vals, rng=RNG()):
     # input:
     # grid_size          - number of points across which to sample each new parameter
     # min_vals           - list of minimum values of each constrained parameter in order that they appear in
@@ -17,7 +17,7 @@ def sample_offsets(grid_size, min_vals, max_vals):
     offsets = []
     for n in range(0, num_params):
         step = (max_vals[n] - min_vals[n]) / (grid_size + 1)
-        offsets.append(step * Random().eval())  # random offset so that any point in the parameter space can be sampled
+        offsets.append(step * rng.random())  # random offset so that any point in the parameter space can be sampled
 
     return offsets
 
