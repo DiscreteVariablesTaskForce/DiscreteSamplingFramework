@@ -1,7 +1,7 @@
 import copy
 import json
 import numpy as np
-from discretesampling.base.random import RandomInt
+from discretesampling.base.random import RNG
 import discretesampling.domain.spectrum as spec
 from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 from discretesampling.base.algorithms.continuous_proposals import sample_offsets, forward_grid_search, reverse_grid_search
@@ -14,6 +14,8 @@ stationary_data = []
 
 
 # What data should be passed to the stan model given discrete variable x?
+
+
 def data_function(x):
     dim = x.value
     data = [["M", dim]]
@@ -41,7 +43,7 @@ class continuous_proposal():
         self.forward_logprob = None
         self.to_remove = None  # don't think there's any way to work out the reverse proposal without this?
 
-    def sample(self, x, params, y, rng):
+    def sample(self, x, params, y, rng=RNG()):
 
         dim_x = x.value
         dim_y = y.value
@@ -64,13 +66,13 @@ class continuous_proposal():
         if (dim_y > dim_x):
             # Birth move
             # Add new components
-            offsets = sample_offsets(self.grid_size, self.min_vals, self.max_vals)
+            offsets = sample_offsets(self.grid_size, self.min_vals, self.max_vals, rng)
             [params_temp, forward_logprob] = forward_grid_search(data_function, model, self.grid_size, self.min_vals,
                                                                  self.max_vals, offsets, self.inds, params, y)
 
         elif (dim_x > dim_y):
             # randomly choose one to remove
-            to_remove = RandomInt(0, dim_x-1).eval()
+            to_remove = rng.randomInt(0, dim_x-1)
             if dim_y > 0:
                 theta = np.delete(theta, to_remove)
             else:
@@ -117,7 +119,7 @@ rjmcmc = DiscreteVariableRJMCMC(
     spec.SpectrumDimensionTarget(3, 2),
     model,
     data_function,
-    continuous_proposal(),
+    continuous_proposal,
     "NUTS",
     False,
     False,

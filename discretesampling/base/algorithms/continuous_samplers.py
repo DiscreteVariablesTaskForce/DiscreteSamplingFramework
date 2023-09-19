@@ -141,7 +141,7 @@ class nuts():
         L = self.stan_model.eval(current_data, current_continuous[0:param_length])[0]
 
         # randomly sample momenta (mass matrix not currently implemented)
-        r0 = self.rng.multivariate_normal(np.zeros([param_length]), np.identity(param_length))
+        r0 = self.rng.randomMvNormal(np.zeros([param_length]), np.identity(param_length))
 
         # calculate energy
         init_energy = -0.5 * np.dot(np.linalg.solve(M, r0), r0)
@@ -172,7 +172,7 @@ class nuts():
                     self.BuildTree(current_data, theta_p, r_p, u, v_j, j, epsilon, treedepth, init_energy, L, M)
             if depth_exceeded == 1:
                 # max tree depth exceeded, restart from beginning
-                r0 = self.rng.multivariate_normal(np.zeros([param_length]), np.identity(param_length))
+                r0 = self.rng.randomMvNormal(np.zeros([param_length]), np.identity(param_length))
                 init_energy = -0.5 * np.dot(np.linalg.solve(M, r0), r0)
                 u = self.rng.uniform(0, np.exp(init_energy))
                 theta_n = copy.deepcopy(current_continuous[0:param_length])
@@ -207,7 +207,7 @@ class nuts():
         param_length = self.stan_model.num_unconstrained_parameters(current_data)
 
         # randomly sample momenta
-        r = self.rng.multivariate_normal(np.zeros([param_length]), np.identity(param_length))
+        r = self.rng.randomMvNormal(np.zeros([param_length]), np.identity(param_length))
 
         [_, _, L1, L] = self.Leapfrog(current_data, current_continuous[0:param_length], r, epsilon)
 
