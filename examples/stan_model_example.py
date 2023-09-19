@@ -1,8 +1,7 @@
 from discretesampling.base.stan_model import stan_model
-from numpy.random import default_rng
 import numpy as np
 from scipy.stats import multivariate_normal
-from discretesampling.base.random import Random
+from discretesampling.base.random import RNG
 import math
 
 mixturemodel = stan_model(
@@ -21,14 +20,14 @@ print("Param_length:", param_length)
 mu = [0 for i in range(param_length)]
 sigma = np.identity(param_length)
 
-rng = default_rng()
-init = rng.multivariate_normal(mu, sigma*10)
+rng = RNG(seed=0)
+init = rng.randomMvNormal(mu, sigma*10)
 samples = [init]
 current = init
 
 # MCMC
 for i in range(niters):
-    proposed = current + rng.multivariate_normal(mu, sigma)
+    proposed = current + rng.randomMvNormal(mu, sigma)
     current_target = mixturemodel.eval(data, current)[0]
     proposed_target = mixturemodel.eval(data, proposed)[0]
     forward_logprob = multivariate_normal.logpdf(proposed, mean=current, cov=sigma)
@@ -37,7 +36,7 @@ for i in range(niters):
     if log_acceptance_ratio > 0:
         log_acceptance_ratio = 0
     acceptance_probability = min(1, math.exp(log_acceptance_ratio))
-    q = Random().eval()
+    q = rng.random()
     if (q < acceptance_probability):
         current = proposed
     samples.append(current)
