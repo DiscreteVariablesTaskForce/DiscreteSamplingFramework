@@ -28,3 +28,6 @@ class RNG():
 
     def randomMvNormal(self, Mu, Sigma):
         return self.nprng.multivariate_normal(Mu, Sigma)
+
+    def randomNormal(self, mu=0, sigma=1):
+        return self.nprng.normal(mu, sigma)
