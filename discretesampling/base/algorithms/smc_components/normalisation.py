@@ -18,9 +18,9 @@ def normalise(logw: Union[list[float], np.ndarray], exec: Executor = Executor())
 
     Notes
     -----
-        We have to be careful with -inf values in the log weights
-        sometimes. This can happen if we are sampling from a pdf with
-        zero probability regions, for example.
+    We have to be careful with -inf values in the log weights
+    sometimes. This can happen if we are sampling from a pdf with
+    zero probability regions, for example.
     """
 
     mask = np.invert(np.isneginf(logw))  # mask to filter out any weight = 0 (or -inf in log-scale)

@@ -1,6 +1,8 @@
+from typing import Type
 import copy
 import numpy as np
 import math
+from discretesampling.base.types import DiscreteVariable, DiscreteVariableTarget, DiscreteVariableInitialProposal
 from discretesampling.base.random import RNG
 from discretesampling.base.executor.executor import Executor
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
@@ -9,25 +11,29 @@ from discretesampling.base.algorithms.smc_components.resampling import systemati
 
 
 class DiscreteVariableSMC():
+    """SMC sampler for discrete variables
 
-    def __init__(self, variableType, target, initialProposal,
-                 use_optimal_L=False,
-                 exec=Executor()):
-        """_summary_
+    Parameters
+    ----------
+    variableType : Type[DiscreteVariable]
+        Variable type to sample
+    target : DiscreteVariableTarget
+        Target (or proposal) distribution to sample from
+    initialProposal : DiscreteVariableInitialProposal
+        Proposal distribution for initial samples
+    use_optimal_L : bool, optional
+        Flag to use approximately optimal L-kernel, by default False
+    exec : Executor, optional
+        Execution engine, by default Executor()
+    """
 
-        Parameters
-        ----------
-        variableType : _type_
-            _description_
-        target : _type_
-            _description_
-        initialProposal : _type_
-            _description_
-        use_optimal_L : bool, optional
-            _description_, by default False
-        exec : _type_, optional
-            _description_, by default Executor()
-        """        """"""
+    def __init__(self,
+                 variableType: Type[DiscreteVariable],
+                 target: DiscreteVariableTarget,
+                 initialProposal: DiscreteVariableInitialProposal,
+                 use_optimal_L: bool = False,
+                 exec: Executor = Executor()
+                 ):
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
         self.use_optimal_L = use_optimal_L
@@ -43,7 +49,7 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, Tsmc: int, N: int, seed: int = 0):
+    def sample(self, Tsmc: int, N: int, seed: int = 0) -> list[DiscreteVariable]:
         """Generate samples from the SMC sampler.
 
         Parameters
@@ -57,9 +63,9 @@ class DiscreteVariableSMC():
 
         Returns
         -------
-        : list[DiscreteVariable]
+        list[DiscreteVariable]
             List of generated samples of type specified in constructor.
-        """        """"""
+        """
         loc_n = int(N/self.exec.P)
         rank = self.exec.rank
         mvrs_rng = RNG(seed)

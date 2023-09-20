@@ -1,3 +1,4 @@
+from typing import Type
 import math
 import copy
 from discretesampling.base.random import RNG
@@ -19,7 +20,7 @@ class DiscreteVariableMCMC():
 
     def __init__(
         self,
-        variableType: DiscreteVariable,
+        variableType: Type[DiscreteVariable],
         target: DiscreteVariableTarget,
         initialProposal: DiscreteVariableInitialProposal
     ):
