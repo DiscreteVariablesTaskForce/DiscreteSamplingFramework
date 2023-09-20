@@ -1,10 +1,32 @@
+from typing import Union
 import numpy as np
+from discretesampling.base.types import DiscreteVariable
 from discretesampling.base.random import RNG
 from discretesampling.base.executor.executor import Executor
 
 
-def check_stability(ncopies, exec=Executor()):
+def check_stability(ncopies: Union[list[int], np.ndarray], exec: Executor = Executor()) -> np.ndarray:
+    """Check stability of ncopies
 
+    Check that ncopies does not induce a change in the number of particles.
+
+    Parameters
+    ----------
+    ncopies : Union[list[int], np.ndarray]
+        Number of copies of particles for resampling
+    exec : Executor, optional
+        Execution engine, by default Executor()
+
+    Returns
+    -------
+    np.ndarray
+        Stabilised ncopies
+
+    Notes
+    -----
+        Numerical inaccuracy in resampling can induce a change in the number of copies of particles.
+        This function enforces that `len(ncopies) == sum(ncopies)`.
+    """
     loc_n = len(ncopies)
     N = loc_n * exec.P
     rank = exec.rank
@@ -23,7 +45,23 @@ def check_stability(ncopies, exec=Executor()):
     return ncopies
 
 
-def get_number_of_copies(logw, rng=RNG(), exec=Executor()):
+def get_number_of_copies(logw: Union[list[float], np.ndarray], rng: RNG = RNG(), exec: Executor = Executor()) -> np.ndarray:
+    """Given logged weights calculate number of copies for resampling
+
+    Parameters
+    ----------
+    logw : Union[list[float], np.ndarray]
+        Logged importance weights
+    rng : RNG, optional
+        RNG for random number generation, by default RNG()
+    exec : Executor, optional
+        Execution engine, by default Executor()
+
+    Returns
+    -------
+    np.ndarray
+        Number of copies
+    """
     N = len(logw) * exec.P
 
     cdf = exec.cumsum(np.exp(logw)*N)
@@ -37,7 +75,29 @@ def get_number_of_copies(logw, rng=RNG(), exec=Executor()):
     return ncopies  # .astype(int)
 
 
-def systematic_resampling(particles, logw, rng, exec=Executor()):
+def systematic_resampling(
+    particles: list[DiscreteVariable],
+    logw: Union[list[float], np.ndarray], rng: RNG = RNG(),
+    exec: Executor = Executor()
+) -> tuple[list[DiscreteVariable], np.ndarray]:
+    """Perform systematic resampling of particles given logged importance weights
+
+    Parameters
+    ----------
+    particles : list[DiscreteVariable]
+        List of particles to be resampled
+    logw : Union[list[float], np.ndarray]
+        Logged importance weights
+    rng : RNG, optional
+        RNG for random number generation, by default RNG()
+    exec : Executor, optional
+        Execution engine, by default Executor()
+
+    Returns
+    -------
+    tuple[list[DiscreteVariable], np.ndarray]
+        Tuple containing resampled particles and corresponding logged importance weights
+    """
     loc_n = len(logw)
     N = loc_n * exec.P
 

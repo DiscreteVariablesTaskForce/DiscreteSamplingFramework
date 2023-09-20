@@ -6,6 +6,15 @@ from discretesampling.base.types import DiscreteVariable, DiscreteVariableInitia
 
 class DiscreteVariableMCMC():
     """Implementation of MCMC sampler for discrete variables.
+
+    Parameters
+    ----------
+    variableType : DiscreteVariable
+        Type of variables
+    target : DiscreteVariableTarget
+        Target (or posterior) distribution to sample from.
+    initialProposal : DiscreteVariableInitialProposal
+        Proposal distribution for initial samples.
     """
 
     def __init__(
@@ -15,15 +24,6 @@ class DiscreteVariableMCMC():
         initialProposal: DiscreteVariableInitialProposal
     ):
         """Constructor method
-
-        Parameters
-        ----------
-        variableType : DiscreteVariable
-            Type of variables
-        target : DiscreteVariableTarget
-            Target (or posterior) distribution to sample from.
-        initialProposal : DiscreteVariableInitialProposal
-            Proposal distribution of initial samples.
         """
 
         self.variableType = variableType

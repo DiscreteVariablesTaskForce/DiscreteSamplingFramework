@@ -1,24 +1,26 @@
+from typing import Union
 import numpy as np
+from discretesampling.base.executor.executor import Executor
 
 
-def normalise(logw, exec):
-    """
-    Description
-    -----------
-    Normalise importance weights. Note that we remove the mean here
-        just to avoid numerical errors in evaluating the exponential.
-        We have to be careful with -inf values in the log weights
-        sometimes. This can happen if we are sampling from a pdf with
-        zero probability regions, for example.
+def normalise(logw: Union[list[float], np.ndarray], exec: Executor = Executor()) -> np.ndarray:
+    """Normalise importance weights
 
     Parameters
     ----------
-    logw : array of logged importance weights
+    logw : Union[list[float], np.ndarray]
+    array of logged importance weights
 
     Returns
     -------
-    - : array of log-normalised importance weights
+    np.ndarray
+        log-normalised importance weights
 
+    Notes
+    -----
+        We have to be careful with -inf values in the log weights
+        sometimes. This can happen if we are sampling from a pdf with
+        zero probability regions, for example.
     """
 
     mask = np.invert(np.isneginf(logw))  # mask to filter out any weight = 0 (or -inf in log-scale)
