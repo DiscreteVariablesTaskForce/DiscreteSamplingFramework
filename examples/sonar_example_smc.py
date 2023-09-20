@@ -2,7 +2,7 @@ from discretesampling.base.algorithms import DiscreteVariableSMC
 import copy
 import json
 import numpy as np
-from discretesampling.base.random import RandomInt
+from discretesampling.base.random import RNG
 import discretesampling.domain.spectrum as spec
 import discretesampling.domain.reversible_jump as rj
 from discretesampling.base.algorithms.continuous_proposals import sample_offsets, grid_search_logprobs, forward_grid_search,\
@@ -26,7 +26,7 @@ def data_function(x):
 
 # What params should be evaluated if we've made a discrete move from x to y
 # where params is the params vector for the model defined by x
-class continuous_proposal():
+class continuous_proposal:
     def __init__(self):
         # grid search parameters
         self.grid_size = 100
@@ -34,10 +34,20 @@ class continuous_proposal():
         self.max_vals = [np.pi]
         self.inds = [0]
 
-    def sample(self, x, params, y, rng):
+    def sample(self, x, params, y, rng=RNG()):
 
-        dim_x = x.value
-        dim_y = y.value
+        dim_x = 0
+        dim_y = 0
+        if hasattr(x, 'value'):
+            dim_x = x.value
+        else:
+            dim_x = len(x)
+
+        if y is not None:
+            if hasattr(y, 'value'):
+                dim_y = y.value
+            else:
+                dim_y = len(y)
 
         params_temp = copy.deepcopy(params)
 
@@ -50,13 +60,13 @@ class continuous_proposal():
         else:
             theta = np.array([])
             # initialise delta2
-            delta2 = rng.normal(0, 1)
+            delta2 = rng.randomNormal(0, 1)
             params = np.asarray([delta2])
 
         if (dim_y > dim_x):
             # Birth move
             # Add new components
-            offsets = sample_offsets(self.grid_size, self.min_vals, self.max_vals)
+            offsets = sample_offsets(self.grid_size, self.min_vals, self.max_vals, rng)
             [params_temp, forward_logprob] = forward_grid_search(data_function, model, self.grid_size, self.min_vals,
                                                                  self.max_vals, offsets, self.inds, params[0:(dim_x + 1)], y)
             if len(params) > dim_x+1:
@@ -75,7 +85,7 @@ class continuous_proposal():
 
         elif (dim_x > dim_y):
             # randomly choose one to remove
-            to_remove = RandomInt(0, dim_x-1).eval()
+            to_remove = rng.randomInt(0, dim_x-1)
             if dim_y > 0:
                 theta = np.delete(theta, to_remove)
             else:
@@ -185,7 +195,14 @@ class continuous_proposal():
 model = stan_model(stan_model_path)
 
 # set variables used in the proposal
-rj.set_proposal_attributes(spec.SpectrumDimensionTarget(3, 2), model, data_function, continuous_proposal(), "random_walk", 0.5)
+rj.set_proposal_attributes(
+    spec.SpectrumDimensionTarget(3, 2),
+    model,
+    data_function,
+    continuous_proposal,
+    "random_walk",
+    0.5
+)
 
 # define target
 target = rj.ReversibleJumpTarget()
