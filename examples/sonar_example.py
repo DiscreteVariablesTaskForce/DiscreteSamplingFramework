@@ -5,7 +5,7 @@ from discretesampling.base.random import RNG
 import discretesampling.domain.spectrum as spec
 from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 from discretesampling.base.algorithms.continuous_proposals import sample_offsets, forward_grid_search, reverse_grid_search
-from discretesampling.base.stan_model import stan_model
+from discretesampling.base.stan_model import StanModel
 
 stan_model_path = "examples/stanmodels/linear_array.stan"
 data_path = "examples/5_targets_noisy.data.json"
@@ -112,7 +112,7 @@ class continuous_proposal():
 
 
 # initialise stan model
-model = stan_model(stan_model_path)
+model = StanModel(stan_model_path)
 
 rjmcmc = DiscreteVariableRJMCMC(
     spec.SpectrumDimension,

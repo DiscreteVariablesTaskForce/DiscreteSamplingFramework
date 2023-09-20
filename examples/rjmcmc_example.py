@@ -7,7 +7,7 @@ import discretesampling.domain.spectrum as spec
 from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 
 from scipy.stats import multivariate_normal
-from discretesampling.base.stan_model import stan_model
+from discretesampling.base.stan_model import StanModel
 
 stan_model_path = "examples/stanmodels/mixturemodel.stan"
 
@@ -73,15 +73,15 @@ class continuous_proposal():
                 theta_new = []
                 theta_logprob = 0.0
                 if n_new_components > 1:
-                  theta_new = rng.randomMvNormal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
-                  mvn_theta = multivariate_normal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
-                  theta_logprob = mvn_theta.logpdf(theta_new)
+                    theta_new = rng.randomMvNormal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
+                    mvn_theta = multivariate_normal(np.zeros(n_new_components-1), np.identity(n_new_components-1))
+                    theta_logprob = mvn_theta.logpdf(theta_new)
 
                 mu_new = rng.randomMvNormal(np.zeros(n_new_components), np.identity(n_new_components))
                 sigma_new = rng.randomMvNormal(np.zeros(n_new_components), np.identity(n_new_components))
 
                 mvn = multivariate_normal(np.zeros(n_new_components), np.identity(n_new_components))
-                
+
                 forward_logprob = theta_logprob + mvn.logpdf(mu_new) + mvn.logpdf(sigma_new)
             self.forward_logprob = forward_logprob
 
@@ -146,7 +146,7 @@ class continuous_proposal():
 
 
 # initialise stan model
-model = stan_model(stan_model_path)
+model = StanModel(stan_model_path)
 
 rjmcmc = DiscreteVariableRJMCMC(
     spec.SpectrumDimension,

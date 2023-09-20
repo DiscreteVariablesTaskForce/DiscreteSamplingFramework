@@ -6,7 +6,7 @@ from cmdstanpy import write_stan_json
 import numpy as np
 
 
-class stan_model(object):
+class StanModel:
     def __init__(self, model_file):
         self.model_file = os.path.abspath(model_file)
         self.model_filename = os.path.basename(self.model_file)
