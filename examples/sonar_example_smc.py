@@ -3,8 +3,8 @@ import copy
 import json
 import numpy as np
 from discretesampling.base.random import RNG
+import discretesampling.base.reversible_jump as rj
 import discretesampling.domain.spectrum as spec
-import discretesampling.domain.reversible_jump as rj
 from discretesampling.base.algorithms.continuous_proposals import sample_offsets, grid_search_logprobs, forward_grid_search,\
     reverse_grid_search
 from discretesampling.base.stan_model import stan_model
