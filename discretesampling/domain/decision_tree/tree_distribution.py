@@ -1,12 +1,23 @@
 import numpy as np
 from math import log, inf
 import copy
-from ...base.random import RNG
-from ...base import types
+from discretesampling.base.random import RNG
+from discretesampling.base import types
+from discretesampling.domain.decision_tree.tree import Tree
 
 
 class TreeProposal(types.DiscreteVariableProposal):
-    def __init__(self, tree, rng=RNG()):
+    """Proposal distribution for decision trees
+
+        Parameters
+        ----------
+        tree : Tree
+            Starting point of proposal
+        rng : RNG, optional
+            Instance of RNG for random number generation, by default RNG()
+        """
+
+    def __init__(self, tree: Tree, rng: RNG = RNG()):
         self.X_train = tree.X_train
         self.y_train = tree.y_train
         self.tree = copy.copy(tree)
@@ -15,16 +26,65 @@ class TreeProposal(types.DiscreteVariableProposal):
         self.rng = rng
 
     @classmethod
-    def norm(self, tree):
+    def norm(self, tree: Tree) -> int:
+        """Calculate norm metric for a :class:`Tree`
+
+        Parameters
+        ----------
+        tree : Tree
+            Tree for which to calculate the norm metric
+
+        Returns
+        -------
+        int
+            Norm metric for given tree
+
+        Notes
+        -----
+
+        For instances of the Tree class, the norm metric is the length of the tree structure.
+        """
         return len(tree.tree)
 
     @classmethod
     # Should return true if proposal is possible between x and y
     # (and possibly at other times)
-    def heuristic(self, x, y):
+    def heuristic(self, x: int, y: int) -> bool:
+        """Calculate heuristic between the norms of two instances of :class:`Tree`
+
+        Parameters
+        ----------
+        x : int
+            Norm value of first tree (calculated by `norm`)
+        y : int
+            Norm value of second tree (calculated bt `norm`)
+
+        Returns
+        -------
+        bool
+            Heuristic value indicating whether a proposal starting at the first tree could have potentially generated the second
+            tree.
+
+        Notes
+        -----
+        Should return true if proposal is possible between x and y (and possibly at other times), but will only return false if
+        the proposal between x and y is definitely impossible.
+        """
         return y < x or abs(x-y) < 2
 
-    def sample(self, num_nodes=10):
+    def sample(self, num_nodes: int = 10) -> Tree:
+        """Generate a sample from the proposal distribution.
+
+        Parameters
+        ----------
+        num_nodes : int, optional
+            Limit on the size of the generated tree, by default 10
+
+        Returns
+        -------
+        Tree
+            Sampled Tree
+        """
         # initialise the probabilities of each move
         moves = ["prune", "swap", "change", "grow"]  # noqa
         moves_prob = self.moves_prob
@@ -53,7 +113,7 @@ class TreeProposal(types.DiscreteVariableProposal):
 
         return newTree
 
-    def eval(self, sampledTree):
+    def eval(self, sampledTree: Tree) -> float:
         initialTree = self.tree
         moves_prob = self.moves_prob
         logprobability = -inf

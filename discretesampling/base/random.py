@@ -2,7 +2,7 @@ import numpy as np
 
 
 class RNG():
-    """Wrapper class around :class:numpy.random.default_rng:
+    """Wrapper class around :class:`numpy.random.default_rng`:
     """
 
     def __init__(self, seed: int = 0):
@@ -85,7 +85,7 @@ class RNG():
         population: list,
         weights: list[float] | None = None,
         k: int = 1
-    ):
+    ) -> np.array:
         """Sample with replacement from list.
 
         Parameters
@@ -99,7 +99,7 @@ class RNG():
 
         Returns
         -------
-        Any:
-            List of sampled values.
+        :class:`numpy.ndarray`:
+            Array of sampled values.
         """
         return self.nprng.choice(population, size=k, replace=True, p=weights)

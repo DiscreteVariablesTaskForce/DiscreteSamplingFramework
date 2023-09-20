@@ -31,6 +31,24 @@ class stats():
         return labels
 
     def predict(self, X_test, use_majority=True):
+        """Predict class labels of predictors
+
+        Predict class labels of inputted predictors from set of decision trees
+
+        Parameters
+        ----------
+        X_test : :class:`numpy.ndarray`
+            Array of predictors, instance per row, feature per column.
+
+        use_majority : bool, optional
+            If True, for each datum, return the majority-vote of all trees, else
+            return all votes for all trees, by default True
+
+        Returns
+        -------
+        list
+            List of predicted labels for predictors.
+        """
         all_labels_from_all_trees = []
         for tree in self.trees:
             all_labels_from_this_trees = self.predict_for_one_tree(tree, X_test)
@@ -102,6 +120,20 @@ class stats():
 
 
 def accuracy(y_test, labels):
+    """Calculate accuracy of predicted labels
+
+    Parameters
+    ----------
+    y_test : list
+        List of true labels
+    labels : list
+        List of predicted labels
+
+    Returns
+    -------
+    float
+        accuracy (as percentage) of predicted labels
+    """
     correct_classification = 0
     for i in range(len(y_test)):
         if labels[i] == y_test[i]:
