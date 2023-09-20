@@ -8,10 +8,10 @@ from discretesampling.domain.decision_tree.tree_target import TreeTarget
 
 
 class Tree(types.DiscreteVariable):
-    """_summary_
+    """Decision tree
 
     Parameters
-        ----------
+    ----------
         X_train : _type_
             _description_
         y_train : _type_
@@ -25,7 +25,7 @@ class Tree(types.DiscreteVariable):
     """
 
     def __init__(self, X_train, y_train, tree, leafs, lastAction=""):
-        """Constructor
+        """Constructor method
         """
         self.X_train = X_train
         self.y_train = y_train
@@ -33,7 +33,7 @@ class Tree(types.DiscreteVariable):
         self.leafs = leafs
         self.lastAction = lastAction
 
-    def __eq__(self, x) -> bool:
+    def __eq__(self, x: 'Tree') -> bool:
         return (x.X_train == self.X_train).all() and\
             (x.y_train == self.y_train).all() and\
             x.tree == self.tree and x.leafs == self.leafs

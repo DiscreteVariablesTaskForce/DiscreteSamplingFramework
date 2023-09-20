@@ -1,7 +1,11 @@
+from typing import TYPE_CHECKING
 import math
 import numpy as np
 from ...base import types
 from .metrics import calculate_leaf_occurences
+
+if TYPE_CHECKING:
+    from discretesampling.domain.decision_tree import Tree
 
 
 class TreeTarget(types.DiscreteVariableTarget):
@@ -19,16 +23,30 @@ class TreeTarget(types.DiscreteVariableTarget):
         return (target1+target2+target3)
 
     # (theta|T)
-    def features_and_threshold_probabilities(self, x):
+    def features_and_threshold_probabilities(self, x: 'Tree'):
+        """Calculate the probability of selecting the given set of features and
+        thresholds in the Tree `x` from the training data.
+
+        Parameters
+        ----------
+        x : Tree
+            Tree to evaluate
+
+        Returns
+        -------
+        float
+            log-probability of selecting the given features and thresholds
+
+        Notes
+        -----
+        The likelihood of choosing the specific feature and threshold must
+        be computed. We need to find out the probabilty of selecting the
+        specific feature multiplied by 1/the margins. It should be
+        (1/number of features) * (1/(upper bound-lower bound))
+        """
         # this need to change
         logprobabilities = []
 
-        '''
-            the likelihood of choosing the specific feature and threshold must
-            be computed. We need to find out the probabilty of selecting the
-            specific feature multiplied by 1/the margins. it should be
-            (1/number of features) * (1/(upper bound-lower bound))
-        '''
         for node in x.tree:
             logprobabilities.append(-math.log(len(x.X_train[0]))
                                     - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))

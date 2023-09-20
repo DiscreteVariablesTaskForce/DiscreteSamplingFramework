@@ -1,9 +1,13 @@
+from typing import TYPE_CHECKING
 import numpy as np
 from math import log, inf
 import copy
 from discretesampling.base.random import RNG
 from discretesampling.base import types
-from discretesampling.domain.decision_tree.tree import Tree
+
+
+if TYPE_CHECKING:
+    from discretesampling.domain.decision_tree import Tree
 
 
 class TreeProposal(types.DiscreteVariableProposal):
@@ -15,9 +19,9 @@ class TreeProposal(types.DiscreteVariableProposal):
             Starting point of proposal
         rng : RNG, optional
             Instance of RNG for random number generation, by default RNG()
-        """
+    """
 
-    def __init__(self, tree: Tree, rng: RNG = RNG()):
+    def __init__(self, tree: 'Tree', rng: RNG = RNG()):
         self.X_train = tree.X_train
         self.y_train = tree.y_train
         self.tree = copy.copy(tree)
@@ -26,7 +30,7 @@ class TreeProposal(types.DiscreteVariableProposal):
         self.rng = rng
 
     @classmethod
-    def norm(self, tree: Tree) -> int:
+    def norm(self, tree: 'Tree') -> int:
         """Calculate norm metric for a :class:`Tree`
 
         Parameters
@@ -62,8 +66,8 @@ class TreeProposal(types.DiscreteVariableProposal):
         Returns
         -------
         bool
-            Heuristic value indicating whether a proposal starting at the first tree could have potentially generated the second
-            tree.
+            Heuristic value indicating whether a proposal starting at the first
+            tree could have potentially generated the second tree.
 
         Notes
         -----
@@ -72,7 +76,7 @@ class TreeProposal(types.DiscreteVariableProposal):
         """
         return y < x or abs(x-y) < 2
 
-    def sample(self, num_nodes: int = 10) -> Tree:
+    def sample(self, num_nodes: int = 10) -> 'Tree':
         """Generate a sample from the proposal distribution.
 
         Parameters
@@ -113,7 +117,7 @@ class TreeProposal(types.DiscreteVariableProposal):
 
         return newTree
 
-    def eval(self, sampledTree: Tree) -> float:
+    def eval(self, sampledTree: 'Tree') -> float:
         initialTree = self.tree
         moves_prob = self.moves_prob
         logprobability = -inf
