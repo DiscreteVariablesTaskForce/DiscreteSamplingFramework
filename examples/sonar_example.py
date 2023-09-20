@@ -60,7 +60,7 @@ class continuous_proposal():
         else:
             theta = np.array([])
             # initialise delta2
-            delta2 = rng.normal(0, 1)
+            delta2 = rng.randomNormal(0, 1)
             params = np.asarray([delta2])
 
         if (dim_y > dim_x):
