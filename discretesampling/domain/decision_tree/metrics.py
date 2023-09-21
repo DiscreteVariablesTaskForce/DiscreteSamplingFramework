@@ -52,7 +52,7 @@ class stats():
 
     def predict_for_one_datum(self, tree, leafs, leaf_possibilities, datum):
 
-        labels = []
+        label = None
         flag = "false"
         current_node = tree.tree[0]
         label_max = -1
@@ -75,7 +75,7 @@ class stats():
                                 label_max = y
                                 actual_label = x
 
-                        labels.append(actual_label)
+                        label = actual_label
                         break
 
             else:
@@ -95,7 +95,7 @@ class stats():
                                 label_max = y
                                 actual_label = x
 
-                        labels.append(actual_label)
+                        label = actual_label
                         break
 
         if current_node in leafs:
@@ -109,7 +109,7 @@ class stats():
                     label_max = y
                     actual_label = x
 
-        return (labels)
+        return label
 
 
 def accuracy(y_test, labels):

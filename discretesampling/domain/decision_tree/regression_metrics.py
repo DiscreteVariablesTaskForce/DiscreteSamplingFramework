@@ -17,7 +17,7 @@ class RegressionStats(stats):
         return np.mean(labels, axis=0)
 
     def predict_for_one_datum(self, tree, leafs, leaf_possibilities, datum):
-        labels = []
+        label = None
         # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
         flag = "false"
         current_node = tree.tree[0]
@@ -32,7 +32,7 @@ class RegressionStats(stats):
                         flag = "true"
                         indice = leafs.index(leaf)
                         # print(leaf_possibilities[indice])
-                        labels.append(leaf_possibilities[indice])
+                        label = leaf_possibilities[indice]
                         break
 
             else:
@@ -45,9 +45,9 @@ class RegressionStats(stats):
                         flag = "true"
                         indice = leafs.index(leaf)
                         # print(leaf_possibilities[indice])
-                        labels.append(leaf_possibilities[indice])
+                        label = leaf_possibilities[indice]
                         break
-        return (labels)
+        return label
 
 
 def accuracy_mse(y_test, labels):
