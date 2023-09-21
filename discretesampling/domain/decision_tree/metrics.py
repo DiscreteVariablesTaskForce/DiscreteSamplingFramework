@@ -30,7 +30,7 @@ class stats():
 
         return labels
 
-    def predict(self, X_test, use_majority):
+    def predict(self, X_test, use_majority=True):
         all_labels_from_all_trees = []
         for tree in self.trees:
             all_labels_from_this_trees = self.predict_for_one_tree(tree, X_test)
