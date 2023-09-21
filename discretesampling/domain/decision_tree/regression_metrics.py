@@ -59,6 +59,7 @@ def accuracy_mse(y_test, labels):
     # print(np.sum(squared_error)/len(y_test))
     return (np.sum(squared_error)/len(y_test))
 
+
 # Π(Y_i|T,theta,x_i)
 def regression_likelihood(x):
     '''

@@ -11,23 +11,23 @@ class stats():
     def getLeafPossibilities(self, x):
         target1, leafs_possibilities_for_prediction = calculate_leaf_occurences(x)
         return leafs_possibilities_for_prediction
-    
-    def majority_voting_predict(self, smcLabels): #this function should be moved to a more appropriate place
+
+    def majority_voting_predict(self, smcLabels):  # this function should be moved to a more appropriate place
         labels = []
         predictions = pd.DataFrame(smcLabels)
         for column in predictions:
             labels.append(predictions[column].mode())
-        labels =  pd.DataFrame(labels)
+        labels = pd.DataFrame(labels)
         labels = labels.values.tolist()
         labels1 = []
-        if len(labels[0])>1:
+        if len(labels[0]) > 1:
             for label in labels:
                 labels1.append(label[0])
             # acc = dt.accuracy(y_test, labels1)
             labels = labels1
-        # else:        
+        # else:
             # acc = dt.accuracy(y_test, labels)
-        
+
         return labels
 
     def predict(self, X_test, use_majority):
@@ -50,8 +50,8 @@ class stats():
             all_labels_for_this_tree.append(label_for_this_datum)
         return all_labels_for_this_tree
 
-    def predict_for_one_datum(self, tree, leafs, leaf_possibilities ,datum):
-        
+    def predict_for_one_datum(self, tree, leafs, leaf_possibilities, datum):
+
         labels = []
         flag = "false"
         current_node = tree.tree[0]
@@ -127,11 +127,6 @@ def accuracy(y_test, labels):
 
         acc = correct_classification*100/len(y_test)
         return acc
-
-
-
-
-
 
 
 # Π(Y_i|T,theta,x_i)
