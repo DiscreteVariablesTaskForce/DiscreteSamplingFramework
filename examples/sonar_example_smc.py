@@ -3,6 +3,7 @@ import copy
 import json
 import numpy as np
 from discretesampling.base.random import RNG
+from discretesampling.base.algorithms.continuous import RandomWalk
 import discretesampling.base.reversible_jump as rj
 import discretesampling.domain.spectrum as spec
 from discretesampling.base.algorithms.continuous_proposals import sample_offsets, grid_search_logprobs, forward_grid_search,\
@@ -200,7 +201,7 @@ rj.set_proposal_attributes(
     model,
     data_function,
     continuous_proposal,
-    "random_walk",
+    RandomWalk,
     0.5
 )
 

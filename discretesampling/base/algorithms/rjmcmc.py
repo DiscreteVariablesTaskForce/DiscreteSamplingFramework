@@ -3,13 +3,13 @@ import copy
 import numpy as np
 from scipy.special import logsumexp
 from discretesampling.base.random import RNG
-from discretesampling.base.algorithms.continuous_samplers import rw, nuts
+from discretesampling.base.algorithms.continuous import NUTS, RandomWalk
 
 
 class DiscreteVariableRJMCMC():
 
     def __init__(self, variableType, discrete_target,
-                 stan_model, data_function, continuous_proposal_type, continuous_update="NUTS", accept_reject=False,
+                 stan_model, data_function, continuous_proposal_type, continuous_update, accept_reject=False,
                  always_update=False, do_warmup=True, update_probability=0.5, initialProposal=None, warmup_iters=100):
 
         self.variableType = variableType
@@ -30,13 +30,13 @@ class DiscreteVariableRJMCMC():
         self.rng = RNG()
 
         # initialise samplers for continuous parameters
-        if self.continuous_update == "random_walk":
-            self.csampler = rw(self.stan_model, self.data_function, self.rng)
-        elif self.continuous_update == "NUTS":
+        if self.continuous_update is RandomWalk:
+            self.csampler = RandomWalk(self.stan_model, self.data_function, self.rng)
+        elif self.continuous_update is NUTS:
             if do_warmup:
-                self.csampler = nuts(True, self.stan_model, self.data_function, self.rng, 0.9, warmup_iters)
+                self.csampler = NUTS(True, self.stan_model, self.data_function, self.rng, 0.9, warmup_iters)
             else:
-                self.csampler = nuts(False, self.stan_model, self.data_function, self.rng, 0.9, warmup_iters)
+                self.csampler = NUTS(False, self.stan_model, self.data_function, self.rng, 0.9, warmup_iters)
         else:
             raise NameError("Continuous update type not defined")
 
@@ -103,7 +103,7 @@ class DiscreteVariableRJMCMC():
     def eval(self, current_discrete, current_continuous, proposed_discrete, proposed_continuous, r0, r1):
         if current_discrete == proposed_discrete:
             # continuous parameter update move
-            if self.continuous_update == "NUTS" and self.accept_reject is False:
+            if self.continuous_update == NUTS and self.accept_reject is False:
                 log_acceptance_ratio = 0
             else:
                 log_acceptance_ratio = self.csampler.eval(current_continuous, current_discrete, proposed_continuous, r0, r1) \
@@ -115,7 +115,7 @@ class DiscreteVariableRJMCMC():
             discrete_forward_logprob = forward_proposal.eval(proposed_discrete)
             discrete_reverse_logprob = reverse_proposal.eval(current_discrete)
 
-            if self.always_update and not (self.continuous_update == "NUTS" and self.accept_reject is False):
+            if self.always_update and not (self.continuous_update == NUTS and self.accept_reject is False):
                 # we need to sum over all of the possible combinations of birth / death moves + updates to get to
                 # proposed_continuous
                 continuous_proposals = self.continuous_proposal_type().eval_all(current_discrete, current_continuous,

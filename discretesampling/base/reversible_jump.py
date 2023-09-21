@@ -1,6 +1,7 @@
 from ..base import types
 from ..base.algorithms import rjmcmc
 from discretesampling.base.random import RNG
+from discretesampling.base.algorithms.continuous import NUTS
 import numpy as np
 import copy
 
@@ -10,21 +11,22 @@ def set_proposal_attributes(
         stan_model,
         data_function,
         continuous_proposal_type,
-        continuous_update="NUTS",
+        continuous_sampler_type,
         update_probability=0.5
 ):
-    # attributes used in proposal (must be set prior to sampling)
     global base_target
     global model
     global data_func
     global cont_proposal_type
-    global cont_update
+    global cont_sampler_type
     global update_prob
+
+    # attributes used in proposal (must be set prior to sampling)
     base_target = base_DiscreteVariableTarget
     model = stan_model
     data_func = data_function
     cont_proposal_type = continuous_proposal_type
-    cont_update = continuous_update
+    cont_sampler_type = continuous_sampler_type
     update_prob = update_probability
 
 
@@ -59,12 +61,12 @@ class ReversibleJumpProposal(types.DiscreteVariableProposal):
             model,
             data_func,
             cont_proposal_type,
-            cont_update,
+            cont_sampler_type,
             True, True, False,
             update_prob
         )
         # copy over previous NUTS parameters
-        if cont_update == "NUTS":
+        if cont_sampler_type == NUTS:
             self.rjmcmc.csampler.NUTS_params = self.currentReversibleJumpVariable.NUTS_params
 
         self.rng = rng
@@ -89,7 +91,7 @@ class ReversibleJumpProposal(types.DiscreteVariableProposal):
         proposedReversibleJumpVariable.discrete = proposed_discrete
         proposedReversibleJumpVariable.continuous = proposed_continuous
 
-        if cont_update == "NUTS":
+        if cont_sampler_type == NUTS:
             proposedReversibleJumpVariable.r0 = r0
             proposedReversibleJumpVariable.r1 = r1
             proposedReversibleJumpVariable.NUTS_params = self.rjmcmc.csampler.NUTS_params
@@ -135,7 +137,7 @@ class ReversibleJumpInitialProposal(types.DiscreteVariableInitialProposal):
 
     def sample(self, rng=RNG(), target=None):
         rjmcmc_proposal = rjmcmc.DiscreteVariableRJMCMC(self.base_type, base_target, model,
-                                                        data_func, cont_proposal_type, cont_update, True, True, False, update_prob)
+                                                        data_func, cont_proposal_type, cont_sampler_type, True, True, False, update_prob)
         proposed_discrete = self.base_proposal.sample()
         if hasattr(proposed_discrete.value, "__len__"):
             empty_discrete = self.base_type(np.zeros(proposed_discrete.value.shape()))
@@ -149,7 +151,7 @@ class ReversibleJumpInitialProposal(types.DiscreteVariableInitialProposal):
 
         proposedReversibleJumpVariable = ReversibleJumpVariable(proposed_discrete, proposed_continuous)
 
-        if cont_update == "NUTS":
+        if cont_sampler_type == NUTS:
             proposedReversibleJumpVariable.r0 = r0
             proposedReversibleJumpVariable.r1 = r1
             proposedReversibleJumpVariable.NUTS_params = rjmcmc_proposal.csampler.NUTS_params
