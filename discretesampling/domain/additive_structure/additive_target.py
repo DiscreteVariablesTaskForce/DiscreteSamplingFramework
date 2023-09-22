@@ -1,5 +1,6 @@
 from math import log, pi, pow
 from numpy import sum, prod
+from itertools import chain
 from .numbers import bell
 from ...base import types
 
@@ -28,7 +29,7 @@ class AdditiveStructureTarget(types.DiscreteVariableTarget):
         return targ + target2
 
     def evaluatePrior(self, x):
-        n = len(x.discrete_set)
+        n = len(list(chain.from_iterable(x.discrete_set)))
         return 1 / bell(n)
 
     def log_likelihood(self, y, mean, var):

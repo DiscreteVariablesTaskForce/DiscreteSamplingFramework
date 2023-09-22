@@ -35,12 +35,54 @@ class DiscreteVariable:
     def decode(self, x, particle):
         pickle_stopcode = 0x2e
         end_of_pickle_data = np.argwhere(x == pickle_stopcode)[-1][0] + 1
-        encoded = x[0:end_of_pickle_data]
+        encoded = np.array(x[0:end_of_pickle_data], dtype=np.uint8)
         decoded = loads(bytes(encoded))
         return decoded
 
 
 class DiscreteVariableProposal:
+    def __init__(self, values, probs, rng=RNG()):
+        # Check dims and probs are valid
+        assert len(values) == len(probs), "Invalid PMF specified, x and p" +\
+            " of different lengths"
+        probs = np.array(probs)
+        tolerance = np.sqrt(np.finfo(np.float64).eps)
+        assert abs(1 - sum(probs)) < tolerance, "Invalid PMF specified," +\
+            " sum of probabilities !~= 1.0"
+        assert all(probs > 0), "Invalid PMF specified, all probabilities" +\
+            " must be > 0"
+        self.x = values
+        self.pmf = probs
+        self.cmf = np.cumsum(probs)
+        self.rng = rng
+
+    @classmethod
+    def norm(self, x):
+        return 1
+
+    @classmethod
+    # Should return true if proposal is possible between x and y
+    # (and possibly at other times)
+    # where x and y are norm values from the above function
+    def heuristic(self, x, y):
+        return True
+
+    def sample(self, target=None):
+        q = self.rng.random()  # random unif(0,1)
+        return self.x[np.argmax(self.cmf >= q)]
+
+    def eval(self, y, target=None):
+        try:
+            i = self.x.index(y)
+            logp = math.log(self.pmf[i])
+        except ValueError:
+            print("Warning: value " + str(y) + " not in pmf")
+            logp = -math.inf
+        return logp
+
+
+# Exact same as proposal above
+class DiscreteVariableInitialProposal():
     def __init__(self, values, probs):
         # Check dims and probs are valid
         assert len(values) == len(probs), "Invalid PMF specified, x and p" +\
@@ -55,17 +97,6 @@ class DiscreteVariableProposal:
         self.pmf = probs
         self.cmf = np.cumsum(probs)
 
-    @classmethod
-    def norm(self, x):
-        return 1
-
-    @classmethod
-    # Should return true if proposal is possible between x and y
-    # (and possibly at other times)
-    # where x and y are norm values from the above function
-    def heuristic(self, x, y):
-        return True
-
     def sample(self, rng=RNG(), target=None):
         q = rng.random()  # random unif(0,1)
         return self.x[np.argmax(self.cmf >= q)]
@@ -78,12 +109,6 @@ class DiscreteVariableProposal:
             print("Warning: value " + str(y) + " not in pmf")
             logp = -math.inf
         return logp
-
-
-# Exact same as proposal above
-class DiscreteVariableInitialProposal(DiscreteVariableProposal):
-    def sample(self, rng=RNG(), target=None):
-        return super().sample(rng)
 
 
 class DiscreteVariableTarget:

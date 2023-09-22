@@ -1,0 +1,8 @@
+# .coveragerc to control coverage.py
+[run]
+branch = True
+relative_files = True
+omit = discretesampling/base/executor/MPI/distributed_fixed_size_redistribution/*
+parallel = true
+
+[html]

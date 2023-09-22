@@ -27,12 +27,12 @@ def stirling(n, k):
 
 def bell(n):
     """
-    Bell number general formula: B_{n+1} = \sum_{k=0}^{n} [ binomial(n,k) * B_n ]  where  # noqa
+    Bell number general formula: B_{n+1} = sum_{k=0}^{n} [ binomial(n,k) * B_n ]  where  # noqa
     :param n: number of elements
     :return: the nth Bell number (number of partitions of n elements)
-    alternatively B_{n} = \sum_{k=0}^{n} [stirling(n,k)]
+    alternatively B_{n} = sum_{k=0}^{n} [stirling(n,k)]
     """
-    if n == 1:
+    if n == 1 or n == 0:
         return 1
     else:
         return sum([stirling(n, k) for k in range(0, n+1)])

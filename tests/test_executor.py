@@ -1,6 +1,15 @@
 import pytest
 import numpy as np
+from discretesampling.base.types import DiscreteVariable
 from discretesampling.base.executor.executor import Executor
+
+
+class ExampleParticleClass(DiscreteVariable):
+    def __init__(self, x):
+        self.x = x
+
+    def __eq__(self, other):
+        return self.x == other.x
 
 
 @pytest.mark.parametrize(
@@ -61,7 +70,8 @@ def test_cumsum(x, expected):
 
 @pytest.mark.parametrize(
     "particles,ncopies,expected",
-    [(["a", "b", "c", "d", "e"], np.array([0, 2, 1, 0, 2]), ["b", "b", "c", "e", "e"])]
+    [([ExampleParticleClass(x) for x in ["a", "b", "c", "d", "e"]], np.array(
+        [0, 2, 1, 0, 2]), [ExampleParticleClass(x) for x in ["b", "b", "c", "e", "e"]])]
 )
 def test_redistribute(particles, ncopies, expected):
     new_particles = Executor().redistribute(particles, ncopies)

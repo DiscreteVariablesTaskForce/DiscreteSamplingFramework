@@ -41,7 +41,7 @@ class SpectrumDimensionProposal(types.DiscreteVariableProposal):
         numDims = len(dims)
         probs = [1/numDims] * numDims
 
-        super().__init__(dims, probs)
+        super().__init__(dims, probs, rng)
 
     @classmethod
     def norm(self, x):
@@ -53,7 +53,7 @@ class SpectrumDimensionProposal(types.DiscreteVariableProposal):
         return abs(y-x) == 1
 
 
-class SpectrumDimensionInitialProposal(types.DiscreteVariableProposal):
+class SpectrumDimensionInitialProposal(types.DiscreteVariableInitialProposal):
     def __init__(self, max):
         dims = [SpectrumDimension(x+1) for x in range(max)]
         numDims = len(dims)
