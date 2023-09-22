@@ -98,17 +98,6 @@ class stats():
                         label = actual_label
                         break
 
-        if current_node in leafs:
-            indice = current_node.index(current_node)
-            # find in the dictionary which is the highest probable label
-            for x, y in leaf_possibilities[indice].items():
-                if y == label_max:
-                    actual_label = 1
-
-                if y > label_max:
-                    label_max = y
-                    actual_label = x
-
         return label
 
 
@@ -120,13 +109,6 @@ def accuracy(y_test, labels):
 
     acc = correct_classification*100/len(y_test)
     return acc
-    correct_classification = 0
-    for i in range(len(y_test)):
-        if labels[i] == y_test[i]:
-            correct_classification += 1
-
-        acc = correct_classification*100/len(y_test)
-        return acc
 
 
 # Π(Y_i|T,theta,x_i)
