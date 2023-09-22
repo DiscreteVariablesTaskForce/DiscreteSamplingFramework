@@ -27,7 +27,7 @@ class stats():
             labels = labels1
         # else:
             # acc = dt.accuracy(y_test, labels)
-
+        labels = list(np.array(labels).flatten())
         return labels
 
     def predict(self, X_test, use_majority=True):
