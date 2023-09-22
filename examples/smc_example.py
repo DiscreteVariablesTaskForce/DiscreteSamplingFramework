@@ -27,9 +27,8 @@ if __name__ == "__main__":
 
     try:
         treeSamples = dtSMC.sample(10, 500)
-
-        smc_acc = [dt.accuracy(y_test, dt.stats(x, X_test).predict(X_test))
-                   for x in treeSamples]
+        smcLabels = dt.stats(treeSamples, X_test).predict(X_test, use_majority=True)
+        smc_acc = dt.accuracy(y_test, smcLabels)
         print(numpy.mean(smc_acc))
     except ZeroDivisionError:
         print("SMC sampling failed due to division by zero")
