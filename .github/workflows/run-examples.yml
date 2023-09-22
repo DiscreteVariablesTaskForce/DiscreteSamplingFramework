@@ -9,13 +9,21 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
     steps:
+    - uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
     - uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Set up MPI
+      uses: mpi4py/setup-mpi@v1
     - name: Set up Python 3.10
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: "3.10"
+        cache: 'pip' # caching pip dependencies
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -25,3 +33,11 @@ jobs:
     - name: Run examples
       run: |
         for f in examples/*.py; do python "$f"; done
+    - name: Get number of CPU cores
+      uses: SimenB/github-actions-cpu-cores@v1
+      id: cpu-cores
+    - name: Run MPI examples
+      run: |
+        for f in examples/mpi/*.py; do \
+          mpiexec -n ${{ steps.cpu-cores.outputs.count }} python "$f"; \
+        done

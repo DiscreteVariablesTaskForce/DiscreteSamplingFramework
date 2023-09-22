@@ -1,0 +1,4 @@
+[submodule "discretesampling/base/algorithms/smc_components/distributed_fixed_size_redistribution"]
+	path = discretesampling/base/executor/MPI/distributed_fixed_size_redistribution
+	url = https://github.com/DiscreteVariablesTaskForce/O_logN_parallel_redistribution.git
+	branch = DiscreteVariablesFramework

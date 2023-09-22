@@ -15,6 +15,11 @@ class RNG():
 
         return self.nprng.integers(low=low, high=high+1)
 
+    def uniform(self, low=0.0, high=1.0):
+        if high == low:
+            return low
+        return self.nprng.uniform(low=low, high=high)
+
     def randomChoice(self, choices):
         return self.nprng.choice(choices)
 

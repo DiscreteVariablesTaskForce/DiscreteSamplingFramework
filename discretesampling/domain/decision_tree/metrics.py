@@ -178,8 +178,8 @@ def calculate_leaf_occurences(x):
     Then create probabilities by normalising those values[0,1]
     '''
     leafs_possibilities = []
-    for number_of_leaves in range(len(leaf_occurences)):
-        occurrences = collections.Counter(leaf_occurences[number_of_leaves][:])
+    for number_of_leafs in range(len(leaf_occurences)):
+        occurrences = collections.Counter(leaf_occurences[number_of_leafs][:])
         leafs_possibilities.append(occurrences)
 
     # create leafs possibilities

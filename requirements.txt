@@ -1,7 +1,9 @@
 sympy
 numpy
 scipy
-flake8
 scikit-learn
 pandas
+mpi4py
+flake8
 pytest
+pytest-mpi

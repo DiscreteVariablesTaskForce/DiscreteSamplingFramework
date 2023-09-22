@@ -27,13 +27,13 @@ asSamplesMCMC = asMCMC.sample(50)
 asSMC = DiscreteVariableSMC(addstruct.AdditiveStructure, target,
                             initialProposal)
 try:
-    asSamplesSMC = asSMC.sample(N=5, P=10)
+    asSamplesSMC = asSMC.sample(5, 10)
 except RuntimeError:
     print("AdditiveStructureTarget is not yet implemented for SMC")
 
 
-asSMCLkern = DiscreteVariableSMC(addstruct.AdditiveStructure, target, initialProposal, use_optimal_L=True)
-asSamplesLk = asSMCLkern.sample(N=5, P=10)
+asSMCLkern = DiscreteVariableSMC(addstruct.AdditiveStructure, target, initialProposal, use_optimal_L=False)
+asSamplesLk = asSMCLkern.sample(5, 10)
 
 
 # Comparison between the three methods based on sampling the true structure
