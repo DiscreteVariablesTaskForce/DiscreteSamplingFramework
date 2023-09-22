@@ -12,14 +12,6 @@ from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
 import numpy as np
-import pandas as pd
-
-# df = pd.read_csv(r"C:\Users\efthi\OneDrive\Desktop\PhD\datasets_smc_mcmc_CART\abalone.csv")
-
-# y = df.Target
-# X = df.drop(['Target'], axis=1)
-# X = X.to_numpy()
-# y = y.to_numpy()
 
 data = datasets.load_wine()
 
@@ -28,7 +20,7 @@ y = data.target
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=5)
 
-a = 0.01
+a = 15
 b = 5
 target = dt.TreeTarget(a, b)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
@@ -50,9 +42,7 @@ try:
 
     smcLabels = dt.stats(treeSMCSamples, X_test).predict(X_test, use_majority=True)
     smcAccuracy = [dt.accuracy(y_test, smcLabels)]
-    #majority_voting_acc = [dt.accuracy(y_test, majority_voting_labels)]
     print("SMC mean accuracy: ", np.mean(smcAccuracy))
-    #print("SMC majority accuracy: ", (majority_voting_acc))
-    
+
 except ZeroDivisionError:
     print("SMC sampling failed due to division by zero")
