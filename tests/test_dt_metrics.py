@@ -1,9 +1,10 @@
 import pytest
 from discretesampling.domain.decision_tree import (
-    calculate_leaf_occurences, Tree, accuracy, stats
+    calculate_leaf_occurences, Tree, accuracy, stats, RegressionStats
 )
 from collections import Counter
 from sklearn import datasets
+import numpy as np
 
 
 def build_tree(feature, threshold):
@@ -66,6 +67,21 @@ def test_accuracy(y_test, labels, expected):
      (build_tree(4, 10), get_X_test(), [0, 1, 1, 0, 0])]
 )
 def test_stats_predict(tree, X_test, expected):
-    stat = stats(tree, X_test)
+    stat = stats([tree], X_test)
     pred = stat.predict(X_test)
-    assert expected == pred
+    np.testing.assert_array_equal(expected, pred)
+
+
+@pytest.mark.parametrize(
+    "tree,X_test,expected",
+    [(build_tree(2, 10), get_X_test(),
+      np.array([0.9320388349514563, 0.9466666666666667, 0.9320388349514563, 0.9320388349514563, 0.9320388349514563])),
+     (build_tree(2, 20), get_X_test(),
+      np.array([0.9285714285714286, 0.9545454545454546, 0.9285714285714286, 0.9285714285714286, 0.9285714285714286])),
+     (build_tree(4, 10), get_X_test(),
+      np.array([0.7307692307692307, 1.0238095238095237, 1.0238095238095237, 0.7307692307692307, 0.7307692307692307]))]
+)
+def test_RegressionStats_predict(tree, X_test, expected):
+    stat = RegressionStats([tree], X_test)
+    pred = stat.predict(X_test)
+    np.testing.assert_array_almost_equal(expected, pred)

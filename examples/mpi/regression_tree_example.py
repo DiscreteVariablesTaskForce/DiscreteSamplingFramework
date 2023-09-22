@@ -7,7 +7,7 @@ from discretesampling.domain import decision_tree as dt
 from discretesampling.base.executor.executor_MPI import Executor_MPI
 from discretesampling.base.util import gather_all
 
-data = datasets.load_wine()
+data = datasets.load_diabetes()
 
 X = data.data
 y = data.target
@@ -15,7 +15,7 @@ y = data.target
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=5)
 
 a = 15
-target = dt.TreeTarget(a)
+target = dt.RegressionTreeTarget(a)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
 N = 1 << 10
@@ -27,22 +27,19 @@ dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal, False, exec=exec)
 try:
     MPI.COMM_WORLD.Barrier()
     start = MPI.Wtime()
-
     if MPI.COMM_WORLD.Get_rank() == 0:
         print("seed = ", seed)
     treeSMCSamples = dtSMC.sample(T, N, seed)
-
     MPI.COMM_WORLD.Barrier()
     end = MPI.Wtime()
-
     if MPI.COMM_WORLD.Get_size() > 1:
         treeSMCSamples = gather_all(treeSMCSamples, exec)
 
-    smcLabels = dt.stats(treeSMCSamples, X_test).predict(X_test)
-    smcAccuracy = dt.accuracy(y_test, smcLabels)
+    smcLabels = dt.RegressionStats(treeSMCSamples, X_test).predict(X_test)
+    smcAccuracy = dt.accuracy_mse(y_test, smcLabels)
 
     if MPI.COMM_WORLD.Get_rank() == 0:
-        print("SMC mean accuracy: ", np.mean(smcAccuracy))
+        print("SMC mean MSE accuracy: ", np.mean(smcAccuracy))
         print("SMC run-time: ", end-start)
 except ZeroDivisionError:
     print("SMC sampling failed due to division by zero")
