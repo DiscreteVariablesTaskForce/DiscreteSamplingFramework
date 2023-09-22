@@ -1,6 +1,9 @@
 import copy
-import numpy as np
 import math
+import warnings
+
+import numpy as np
+
 from discretesampling.base.random import RNG
 from discretesampling.base.executor.executor import Executor
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
@@ -29,6 +32,12 @@ class DiscreteVariableSMC():
         self.target = target
 
     def sample(self, Tsmc, N, seed=0):
+
+        # if N % self.exec.P != 0: # Need to alter redistribution code to allow for e.g N=100, P=4
+        #     warnings.warn("Number of particles `N` should be multiple of number of nodes/cores")
+        if ((N & (N-1)) != 0) or (N % self.exec.P != 0):
+            warnings.warn("Number of particles `N` should be a power of two and a multiple of number of nodes/cores")
+
         loc_n = int(N/self.exec.P)
         rank = self.exec.rank
         mvrs_rng = RNG(seed)

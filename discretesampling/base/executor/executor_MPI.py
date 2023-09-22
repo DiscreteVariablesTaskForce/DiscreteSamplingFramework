@@ -1,6 +1,9 @@
+import warnings
+
 from mpi4py import MPI
 import numpy as np
 from scipy.special import logsumexp
+
 from discretesampling.base.executor.executor import Executor
 from discretesampling.base.executor.MPI.distributed_fixed_size_redistribution.prefix_sum import (
     inclusive_prefix_sum
@@ -20,6 +23,10 @@ class Executor_MPI(Executor):
     def __init__(self):
         self.comm = MPI.COMM_WORLD
         self.P = self.comm.Get_size()  # number of MPI nodes/ranks
+
+        if (self.P & (self.P - 1)) != 0:
+            warnings.warn("Number of MPI nodes should be a power of two (2^n, n=0,1,2,...)")
+
         self.rank = self.comm.Get_rank()
 
     def max(self, x):
