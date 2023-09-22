@@ -26,6 +26,9 @@ class Executor(object):
     def cumsum(self, x):
         return np.cumsum(x)
 
+    def logcumsumexp(self, x):
+        return np.logaddexp.accumulate(x)
+
     def redistribute(self, particles, ncopies):
         particles = list(itertools.chain.from_iterable(
             [[particles[i]]*ncopies[i] for i in range(len(particles))]

@@ -69,6 +69,17 @@ def test_cumsum(x, expected):
 
 
 @pytest.mark.parametrize(
+    "x",
+    [(np.array([1., 2., 3., 4., 5., 6., 7., 8.])),
+     (np.array([-1., -2., -3., -4., -5, -6., -7., -8.]))]
+)
+def test_logcumsumexp(x):
+    calc = Executor().logcumsumexp(x)
+    expected = np.logaddexp.accumulate(x)
+    np.testing.assert_array_equal(calc, expected)
+
+
+@pytest.mark.parametrize(
     "particles,ncopies,expected",
     [([ExampleParticleClass(x) for x in ["a", "b", "c", "d", "e"]], np.array(
         [0, 2, 1, 0, 2]), [ExampleParticleClass(x) for x in ["b", "b", "c", "e", "e"]])]

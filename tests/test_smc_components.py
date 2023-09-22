@@ -6,7 +6,7 @@ from discretesampling.base.executor.executor_MPI import Executor_MPI
 from discretesampling.base.types import DiscreteVariable
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
-from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling, check_stability
+from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling, check_stability, calculate_cdf
 
 
 class ExampleParticleClass(DiscreteVariable):
@@ -126,6 +126,33 @@ def test_check_stability_MPI(ncopies, expected):
     local_check_ncopies = check_stability(local_ncopies, exec)
     local_expected = expected[first:(last+1)]
     assert all(local_check_ncopies == local_expected)
+
+
+@pytest.mark.parametrize(
+    "logw",
+    [(np.array([-np.log(8)]*8))]
+)
+def test_calculate_cdf(logw):
+    exec = Executor()
+    expected = np.exp(np.logaddexp.accumulate(logw))*len(logw)  # numerically stable calculation
+    cdf = calculate_cdf(logw, exec)
+    np.testing.assert_array_equal(cdf, expected)
+
+
+@pytest.mark.mpi
+@pytest.mark.parametrize(
+    "logw",
+    [(np.array([-np.log(8)]*8))]
+)
+def test_calculate_cdf_MPI(logw):
+    exec = Executor_MPI()
+    expected = np.exp(np.logaddexp.accumulate(logw))*len(logw)  # numerically stable calculation
+    first, last = np.array(split_across_cores(len(logw), exec.P, exec.rank))
+    local_logw = logw[first:(last+1)]
+    local_check_cdf = calculate_cdf(local_logw, exec)
+    local_expected = expected[first:(last+1)]
+    np.testing.assert_array_equal(local_check_cdf, local_expected)
+
 
 # TODO:
 # get_number_of_copies
