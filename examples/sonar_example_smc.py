@@ -1,4 +1,3 @@
-from discretesampling.base.algorithms import DiscreteVariableSMC
 import copy
 import json
 import numpy as np
@@ -6,8 +5,10 @@ from discretesampling.base.random import RNG
 from discretesampling.base.algorithms.continuous import RandomWalk
 import discretesampling.base.reversible_jump as rj
 import discretesampling.domain.spectrum as spec
-from discretesampling.base.algorithms.continuous_proposals import sample_offsets, grid_search_logprobs, forward_grid_search,\
-    reverse_grid_search
+from discretesampling.base.algorithms import DiscreteVariableSMC
+from discretesampling.base.algorithms.continuous_proposals import (
+    sample_offsets, grid_search_logprobs, forward_grid_search, reverse_grid_search
+)
 from discretesampling.base.stan_model import StanModel
 
 stan_model_path = "examples/stanmodels/linear_array.stan"

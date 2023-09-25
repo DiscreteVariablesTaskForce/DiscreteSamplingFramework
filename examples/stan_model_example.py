@@ -1,8 +1,9 @@
-from discretesampling.base.stan_model import StanModel
+import math
 import numpy as np
 from scipy.stats import multivariate_normal
 from discretesampling.base.random import RNG
-import math
+from discretesampling.base.stan_model import StanModel
+
 
 mixturemodel = StanModel(
     "examples/stanmodels/mixturemodel.stan"

@@ -1,13 +1,12 @@
 import copy
 import numpy as np
-from discretesampling.base.random import RNG
-
-import discretesampling.domain.spectrum as spec
-
-from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
-
 from scipy.stats import multivariate_normal
+
+from discretesampling.base.random import RNG
+import discretesampling.domain.spectrum as spec
+from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 from discretesampling.base.stan_model import StanModel
+
 
 stan_model_path = "examples/stanmodels/mixturemodel.stan"
 
