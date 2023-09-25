@@ -1,7 +1,7 @@
 import math
-from ...base.types import DiscreteVariableInitialProposal
-from ...base.random import RNG
-from .tree import Tree
+from discretesampling.base.types import DiscreteVariableInitialProposal
+from discretesampling.base.random import RNG
+from discretesampling.domain.decision_tree import Tree
 
 
 class TreeInitialProposal(DiscreteVariableInitialProposal):

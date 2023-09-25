@@ -2,7 +2,7 @@ import copy
 import numpy as np
 import math
 from discretesampling.base.random import RNG
-from discretesampling.base.executor.executor import Executor
+from discretesampling.base.executor import Executor
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling

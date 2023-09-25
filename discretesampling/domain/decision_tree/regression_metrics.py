@@ -1,62 +1,20 @@
-import math
 import numpy as np
-import collections
-import pandas as pd
+from discretesampling.domain.decision_tree.metrics import stats
 
 
-class stats():
-    def __init__(self, trees, X_test):
-        self.trees = trees
-
+class RegressionStats(stats):
     def getLeafPossibilities(self, x):
-        target1, leafs_possibilities_for_prediction = calculate_leaf_occurences(x)
+        target1, leafs_possibilities_for_prediction = regression_likelihood(x)
         return leafs_possibilities_for_prediction
 
-    def majority_voting_predict(self, smcLabels):  # this function should be moved to a more appropriate place
-        labels = []
-        predictions = pd.DataFrame(smcLabels)
-        for column in predictions:
-            labels.append(predictions[column].mode())
-        labels = pd.DataFrame(labels)
-        labels = labels.values.tolist()
-        labels1 = []
-        if len(labels[0]) > 1:
-            for label in labels:
-                labels1.append(label[0])
-            # acc = dt.accuracy(y_test, labels1)
-            labels = labels1
-        # else:
-            # acc = dt.accuracy(y_test, labels)
-        labels = list(np.array(labels).flatten())
-        return labels
-
-    def predict(self, X_test, use_majority=True):
-        all_labels_from_all_trees = []
-        for tree in self.trees:
-            all_labels_from_this_trees = self.predict_for_one_tree(tree, X_test)
-            all_labels_from_all_trees.append(all_labels_from_this_trees)
-
-        if use_majority:
-            return self.majority_voting_predict(all_labels_from_all_trees)
-        else:
-            return all_labels_from_all_trees
-
-    def predict_for_one_tree(self, tree, X_test):
-        all_labels_for_this_tree = []
-        leaf_possibilities = self.getLeafPossibilities(tree)
-        leafs = sorted(tree.leafs)
-        for datum in X_test:
-            label_for_this_datum = self.predict_for_one_datum(tree, leafs, leaf_possibilities, datum)
-            all_labels_for_this_tree.append(label_for_this_datum)
-        return all_labels_for_this_tree
+    def majority_voting_predict(self, labels):
+        return np.mean(labels, axis=0)
 
     def predict_for_one_datum(self, tree, leafs, leaf_possibilities, datum):
-
         label = None
+        # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
         flag = "false"
         current_node = tree.tree[0]
-        label_max = -1
-        # make sure that we are not in leafs. current_node[0] is the node
         while current_node[0] not in leafs and flag == "false":
             if datum[current_node[3]] > current_node[4]:
                 for node in tree.tree:
@@ -67,15 +25,8 @@ class stats():
                         leaf = current_node[2]
                         flag = "true"
                         indice = leafs.index(leaf)
-                        for x, y in leaf_possibilities[indice].items():
-                            if y == label_max:
-                                actual_label = 1
-
-                            if y > label_max:
-                                label_max = y
-                                actual_label = x
-
-                        label = actual_label
+                        # print(leaf_possibilities[indice])
+                        label = leaf_possibilities[indice]
                         break
 
             else:
@@ -87,32 +38,24 @@ class stats():
                         leaf = current_node[1]
                         flag = "true"
                         indice = leafs.index(leaf)
-                        for x, y in leaf_possibilities[indice].items():
-                            if y == label_max:
-                                actual_label = 1
-
-                            if y > label_max:
-                                label_max = y
-                                actual_label = x
-
-                        label = actual_label
+                        # print(leaf_possibilities[indice])
+                        label = leaf_possibilities[indice]
                         break
-
         return label
 
 
-def accuracy(y_test, labels):
-    correct_classification = 0
+def accuracy_mse(y_test, labels):
+    squared_error = []
+    # print("accuracy calculation starts:")
     for i in range(len(y_test)):
-        if labels[i] == y_test[i]:
-            correct_classification += 1
-
-    acc = correct_classification*100/len(y_test)
-    return acc
+        # print("this: ", y_test[i], "with: ", labels[i])
+        squared_error.append((y_test[i]-labels[i])**2)
+    # print(np.sum(squared_error)/len(y_test))
+    return (np.sum(squared_error)/len(y_test))
 
 
 # Π(Y_i|T,theta,x_i)
-def calculate_leaf_occurences(x):
+def regression_likelihood(x):
     '''
     we calculate how many labelled as 0 each leaf has, how many labelled as 1
     each leaf has and so on
@@ -154,30 +97,26 @@ def calculate_leaf_occurences(x):
         [6, 1, 2, 2, 1, 2], [7, 2, 2, 2, 1, 2, 1, 2]]
         The first number represents the leaf id number
         '''
-
         for item in leaf_occurences:
-
             if item[0] == leaf:
                 item.append(x.y_train[k])
         k += 1
-
     '''
-    we have some cases where some leaf nodes may do not have any probabilities
+    we have some cases where some leaf nodes when it is
+    clssification may do not have any probabilities
     because no data point ended up in the particular leaf
     We add equal probabilities for each label to the particular leaf.
     For example if we have 4 labels, we add 0:0.25, 1:0.25, 2:0.25, 3:0.25
+    when it comes to regression we just add the mean value y_train
     '''
-
+    penalty = 0
     for item in leaf_occurences:
         if len(item) == 1:
-            unique = set(x.y_train)
-            unique = list(unique)
-            for i in range(len(unique)):
-                item.append(i)
-
+            penalty += 1
+            item.append(np.mean(x.y_train))
+            # item.append(1000000000000)
     leaf_occurences = sorted(leaf_occurences)
     leafs = sorted(x.leafs)
-
     '''
     we then delete the first number of the list which represents the leaf node
     id.
@@ -188,23 +127,29 @@ def calculate_leaf_occurences(x):
             if new_list:
                 new_list = False
                 del leaf_occurences[i][p]
-
+    # print("leaf occurences: ", leaf_occurences)
     '''
     first count the number of labels in each leaf.
     Then create probabilities by normalising those values[0,1]
     '''
+    leaf_values = []
+    for leaf in leaf_occurences:
+        leaf_values.append(np.mean(leaf))
+    '''
+    # not usefull for regression
     leafs_possibilities = []
-    for number_of_leafs in range(len(leaf_occurences)):
-        occurrences = collections.Counter(leaf_occurences[number_of_leafs][:])
+    for number_of_leaves in range(len(leaf_occurences)):
+        occurrences = collections.Counter(leaf_occurences[number_of_leaves][:])
         leafs_possibilities.append(occurrences)
 
-    # create leafs possibilities
+    # create leafs possibilities/not useful for regression
     for item in leafs_possibilities:
         factor = 1.0/sum(item.values())
         for k in item:
             item[k] = item[k]*factor
-
-    product_of_leafs_probabilities = []
+    '''
+    squared_error = []
+    predicted = []
     k = 0
     for datum in x.X_train:
         # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
@@ -236,24 +181,11 @@ def calculate_leaf_occurences(x):
 
         if leaf in leafs:
             # find the position of the dictionary probabilities given the leaf
-            # number
             indice = leafs.index(leaf)
-            probs = leafs_possibilities[indice]
-            for prob in probs:
-                target_probability = probs[x.y_train[k]]
-
-                '''
-                we make sure that in the case we are on a homogeneous leaf,
-                we dont get a 0 probability but a very low one
-                '''
-
-                if target_probability == 0:
-                    target_probability = 0.02
-                if target_probability == 1:
-                    target_probability = 0.98
-
-            product_of_leafs_probabilities.append(math.log(target_probability))
-
+            probs = leaf_values[indice]
+            predicted.append(probs)
+            squared_error.append((probs-x.y_train[k])**2)
         k += 1
-    product_of_target_feature = np.sum(product_of_leafs_probabilities)
-    return product_of_target_feature, leafs_possibilities
+    log_likelihood = -(len(x.y_train)/2) * \
+        (-np.log(2)+np.log(sum(squared_error)))
+    return log_likelihood, leaf_values

@@ -1,11 +1,11 @@
 import math
 import numpy as np
-from ...base import types
-from .metrics import calculate_leaf_occurences
+from discretesampling.base.types import DiscreteVariableTarget
+from discretesampling.domain.decision_tree.metrics import calculate_leaf_occurences
 
 
-class TreeTarget(types.DiscreteVariableTarget):
-    def __init__(self, a, b):
+class TreeTarget(DiscreteVariableTarget):
+    def __init__(self, a, b=None):
         self.a = a
         self.b = b
 
@@ -34,36 +34,37 @@ class TreeTarget(types.DiscreteVariableTarget):
                                     - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
                                     )
 
-            # probabilities.append(math.log( 1/len(X_train[0]) *
-            # 1/len(X_train[:]) ))
-
-            # -math.log(len(x.X_train[0]))
-            # - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
-
         logprobability = np.sum(logprobabilities)
         return (logprobability)
 
-    def evaluatePrior(self, x):  # poisson
-        # print(len(x.tree))
+    def evaluatePrior(self, x):
+        if self.b is None:
+            # Use Possion prior
+            return self.evaluatePoissonPrior(x)
+        else:
+            return self.evaluateChipmanPrior(x)
+
+    def evaluatePoissonPrior(self, x):
+        # From 'A Bayesian CART algorithm' -  Densison et al. 1998
         lam = self.a
         k = len(x.leafs)
         logprior = math.log(math.pow(lam, k) / ((math.exp(lam)-1) * math.factorial(k)))
 
-        # print(math.exp(logprior))
         return logprior
 
-    # def evaluatePrior(self, x):#chipman prior
-    #     def p_node(a, b, d):
-    #         return math.log(a / math.pow(1 + d, b))
+    def evaluateChipmanPrior(self, x):
+        # From 'Bayesian CART model search' - Chipman et al. 1998
+        def p_node(a, b, d):
+            return math.log(a / math.pow(1 + d, b))
 
-    #     def p_leaf(a, b, d):
-    #         return math.log(1 - math.exp(p_node(a, b, d)))
+        def p_leaf(a, b, d):
+            return math.log(1 - math.exp(p_node(a, b, d)))
 
-    #     logprior = 0
-    #     for node in x.tree:
-    #         logprior += p_node(self.a, self.b, node[5])
+        logprior = 0
+        for node in x.tree:
+            logprior += p_node(self.a, self.b, node[5])
 
-    #     for leaf in x.leafs:
-    #         d = x.depth_of_leaf(leaf)
-    #         logprior += p_leaf(self.a, self.b, d)
-    #     return logprior
+        for leaf in x.leafs:
+            d = x.depth_of_leaf(leaf)
+            logprior += p_leaf(self.a, self.b, d)
+        return logprior

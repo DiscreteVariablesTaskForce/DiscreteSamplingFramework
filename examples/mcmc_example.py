@@ -1,9 +1,10 @@
 import numpy
+from sklearn import datasets
+from sklearn.model_selection import train_test_split
+
 from discretesampling.base.algorithms import DiscreteVariableMCMC
 from discretesampling.domain import decision_tree as dt
 
-from sklearn import datasets
-from sklearn.model_selection import train_test_split
 
 data = datasets.load_wine()
 
@@ -23,7 +24,8 @@ dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
 
 try:
     treeSamples = dtMCMC.sample(N=1000)
-    mcmc_acc = [dt.accuracy(y_test, dt.stats(x, X_test).predict(X_test)) for x in treeSamples]
-    print(numpy.mean(mcmc_acc[501:999]))
+    mcmcLabels = dt.stats(treeSamples[500:999], X_test).predict(X_test)
+    mcmc_acc = dt.accuracy(y_test, mcmcLabels)
+    print(numpy.mean(mcmc_acc))
 except ZeroDivisionError:
     print("MCMC sampling failed due to division by zero")

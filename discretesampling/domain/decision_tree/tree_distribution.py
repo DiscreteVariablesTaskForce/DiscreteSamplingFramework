@@ -1,11 +1,11 @@
 import numpy as np
 from math import log, inf
 import copy
-from ...base.random import RNG
-from ...base import types
+from discretesampling.base.random import RNG
+from discretesampling.base.types import DiscreteVariableProposal
 
 
-class TreeProposal(types.DiscreteVariableProposal):
+class TreeProposal(DiscreteVariableProposal):
     def __init__(self, tree, rng=RNG()):
         self.X_train = tree.X_train
         self.y_train = tree.y_train
