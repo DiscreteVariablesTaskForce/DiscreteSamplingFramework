@@ -1,17 +1,11 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Nov  5 14:28:12 2021
-
-@author: efthi
-"""
-
-from discretesampling.domain import decision_tree as dt
-from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
-
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
 import numpy as np
+
+from discretesampling.domain import decision_tree as dt
+from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
+
 
 data = datasets.load_wine()
 
