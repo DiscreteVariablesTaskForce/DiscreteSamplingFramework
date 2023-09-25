@@ -1,8 +1,8 @@
-from discretesampling.domain import decision_tree as dt
-from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
-
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
+
+from discretesampling.domain import decision_tree as dt
+from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
 
 data = datasets.load_diabetes()
 

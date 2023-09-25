@@ -1,10 +1,16 @@
-from ..base import types
-from ..base.random import RNG
+from discretesampling.base.types import (
+    DiscreteVariable,
+    DiscreteVariableTarget,
+    DiscreteVariableInitialProposal,
+    DiscreteVariableProposal
+)
+
+from discretesampling.base.random import RNG
 from scipy.stats import nbinom
 
 
 # SpectrumDimension inherits from DiscreteVariable
-class SpectrumDimension(types.DiscreteVariable):
+class SpectrumDimension(DiscreteVariable):
     def __init__(self, value):
         super().__init__()
         self.value = value
@@ -29,7 +35,7 @@ class SpectrumDimension(types.DiscreteVariable):
 
 
 # SpectrumDimensionProposal inherits from DiscreteVariableProposal
-class SpectrumDimensionProposal(types.DiscreteVariableProposal):
+class SpectrumDimensionProposal(DiscreteVariableProposal):
     def __init__(self, startingDimension: SpectrumDimension, rng=RNG()):
         startingValue = startingDimension.value
         values = []
@@ -53,7 +59,7 @@ class SpectrumDimensionProposal(types.DiscreteVariableProposal):
         return abs(y-x) == 1
 
 
-class SpectrumDimensionInitialProposal(types.DiscreteVariableInitialProposal):
+class SpectrumDimensionInitialProposal(DiscreteVariableInitialProposal):
     def __init__(self, max):
         dims = [SpectrumDimension(x+1) for x in range(max)]
         numDims = len(dims)
@@ -62,7 +68,7 @@ class SpectrumDimensionInitialProposal(types.DiscreteVariableInitialProposal):
         super().__init__(dims, probs)
 
 
-class SpectrumDimensionTarget(types.DiscreteVariableTarget):
+class SpectrumDimensionTarget(DiscreteVariableTarget):
     def __init__(self, mu, sigma):
         # NB as an over-dispersed Poisson
         self.p = mu/(sigma*sigma)

@@ -1,10 +1,10 @@
 import numpy
+from sklearn import datasets
+from sklearn.model_selection import train_test_split
 from discretesampling.base.algorithms import DiscreteVariableSMC
 from discretesampling.base.executor.executor import Executor
 import discretesampling.domain.decision_tree as dt
 
-from sklearn import datasets
-from sklearn.model_selection import train_test_split
 
 data = datasets.load_wine()
 

@@ -1,12 +1,12 @@
 from math import log
 from sympy.utilities.iterables import multiset_partitions
-from ...base import types
+from discretesampling.base.types import DiscreteVariableInitialProposal
 from discretesampling.base.random import RNG
 from discretesampling.domain.additive_structure.numbers import bell
 from discretesampling.domain.additive_structure.additive_structure import AdditiveStructure
 
 
-class AdditiveStructureInitialProposal(types.DiscreteVariableInitialProposal):  # noqa
+class AdditiveStructureInitialProposal(DiscreteVariableInitialProposal):  # noqa
     def __init__(self, elems):
         self.elems = elems
         n = len(self.elems)

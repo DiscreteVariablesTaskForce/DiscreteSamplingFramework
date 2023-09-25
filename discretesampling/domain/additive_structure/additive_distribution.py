@@ -1,10 +1,10 @@
 from math import log, inf
-from .numbers import binomial, stirling
-from ...base import types
-from ...base.random import RNG
+from discretesampling.domain.additive_structure.numbers import binomial, stirling
+from discretesampling.base.types import DiscreteVariableProposal
+from discretesampling.base.random import RNG
 
 
-class AdditiveStructureProposal(types.DiscreteVariableProposal):
+class AdditiveStructureProposal(DiscreteVariableProposal):
     def __init__(self, current, rng=RNG()):
         self.current = current
         self.multi_subsets = [subset for subset in self.current.discrete_set
