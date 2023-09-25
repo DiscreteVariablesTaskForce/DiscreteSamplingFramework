@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('../../discretesampling'))
 # -- Project information -----------------------------------------------------
 
 project = 'discretesampling'
-copyright = '2023, Alexander Phillips, Efthyvoulos Drousiotis, Philip Clemson, Alessandro Varsi, Katerina Chatzopoulou, Navjot Kukreja, Simon Maskell'
+copyright = '2023, University of Liverpool'
 author = 'Alexander Phillips, Efthyvoulos Drousiotis, Philip Clemson, Alessandro Varsi, Katerina Chatzopoulou, Navjot Kukreja, Simon Maskell'
 
 # The full version, including alpha/beta/rc tags
@@ -32,8 +32,12 @@ release = '0.0.1'
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'numpydoc'
+    'sphinx.ext.coverage',
+    'sphinx.ext.napoleon',
+    "numpydoc",
 ]
+
+numpydoc_class_members_toctree = False
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

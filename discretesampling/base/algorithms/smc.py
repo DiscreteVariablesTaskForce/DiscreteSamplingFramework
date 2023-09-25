@@ -11,7 +11,8 @@ from discretesampling.base.algorithms.smc_components.resampling import systemati
 
 
 class DiscreteVariableSMC():
-    """SMC sampler for discrete variables
+    """
+    SMC sampler for discrete variables.
 
     Parameters
     ----------
@@ -31,7 +32,7 @@ class DiscreteVariableSMC():
     The Sequential Monte Carlo sampler[1] is implemented generically to operate
     on any type of :class:`DiscreteVariable`, or more specifically any class
     which inherits from :class:`DiscreteVariable` and has the coressponding
-    :class:`DiscreteVariableProposal` and :class:`DiscreteVariableTarget`s
+    :class:`DiscreteVariableProposal` and :class:`DiscreteVariableTarget`
     implemented.
 
 
@@ -81,6 +82,7 @@ class DiscreteVariableSMC():
         -------
         list[DiscreteVariable]
             List of generated samples of type specified in constructor.
+
         """
         loc_n = int(N/self.exec.P)
         rank = self.exec.rank

@@ -25,12 +25,18 @@ class AdditiveStructure(types.DiscreteVariable):
     def getTargetType(self):
         return AdditiveStructureTarget
 
-    def split_subset(self, frac, rng=RNG()):
-        """
-        :param discrete_set: initial set
-        :param frac: 1 or 2 indicating the probability of choosing split
-        :return: new set, log probability of moving to new set, reverse log
-        probability
+    def split_subset(self, rng: RNG = RNG()) -> 'AdditiveStructure':
+        """Split a random subset and return the resulting AdditiveStructure
+
+        Parameters
+        ----------
+        rng : RNG, optional
+            RNG for random number generation, by default RNG()
+
+        Returns
+        -------
+        AdditiveStructure
+            Resulting AdditiveStructure after subset split
         """
         single_subsets = [subset for subset in self.discrete_set
                           if len(subset) == 1]
