@@ -25,6 +25,22 @@ class DiscreteVariableSMC():
         Flag to use approximately optimal L-kernel, by default False
     exec : Executor, optional
         Execution engine, by default Executor()
+
+    Notes
+    -----
+    The Sequential Monte Carlo sampler[1] is implemented generically to operate
+    on any type of :class:`DiscreteVariable`, or more specifically any class
+    which inherits from :class:`DiscreteVariable` and has the coressponding
+    :class:`DiscreteVariableProposal` and :class:`DiscreteVariableTarget`s
+    implemented.
+
+
+    References
+    ----------
+
+    .. [1] P. Del Moral, A. Doucet, and A. Jasra, ‘Sequential Monte Carlo Samplers’, Journal of the Royal Statistical Society
+    Series B: Statistical Methodology, vol. 68, no. 3, pp. 411–436, Jun. 2006, doi: 10.1111/j.1467-9868.2006.00553.x.
+
     """
 
     def __init__(self,

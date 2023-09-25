@@ -337,5 +337,28 @@ class DiscreteVariableTarget:
         return logprob
 
     def evaluatePrior(self, x: DiscreteVariable) -> float:
+        """Evaluate the "prior" part of the target distribution
+
+        Parameters
+        ----------
+        x : DiscreteVariable
+            Point at which to evaluate the prior part of the target distribution
+
+        Returns
+        -------
+        float
+            log-probability 
+
+
+        Notes
+        -----
+
+        Generally a target/posterior distribution cannot be written explicitly with a closed form solution, and we instead write
+        the posterior :math:`P\left(\theta | X \right)` as proportional to the product of the likelihood
+        :math:`P\left(X | \theta \right)` and the prior :math:`P\left(\theta \right)`.
+
+        Allowing for separate evaluation of the prior means that initial samples in the :class:`DiscreteVariableSMC` can be
+        weighted according to the prior density.
+        """
         logprob = -math.inf
         return logprob
