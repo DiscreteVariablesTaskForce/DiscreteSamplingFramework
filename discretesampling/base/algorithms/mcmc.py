@@ -1,6 +1,6 @@
 import math
 import copy
-from ...base.random import RNG
+from discretesampling.base.random import RNG
 
 
 class DiscreteVariableMCMC():

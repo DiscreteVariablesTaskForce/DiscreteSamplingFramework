@@ -1,12 +1,12 @@
 import numpy as np
 import copy
-from ...base import types
-from ...base.random import RNG
-from .additive_distribution import AdditiveStructureProposal
-from .additive_target import AdditiveStructureTarget
+from discretesampling.base.types import DiscreteVariable
+from discretesampling.base.random import RNG
+from discretesampling.domain.additive_structure.additive_distribution import AdditiveStructureProposal
+from discretesampling.domain.additive_structure.additive_target import AdditiveStructureTarget
 
 
-class AdditiveStructure(types.DiscreteVariable):
+class AdditiveStructure(DiscreteVariable):
     def __init__(self, discrete_set):
         self.discrete_set = discrete_set
 

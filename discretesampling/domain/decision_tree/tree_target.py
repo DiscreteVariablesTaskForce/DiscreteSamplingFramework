@@ -1,10 +1,10 @@
 import math
 import numpy as np
-from ...base import types
-from .metrics import calculate_leaf_occurences
+from discretesampling.base.types import DiscreteVariableTarget
+from discretesampling.domain.decision_tree.metrics import calculate_leaf_occurences
 
 
-class TreeTarget(types.DiscreteVariableTarget):
+class TreeTarget(DiscreteVariableTarget):
     def __init__(self, a, b=None):
         self.a = a
         self.b = b

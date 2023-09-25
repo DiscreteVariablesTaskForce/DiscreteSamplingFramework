@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Aug 11 09:29:10 2023
-
-@author: efthi
-"""
 import numpy as np
 from discretesampling.domain.decision_tree.metrics import stats
 

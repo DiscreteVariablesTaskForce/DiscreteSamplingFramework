@@ -1,11 +1,11 @@
 from math import log, pi, pow
 from numpy import sum, prod
 from itertools import chain
-from .numbers import bell
-from ...base import types
+from discretesampling.domain.additive_structure.numbers import bell
+from discretesampling.base.types import DiscreteVariableTarget
 
 
-class AdditiveStructureTarget(types.DiscreteVariableTarget):
+class AdditiveStructureTarget(DiscreteVariableTarget):
     def __init__(self, data):
         # self.data = data
         self.xtrain = data[0]

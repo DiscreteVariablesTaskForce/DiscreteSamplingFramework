@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Aug 11 09:24:14 2023
-
-@author: efthi
-"""
-
 from discretesampling.domain.decision_tree.tree_target import TreeTarget
 from discretesampling.domain.decision_tree.regression_metrics import regression_likelihood
 

@@ -1,7 +1,7 @@
 from mpi4py import MPI
 import numpy as np
 from scipy.special import logsumexp
-from discretesampling.base.executor.executor import Executor
+from discretesampling.base.executor import Executor
 from discretesampling.base.executor.MPI.distributed_fixed_size_redistribution.prefix_sum import (
     inclusive_prefix_sum
 )
