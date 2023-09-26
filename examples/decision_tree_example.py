@@ -25,20 +25,20 @@ b = 5
 target = dt.TreeTarget(a, b)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
-dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
-try:
-    treeSamples = dtMCMC.sample(500)
+# dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
+# try:
+#     treeSamples = dtMCMC.sample(500)
 
-    mcmcLabels = dt.stats(treeSamples, X_test).predict(X_test, use_majority=True)
-    mcmcAccuracy = [dt.accuracy(y_test, mcmcLabels)]
-    print("MCMC mean accuracy: ", (mcmcAccuracy))
-except ZeroDivisionError:
-    print("MCMC sampling failed due to division by zero")
+#     mcmcLabels = dt.stats(treeSamples, X_test).predict(X_test, use_majority=True)
+#     mcmcAccuracy = [dt.accuracy(y_test, mcmcLabels)]
+#     print("MCMC mean accuracy: ", (mcmcAccuracy))
+# except ZeroDivisionError:
+#     print("MCMC sampling failed due to division by zero")
 
 
 dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 try:
-    treeSMCSamples = dtSMC.sample(10, 1000)
+    treeSMCSamples = dtSMC.sample(10, 10)
 
     smcLabels = dt.stats(treeSMCSamples, X_test).predict(X_test, use_majority=True)
     smcAccuracy = [dt.accuracy(y_test, smcLabels)]

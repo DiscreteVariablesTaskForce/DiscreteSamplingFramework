@@ -39,6 +39,7 @@ class DiscreteVariableSMC():
         logWeights = np.array([self.target.eval(p) - self.initialProposal.eval(p, self.target) for p in initialParticles])
 
         for t in range(Tsmc):
+            print(t)
             logWeights = normalise(logWeights, self.exec)
             neff = ess(logWeights, self.exec)
 
