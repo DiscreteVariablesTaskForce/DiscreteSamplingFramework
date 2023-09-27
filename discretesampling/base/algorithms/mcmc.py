@@ -1,7 +1,6 @@
 import math
 import copy
 from tqdm.auto import tqdm
-import numpy as np
 from discretesampling.base.random import RNG
 from discretesampling.base.output import MCMCOutput
 
@@ -65,4 +64,4 @@ class DiscreteVariableMCMC():
 
         results = MCMCOutput(samples, acceptance_probabilities, include_warmup, N, N_warmup)
         progress_bar.close()
-        return
+        return results

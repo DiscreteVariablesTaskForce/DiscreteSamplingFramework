@@ -1,7 +1,6 @@
 import pytest
 import numpy as np
 from discretesampling.base.algorithms import DiscreteVariableSMC
-from discretesampling.base.util import gather_all
 from discretesampling.base.executor.executor_MPI import Executor_MPI
 from discretesampling.domain import spectrum
 from discretesampling.base.output import SMCOutput
