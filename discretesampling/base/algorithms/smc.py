@@ -80,6 +80,8 @@ class DiscreteVariableSMC():
             current_particles = new_particles
             progress_bar.update(1)
 
-        results = SMCOutput(current_particles, logWeights, exec=exec)
+        current_particles = self.exec.gather_all(current_particles)
+        logWeights = self.exec.gather(logWeights, [N])
+        results = SMCOutput(current_particles, logWeights)
         progress_bar.close()
         return results

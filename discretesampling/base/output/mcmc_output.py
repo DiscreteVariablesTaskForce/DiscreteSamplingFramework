@@ -10,10 +10,9 @@ class MCMCOutput(BaseOutput):
         samples: list[DiscreteVariable],
         acceptance_probabilities,
         include_warmup,
-        N=None, N_warmup=None,
-        exec: Executor = Executor()
+        N=None, N_warmup=None
     ):
-        super().__init__(self, samples)
+        super().__init__(samples)
         self.acceptance_probabilities = acceptance_probabilities
         self.include_warmup = include_warmup
         if N is None:

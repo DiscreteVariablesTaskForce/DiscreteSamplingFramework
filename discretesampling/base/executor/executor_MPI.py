@@ -2,6 +2,7 @@ from mpi4py import MPI
 import numpy as np
 from scipy.special import logsumexp
 from discretesampling.base.executor import Executor
+from discretesampling.base.util import gather_all
 from discretesampling.base.executor.MPI.distributed_fixed_size_redistribution.prefix_sum import (
     inclusive_prefix_sum
 )
@@ -61,3 +62,7 @@ class Executor_MPI(Executor):
 
     def redistribute(self, particles, ncopies):
         return variable_size_redistribution(particles, ncopies, self)
+
+    def gather_all(self, particles):
+        particles = gather_all(particles, exec=self)
+        return particles
