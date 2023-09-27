@@ -1,7 +1,6 @@
 import numpy as np
 from discretesampling.base.types import DiscreteVariable
 from discretesampling.base.output import BaseOutput
-from discretesampling.base.executor import Executor
 
 
 class MCMCOutput(BaseOutput):

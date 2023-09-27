@@ -5,7 +5,6 @@ from sklearn import datasets
 from discretesampling.base.algorithms import DiscreteVariableSMC
 from discretesampling.domain import decision_tree as dt
 from discretesampling.base.executor.executor_MPI import Executor_MPI
-from discretesampling.base.util import gather_all
 
 data = datasets.load_diabetes()
 
