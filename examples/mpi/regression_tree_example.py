@@ -32,10 +32,8 @@ try:
     treeSMCSamples = dtSMC.sample(T, N, seed)
     MPI.COMM_WORLD.Barrier()
     end = MPI.Wtime()
-    if MPI.COMM_WORLD.Get_size() > 1:
-        treeSMCSamples = gather_all(treeSMCSamples, exec)
 
-    smcLabels = dt.RegressionStats(treeSMCSamples, X_test).predict(X_test)
+    smcLabels = dt.RegressionStats(treeSMCSamples.samples, X_test).predict(X_test)
     smcAccuracy = dt.accuracy_mse(y_test, smcLabels)
 
     if MPI.COMM_WORLD.Get_rank() == 0:
