@@ -1,7 +1,12 @@
 import math
 import copy
+<<<<<<< HEAD
 from tqdm.auto import tqdm
+=======
+import numpy as np
+>>>>>>> d8b1383 (feat: change output of MCMC and SMC)
 from discretesampling.base.random import RNG
+from discretesampling.base.output import MCMCOutput
 
 
 class DiscreteVariableMCMC():
@@ -12,8 +17,12 @@ class DiscreteVariableMCMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, N, seed=0, verbose=True):
+    def sample(self, N, N_warmup=None, seed=0, include_warmup=True, verbose = True):
         rng = RNG(seed)
+
+        if N_warmup is None:
+            N_warmup = int(N/2)
+
         initialSample = self.initialProposal.sample(rng)
         current = initialSample
 
@@ -21,6 +30,7 @@ class DiscreteVariableMCMC():
 
         display_progress_bar = verbose
         progress_bar = tqdm(total=N, desc="MCMC sampling", disable=not display_progress_bar)
+        acceptance_probabilities = []
 
         for i in range(N):
             forward_proposal = self.proposalType(current, rng)
@@ -49,7 +59,13 @@ class DiscreteVariableMCMC():
                 pass
 
             samples.append(copy.copy(current))
+            acceptance_probabilities.append(acceptance_probability)
             progress_bar.update(1)
 
+        if not include_warmup:
+            samples = samples[(N_warmup-1):N]
+            acceptance_probabilities = acceptance_probabilities[(N_warmup-1):N]
+            
+        results = MCMCOutput(samples, acceptance_probabilities, include_warmup, N, N_warmup)
         progress_bar.close()
-        return samples
+        return results

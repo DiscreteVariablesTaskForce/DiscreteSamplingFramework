@@ -7,6 +7,7 @@ from discretesampling.base.executor import Executor
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
+from discretesampling.base.output import SMCOutput
 
 
 class DiscreteVariableSMC():
@@ -79,5 +80,6 @@ class DiscreteVariableSMC():
             current_particles = new_particles
             progress_bar.update(1)
 
+        results = SMCOutput(current_particles, logWeights, exec=exec)
         progress_bar.close()
-        return current_particles
+        return results
