@@ -1,6 +1,7 @@
 import copy
 import numpy as np
 import math
+from tqdm.auto import tqdm
 from discretesampling.base.random import RNG
 from discretesampling.base.executor import Executor
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
@@ -28,7 +29,7 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, Tsmc, N, seed=0):
+    def sample(self, Tsmc, N, seed=0, verbose=True):
         loc_n = int(N/self.exec.P)
         rank = self.exec.rank
         mvrs_rng = RNG(seed)
@@ -38,7 +39,9 @@ class DiscreteVariableSMC():
         current_particles = initialParticles
         logWeights = np.array([self.target.eval(p) - self.initialProposal.eval(p, self.target) for p in initialParticles])
 
-        for t in range(Tsmc):
+        display_progress_bar = verbose and rank == 0
+
+        for t in tqdm(range(Tsmc), disable=not display_progress_bar):
             logWeights = normalise(logWeights, self.exec)
             neff = ess(logWeights, self.exec)
 

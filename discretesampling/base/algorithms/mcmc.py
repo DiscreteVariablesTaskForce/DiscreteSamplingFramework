@@ -1,5 +1,6 @@
 import math
 import copy
+from tqdm.auto import tqdm
 from discretesampling.base.random import RNG
 
 
@@ -11,13 +12,14 @@ class DiscreteVariableMCMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, N, seed=0):
+    def sample(self, N, seed=0, verbose=True):
         rng = RNG(seed)
         initialSample = self.initialProposal.sample(rng)
         current = initialSample
 
         samples = []
-        for i in range(N):
+
+        for i in tqdm(range(N), disable=not verbose):
             forward_proposal = self.proposalType(current, rng)
             proposed = forward_proposal.sample()
 
