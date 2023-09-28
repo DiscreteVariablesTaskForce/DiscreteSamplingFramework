@@ -4,6 +4,7 @@ scipy
 scikit-learn
 pandas
 mpi4py
+tqdm
 flake8
 pytest
 pytest-mpi
