@@ -40,8 +40,9 @@ class DiscreteVariableSMC():
         logWeights = np.array([self.target.eval(p) - self.initialProposal.eval(p, self.target) for p in initialParticles])
 
         display_progress_bar = verbose and rank == 0
+        progress_bar = tqdm(total=Tsmc, desc="SMC sampling", disable=not display_progress_bar)
 
-        for t in tqdm(range(Tsmc), disable=not display_progress_bar):
+        for t in range(Tsmc):
             logWeights = normalise(logWeights, self.exec)
             neff = ess(logWeights, self.exec)
 
@@ -76,5 +77,7 @@ class DiscreteVariableSMC():
                 logWeights[i] += new_target_logprob - current_target_logprob + reverse_logprob - forward_logprob[i]
 
             current_particles = new_particles
+            progress_bar.update(1)
 
+        progress_bar.close()
         return current_particles

@@ -19,7 +19,10 @@ class DiscreteVariableMCMC():
 
         samples = []
 
-        for i in tqdm(range(N), disable=not verbose):
+        display_progress_bar = verbose
+        progress_bar = tqdm(total=N, desc="MCMC sampling", disable=not display_progress_bar)
+
+        for i in range(N):
             forward_proposal = self.proposalType(current, rng)
             proposed = forward_proposal.sample()
 
@@ -46,5 +49,7 @@ class DiscreteVariableMCMC():
                 pass
 
             samples.append(copy.copy(current))
+            progress_bar.update(1)
 
+        progress_bar.close()
         return samples
