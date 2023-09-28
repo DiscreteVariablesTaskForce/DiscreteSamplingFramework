@@ -30,7 +30,7 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, Tsmc, N, seed=0, verbose=True):
+    def sample(self, Tsmc, N, seed=0, gather_results=True, verbose=True):
         loc_n = int(N/self.exec.P)
         rank = self.exec.rank
         mvrs_rng = RNG(seed)
@@ -80,8 +80,10 @@ class DiscreteVariableSMC():
             current_particles = new_particles
             progress_bar.update(1)
 
-        current_particles = self.exec.gather_all(current_particles)
-        logWeights = self.exec.gather(logWeights, [N])
+        if gather_results:
+            current_particles = self.exec.gather_all(current_particles)
+            logWeights = self.exec.gather(logWeights, [N])
+
         results = SMCOutput(current_particles, logWeights)
         progress_bar.close()
         return results
