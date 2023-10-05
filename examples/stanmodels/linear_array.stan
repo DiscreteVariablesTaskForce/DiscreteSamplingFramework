@@ -4,7 +4,7 @@ data {
   int<lower=1> T;            // number of samples for each sensor
   real<lower=0> fs;          // sampling frequency
   real<lower=0> wave_speed;  // wave speed
-  vector[T] d[L];            // samples from the sensors 
+  array[L] vector[T] d;            // samples from the sensors 
   real<lower=0> sep;         // separation between sensors
 }
 
@@ -44,7 +44,7 @@ transformed data{
 }
 
 parameters {
-  real<lower=0, upper=2*pi()> theta[M];  // directions of arrival for each signal 
+  vector<lower=0, upper=2*pi()>[M] theta;  // directions of arrival for each signal 
   real<lower=0> delta2;                  // signal to noise ratio
 }
 
