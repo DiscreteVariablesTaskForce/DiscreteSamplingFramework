@@ -11,11 +11,15 @@ from discretesampling.base.algorithms.smc_components.resampling import systemati
 
 class DiscreteVariableSMC():
 
-    def __init__(self, variableType, target, initialProposal,
+    def __init__(self, variableType, target, initialProposal, proposal=None,
+                 Lkernel=None,
                  use_optimal_L=False,
                  exec=Executor()):
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
+        self.proposal = proposal
+        if proposal is None:
+            self.proposal = self.proposalType()
         self.use_optimal_L = use_optimal_L
         self.exec = exec
 
@@ -25,6 +29,10 @@ class DiscreteVariableSMC():
             # By default getLKernelType just returns
             # variableType.getProposalType(), the same as the forward_proposal
             self.LKernelType = variableType.getLKernelType()
+
+        self.Lkernel = Lkernel
+        if Lkernel is None:
+            self.Lkernel = self.LKernelType()
 
         self.initialProposal = initialProposal
         self.target = target
@@ -56,9 +64,9 @@ class DiscreteVariableSMC():
 
             # Sample new particles and calculate forward probabilities
             for i in range(loc_n):
-                forward_proposal = self.proposalType(current_particles[i], rng=rngs[i])
-                new_particles[i] = forward_proposal.sample()
-                forward_logprob[i] = forward_proposal.eval(new_particles[i])
+                forward_proposal = self.proposal
+                new_particles[i] = forward_proposal.sample(current_particles[i], rng=rngs[i])
+                forward_logprob[i] = forward_proposal.eval(current_particles[i], new_particles[i])
 
             if self.use_optimal_L:
                 Lkernel = self.LKernelType(
@@ -68,8 +76,8 @@ class DiscreteVariableSMC():
                 if self.use_optimal_L:
                     reverse_logprob = Lkernel.eval(i)
                 else:
-                    Lkernel = self.LKernelType(new_particles[i])
-                    reverse_logprob = Lkernel.eval(current_particles[i])
+                    Lkernel = self.Lkernel
+                    reverse_logprob = Lkernel.eval(new_particles[i], current_particles[i])
 
                 current_target_logprob = self.target.eval(current_particles[i])
                 new_target_logprob = self.target.eval(new_particles[i])
