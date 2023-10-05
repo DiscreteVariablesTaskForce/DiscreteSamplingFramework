@@ -3,7 +3,8 @@ import copy
 import numpy as np
 from scipy.special import logsumexp
 from discretesampling.base.random import RNG
-from discretesampling.base.algorithms.continuous import NUTS, RandomWalk
+from discretesampling.base.algorithms.continuous.NUTS import NUTS
+from discretesampling.base.algorithms.continuous.RandomWalk import RandomWalk
 
 
 class DiscreteVariableRJMCMC():

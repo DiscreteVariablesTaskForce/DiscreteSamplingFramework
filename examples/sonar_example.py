@@ -6,6 +6,7 @@ import discretesampling.domain.spectrum as spec
 from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 from discretesampling.base.algorithms.continuous_proposals import sample_offsets, forward_grid_search, reverse_grid_search
 from discretesampling.base.stan_model import StanModel
+from discretesampling.base.algorithms.continuous.NUTS import NUTS
 
 stan_model_path = "examples/stanmodels/linear_array.stan"
 data_path = "examples/5_targets_noisy.data.json"
@@ -120,7 +121,7 @@ rjmcmc = DiscreteVariableRJMCMC(
     model,
     data_function,
     continuous_proposal,
-    "NUTS",
+    NUTS,
     False,
     False,
     True,

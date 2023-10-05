@@ -6,6 +6,7 @@ from discretesampling.base.random import RNG
 import discretesampling.domain.spectrum as spec
 from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 from discretesampling.base.stan_model import StanModel
+from discretesampling.base.algorithms.continuous.RandomWalk import RandomWalk
 
 
 stan_model_path = "examples/stanmodels/mixturemodel.stan"
@@ -153,7 +154,7 @@ rjmcmc = DiscreteVariableRJMCMC(
     model,
     data_function,
     continuous_proposal,
-    "random_walk",
+    RandomWalk,
     False,
     False,
     True,
