@@ -19,6 +19,80 @@ Copyright (c) 2023, University of Liverpool.
  - pandas
  - scipy
  - scikit-learn (for examples)
+ - [bridgestan](https://github.com/roualdes/bridgestan) (for models with continuous parameters specified with Stan)
+ - cmdstanpy (for models with continuous parameters specified with Stan)
+
+## Continuous Parameters and Stan 
+For models with continuous parameters, the continuous model conditional on discrete
+parameters can be specified using a model written in Stan.
+Log density and gradient information are extracted from Stan models using
+[bridgestan](https://github.com/roualdes/bridgestan).
+
+
+
+## Installation
+
+Install with pip:
+```bash
+pip install pip install git+https://github.com/DiscreteVariablesTaskForce/DiscreteSamplingFramework.git
+```
+
+or
+
+```
+git clone --recurse-submodules https://github.com/DiscreteVariablesTaskForce/DiscreteSamplingFramework.git
+pip install -e DiscreteSamplingFramework
+```
+
+### bridgestan
+
+[bridgestan](https://github.com/roualdes/bridgestan) must be "installed".
+It is set as a submodule of this repo and so, if you installed by cloning the repo, you can
+set an environment variable to point to the bridgestan repo:
+```bash
+export BRIDGESTAN=<path/to/this/repo/>/bridgestan
+```
+
+
+Alternatively, you can clone bridgestan elsewhere and set an environment variable:
+```bash
+git clone https://github.com/roualdes/bridgestan.git <path/to/bridgestan>
+export BRIDGESTAN=<path/to/bridgestan>
+```
+
+If this environment variable is not set, discretesampling will attempt to set it to
+the bridgestan submodule.
+
+
+### Cmdstan
+[cmdstan](https://github.com/stan-dev/cmdstan) is also required to query stan models with bridgestan.
+
+#### Installation with cmdstanpy
+The simplest way to install cmdstan is using cmdstanpy:
+```python
+import cmdstanpy
+cmdstanpy.install_cmdstan()
+```
+which will download and build the latest version of cmdstan to
+your home directory in `~/.cmdstan` and
+sets an environment variable `CMDSTAN` to that location.
+
+#### Manual installation
+Alternatively, cmdstan can be installed manually following instructions for [installing with conda](https://mc-stan.org/docs/cmdstan-guide/cmdstan-installation.html#conda-install) or [building from source](https://mc-stan.org/docs/cmdstan-guide/cmdstan-installation.html#installation-from-github).
+
+The `CMDSTAN` environment variable should be then set:
+```bash
+export CMDSTAN=path/to/cmdstan
+```
+or with cmdstanpy:
+```python
+import cmdstanpy
+cmdstanpy.set_cmdstan_path('path/to/cmdstan')
+```
+
+#### Windows
+On Windows there's an additional step in the cmdstan installation to link the TBB libraries. However, this might not work correctly. In this case you may run into an error when using bridgestan, where it will say that it is unable to find the model .so file or one of its dependencies. The way to fix this is to copy the tbb.dll file from `cmdstan\stan\lib\stan_math\lib\tbb` to the folder containing the stan model.
+
 
 ### Cloning and installing from github
 

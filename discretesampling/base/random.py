@@ -25,3 +25,9 @@ class RNG():
 
     def randomChoices(self, population, weights=None, cum_weights=None, k=1):
         return self.nprng.choice(population, size=k, replace=True, p=weights)
+
+    def randomMvNormal(self, Mu, Sigma):
+        return self.nprng.multivariate_normal(Mu, Sigma)
+
+    def randomNormal(self, mu=0, sigma=1):
+        return self.nprng.normal(mu, sigma)

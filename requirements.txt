@@ -3,6 +3,8 @@ numpy
 scipy
 scikit-learn
 pandas
+cmdstanpy
+bridgestan
 mpi4py
 tqdm
 flake8
