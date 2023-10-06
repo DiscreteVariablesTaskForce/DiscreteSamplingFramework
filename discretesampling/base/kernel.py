@@ -5,17 +5,16 @@ from scipy.special import logsumexp
 
 
 class DiscreteVariableOptimalLKernel:
-    def __init__(self, current_particles, previous_particles,
+    def __init__(self, current_particles, previous_particles, proposal=None,
                  parallel=False, num_cores=None):
         self.current_particles = current_particles
         self.previous_particles = previous_particles
         self.proposalType = type(self.current_particles[0]).getProposalType()
+        self.proposal = proposal
+        if proposal is None:
+            self.proposal = self.proposalType()
         self.parallel = parallel
         self.num_cores = num_cores
-
-        self.forward_proposals = [
-            self.proposalType(particle) for particle in self.previous_particles
-        ]
 
         # If parallel, calculate eta and proposal_possible in parallel
         # Then precalculate logprob
@@ -107,7 +106,8 @@ class DiscreteVariableOptimalLKernel:
             forward_probabilities = np.zeros(len(self.previous_particles))
             for j in range(len(self.previous_particles)):
                 if self.proposal_possible[p, j] == 1:
-                    forward_probabilities[j] = self.forward_proposals[j].eval(
+                    forward_probabilities[j] = self.proposal.eval(
+                        self.previous_particles[j],
                         self.current_particles[p]
                     )
 

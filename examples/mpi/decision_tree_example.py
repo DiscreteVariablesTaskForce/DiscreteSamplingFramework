@@ -17,13 +17,14 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random
 a = 15
 target = dt.TreeTarget(a)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
-
+proposal = dt.TreeProposal()
 N = 1 << 10
 T = 10
 seed = 0
 
 exec = Executor_MPI()
-dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal, False, exec=exec)
+
+dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal, proposal=proposal, use_optimal_L=False, exec=exec)
 try:
     MPI.COMM_WORLD.Barrier()
     start = MPI.Wtime()

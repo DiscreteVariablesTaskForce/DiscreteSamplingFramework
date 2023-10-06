@@ -58,8 +58,8 @@ def test_additive_structure_proposal_heuristic(ad_a, ad_b, expected):
      (AdditiveStructure([[1], [2], [3], [4], [5]]), AdditiveStructure([[1], [2], [3], [4, 5]]), np.log(0.1))]
 )
 def test_additive_structure_proposal_eval(ad_start, ad_end, expected):
-    prop = AdditiveStructureProposal(ad_start)
-    logprob = prop.eval(ad_end)
+    prop = AdditiveStructureProposal()
+    logprob = prop.eval(ad_start, ad_end)
     np.testing.assert_almost_equal(logprob, expected)
 
 
@@ -71,8 +71,8 @@ def test_additive_structure_proposal_eval(ad_start, ad_end, expected):
      (3, AdditiveStructure([[1], [2], [3], [4], [5]]), AdditiveStructure([[1], [2], [3, 5], [4]]))]
 )
 def test_additive_structure_proposal_sample(seed, ad_start, expected):
-    prop = AdditiveStructureProposal(ad_start, rng=RNG(seed))
-    sampled = prop.sample()
+    prop = AdditiveStructureProposal()
+    sampled = prop.sample(ad_start, rng=RNG(seed))
     assert sampled == expected
 
 

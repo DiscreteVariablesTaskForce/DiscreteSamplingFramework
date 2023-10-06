@@ -56,8 +56,8 @@ def test_spectrum_proposal_heuristic(a, b, expected):
      (SpectrumDimension(2), 4, SpectrumDimension(3))]
 )
 def test_spectrum_proposal_sample(start_spectrum, seed, expected):
-    prop = SpectrumDimensionProposal(start_spectrum, rng=RNG(seed))
-    sampled = prop.sample()
+    prop = SpectrumDimensionProposal()
+    sampled = prop.sample(start_spectrum, rng=RNG(seed))
     assert sampled == expected
 
 
@@ -71,8 +71,8 @@ def test_spectrum_proposal_sample(start_spectrum, seed, expected):
      (SpectrumDimension(1), SpectrumDimension(0), -np.inf)]
 )
 def test_spectrum_proposal_eval(start_spectrum, end_spectrum, expected):
-    prop = SpectrumDimensionProposal(start_spectrum)
-    logprob = prop.eval(end_spectrum)
+    prop = SpectrumDimensionProposal()
+    logprob = prop.eval(start_spectrum, end_spectrum)
     assert logprob == expected
 
 

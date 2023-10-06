@@ -1,12 +1,12 @@
+from scipy.stats import nbinom
+import numpy as np
 from discretesampling.base.types import (
     DiscreteVariable,
     DiscreteVariableTarget,
     DiscreteVariableInitialProposal,
     DiscreteVariableProposal
 )
-
 from discretesampling.base.random import RNG
-from scipy.stats import nbinom
 
 
 # SpectrumDimension inherits from DiscreteVariable
@@ -36,8 +36,28 @@ class SpectrumDimension(DiscreteVariable):
 
 # SpectrumDimensionProposal inherits from DiscreteVariableProposal
 class SpectrumDimensionProposal(DiscreteVariableProposal):
-    def __init__(self, startingDimension: SpectrumDimension, rng=RNG()):
-        startingValue = startingDimension.value
+    def __init__(self):
+        pass
+
+    def sample(self, startingDimension: SpectrumDimension, rng=RNG()):
+        dims, pmf = self.generateDims(startingDimension)
+        cmf = np.cumsum(pmf)
+        q = rng.random()  # random unif(0,1)
+        sampledDim = dims[np.argmax(cmf >= q)]
+        return sampledDim
+
+    def eval(self, startingDimension: SpectrumDimension, sampledDimension: SpectrumDimension):
+        dims, pmf = self.generateDims(startingDimension)
+        try:
+            i = dims.index(sampledDimension)
+            logp = np.log(pmf[i])
+        except ValueError:
+            print("Warning: value " + str(sampledDimension) + " not in pmf")
+            logp = -np.inf
+        return logp
+
+    def generateDims(self, startingDim: SpectrumDimension):
+        startingValue = startingDim.value
         values = []
         if startingValue > 1:
             values = [startingValue-1, startingValue+1]
@@ -46,8 +66,7 @@ class SpectrumDimensionProposal(DiscreteVariableProposal):
         dims = [SpectrumDimension(x) for x in values]
         numDims = len(dims)
         probs = [1/numDims] * numDims
-
-        super().__init__(dims, probs, rng)
+        return dims, probs
 
     @classmethod
     def norm(self, x):
