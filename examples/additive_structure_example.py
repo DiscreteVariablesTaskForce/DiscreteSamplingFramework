@@ -37,9 +37,9 @@ asSamplesLk = asSMCLkern.sample(5, 10)
 
 
 # Comparison between the three methods based on sampling the true structure
-mcmc = [x.discrete_set for x in asSamplesMCMC]
-lkern = [x.discrete_set for x in asSamplesLk]
-smc = [x.discrete_set for x in asSamplesSMC]
+mcmc = [x.discrete_set for x in asSamplesMCMC.samples]
+lkern = [x.discrete_set for x in asSamplesLk.samples]
+smc = [x.discrete_set for x in asSamplesSMC.samples]
 
 mcmc.count(true_str)
 lkern.count(true_str)

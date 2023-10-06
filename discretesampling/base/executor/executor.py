@@ -31,3 +31,6 @@ class Executor(object):
             [[particles[i]]*ncopies[i] for i in range(len(particles))]
         ))
         return particles
+
+    def gather_all(self, particles):
+        return particles
