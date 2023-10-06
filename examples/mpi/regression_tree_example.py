@@ -22,7 +22,7 @@ T = 10
 seed = 0
 
 exec = Executor_MPI()
-dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal, False, exec=exec)
+dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal, use_optimal_L=False, exec=exec)
 try:
     MPI.COMM_WORLD.Barrier()
     start = MPI.Wtime()

@@ -7,9 +7,12 @@ from discretesampling.base.output import MCMCOutput
 
 class DiscreteVariableMCMC():
 
-    def __init__(self, variableType, target, initialProposal):
+    def __init__(self, variableType, target, initialProposal, proposal=None):
         self.variableType = variableType
         self.proposalType = variableType.getProposalType()
+        self.proposal = proposal
+        if proposal is None:
+            self.proposal = self.proposalType()
         self.initialProposal = initialProposal
         self.target = target
 
@@ -29,13 +32,13 @@ class DiscreteVariableMCMC():
         acceptance_probabilities = []
 
         for i in range(N):
-            forward_proposal = self.proposalType(current, rng)
-            proposed = forward_proposal.sample()
+            forward_proposal = self.proposal
+            proposed = forward_proposal.sample(current, rng=rng)
 
-            reverse_proposal = self.proposalType(proposed, rng)
+            reverse_proposal = self.proposal
 
-            forward_logprob = forward_proposal.eval(proposed)
-            reverse_logprob = reverse_proposal.eval(current)
+            forward_logprob = forward_proposal.eval(current, proposed)
+            reverse_logprob = reverse_proposal.eval(proposed, current)
 
             current_target_logprob = self.target.eval(current)
             proposed_target_logprob = self.target.eval(proposed)

@@ -187,7 +187,7 @@ def test_tree_swap(seed, tree, expected):
                   [2, 5, 6, 3, 15.2, 2], [6, 7, 8, 6, 0.66, 3]], [3, 4, 5, 7, 8]))]
 )
 def test_tree_proposal_sample(seed, tree, expected):
-    new_tree = TreeProposal(tree, rng=RNG(seed)).sample()
+    new_tree = TreeProposal().sample(tree, rng=RNG(seed))
     assert new_tree == expected
 
 
@@ -211,7 +211,7 @@ def test_tree_proposal_sample(seed, tree, expected):
       -10.519321629993403)]
 )
 def test_tree_proposal_eval(tree_a, tree_b, expected):
-    logprob = TreeProposal(tree_a).eval(tree_b)
+    logprob = TreeProposal().eval(tree_a, tree_b)
     np.testing.assert_almost_equal(logprob, expected)
 
 

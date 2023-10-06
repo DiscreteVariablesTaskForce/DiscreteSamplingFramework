@@ -6,13 +6,8 @@ from discretesampling.base.types import DiscreteVariableProposal
 
 
 class TreeProposal(DiscreteVariableProposal):
-    def __init__(self, tree, rng=RNG()):
-        self.X_train = tree.X_train
-        self.y_train = tree.y_train
-        self.tree = copy.copy(tree)
-        # self.moves_prob = [0.4, 0.1, 0.1, 0.4] # Good for chipman
-        self.moves_prob = [0.25, 0.1, 0.45, 0.25]  # good for Poisson and heart l = 12, and diabetes l = 10
-        self.rng = rng
+    def __init__(self, moves_prob=[0.25, 0.1, 0.45, 0.25]):
+        self.moves_prob = moves_prob  # good for Poisson and heart l = 12, and diabetes l = 10
 
     @classmethod
     def norm(self, tree):
@@ -24,37 +19,38 @@ class TreeProposal(DiscreteVariableProposal):
     def heuristic(self, x, y):
         return y < x or abs(x-y) < 2
 
-    def sample(self, num_nodes=10):
+    def sample(self, start_tree, rng=RNG(), num_nodes=10):
+        # self.moves_prob = [0.4, 0.1, 0.1, 0.4] # Good for chipman
         # initialise the probabilities of each move
         moves = ["prune", "swap", "change", "grow"]  # noqa
         moves_prob = self.moves_prob
-        if len(self.tree.tree) == 1:
+        if len(start_tree.tree) == 1:
             moves_prob = [0.0, 0.0, 0.5, 0.5]
-        elif len(self.tree.tree) >= num_nodes:
+        elif len(start_tree.tree) >= num_nodes:
             moves_prob = [0.1, 0.1, 0.8, 0.0]
-        random_number = self.rng.random()
+        random_number = rng.random()
         moves_probabilities = np.cumsum(moves_prob)
-        newTree = copy.copy(self.tree)
+        newTree = copy.copy(start_tree)
         if random_number < moves_probabilities[0]:
             # prune
-            newTree = newTree.prune(rng=self.rng)
+            newTree = newTree.prune(rng=rng)
 
         elif random_number < moves_probabilities[1]:
             # swap
-            newTree = newTree.swap(rng=self.rng)
+            newTree = newTree.swap(rng=rng)
 
         elif random_number < moves_probabilities[2]:
             # change
-            newTree = newTree.change(rng=self.rng)
+            newTree = newTree.change(rng=rng)
 
         else:
             # grow
-            newTree = newTree.grow(rng=self.rng)
+            newTree = newTree.grow(rng=rng)
 
         return newTree
 
-    def eval(self, sampledTree):
-        initialTree = self.tree
+    def eval(self, start_tree, sampledTree):
+        initialTree = start_tree
         moves_prob = self.moves_prob
         logprobability = -inf
         if len(initialTree.tree) == 1:
