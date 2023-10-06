@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+from typing import Union
 import math
 from pickle import loads, dumps
 import numpy as np
@@ -5,17 +7,19 @@ from discretesampling.base.random import RNG
 from discretesampling.base.kernel import DiscreteVariableOptimalLKernel
 
 
-class DiscreteVariable:
+class DiscreteVariable(ABC):
     def __init__(self):
         pass
 
     @classmethod
+    @abstractmethod
     def getProposalType(self):
-        return DiscreteVariableProposal
+        pass
 
     @classmethod
+    @abstractmethod
     def getTargetType(self):
-        return DiscreteVariableTarget
+        pass
 
     @classmethod
     def getLKernelType(self):
@@ -40,86 +44,77 @@ class DiscreteVariable:
         return decoded
 
 
-class DiscreteVariableProposal:
-    def __init__(self, values, probs):
-        # Check dims and probs are valid
-        assert len(values) == len(probs), "Invalid PMF specified, x and p" +\
-            " of different lengths"
-        probs = np.array(probs)
-        tolerance = np.sqrt(np.finfo(np.float64).eps)
-        assert abs(1 - sum(probs)) < tolerance, "Invalid PMF specified," +\
-            " sum of probabilities !~= 1.0"
-        assert all(probs > 0), "Invalid PMF specified, all probabilities" +\
-            " must be > 0"
-        self.x = values
-        self.pmf = probs
-        self.cmf = np.cumsum(probs)
-
-    @classmethod
-    def norm(self, x):
-        return 1
-
-    @classmethod
-    # Should return true if proposal is possible between x and y
-    # (and possibly at other times)
-    # where x and y are norm values from the above function
-    def heuristic(self, x, y):
-        return True
-
-    def sample(self, x, rng=RNG(), target=None):
-        q = rng.random()  # random unif(0,1)
-        return self.x[np.argmax(self.cmf >= q)]
-
-    def eval(self, x, y, target=None):
-        try:
-            i = self.x.index(y)
-            logp = math.log(self.pmf[i])
-        except ValueError:
-            print("Warning: value " + str(y) + " not in pmf")
-            logp = -math.inf
-        return logp
-
-
-# Exact same as proposal above
-class DiscreteVariableInitialProposal():
-    def __init__(self, values, probs):
-        # Check dims and probs are valid
-        assert len(values) == len(probs), "Invalid PMF specified, x and p" +\
-            " of different lengths"
-        probs = np.array(probs)
-        tolerance = np.sqrt(np.finfo(np.float64).eps)
-        assert abs(1 - sum(probs)) < tolerance, "Invalid PMF specified," +\
-            " sum of probabilities !~= 1.0"
-        assert all(probs > 0), "Invalid PMF specified, all probabilities" +\
-            " must be > 0"
-        self.x = values
-        self.pmf = probs
-        self.cmf = np.cumsum(probs)
-
-    def sample(self, rng=RNG(), target=None):
-        q = rng.random()  # random unif(0,1)
-        return self.x[np.argmax(self.cmf >= q)]
-
-    def eval(self, y, target=None):
-        try:
-            i = self.x.index(y)
-            logp = math.log(self.pmf[i])
-        except ValueError:
-            print("Warning: value " + str(y) + " not in pmf")
-            logp = -math.inf
-        return logp
-
-
-class DiscreteVariableTarget:
+class DiscreteVariableProposal(ABC):
     def __init__(self):
         pass
 
-    def eval(self, x):
-        logprob = -math.inf
-        logPrior = self.evaluatePrior(x)
-        logprob += logPrior
-        return logprob
+    @abstractmethod
+    def norm(self, x):
+        pass
 
-    def evaluatePrior(self, x):
-        logprob = -math.inf
-        return logprob
+    # Should return true if proposal is possible between x and y
+    # (and possibly at other times)
+    # where x and y are norm values from the above function
+    @abstractmethod
+    def heuristic(self, x, y):
+        pass
+
+    @abstractmethod
+    def sample(
+        self,
+        x: DiscreteVariable,
+        rng: RNG = RNG(),
+        target: Union[None, 'DiscreteVariableTarget'] = None
+    ) -> 'DiscreteVariable':
+        pass
+
+    @abstractmethod
+    def eval(
+        self,
+        x: DiscreteVariable,
+        x_prime: DiscreteVariable,
+        target: Union[None, 'DiscreteVariableTarget'] = None
+    ) -> float:
+        pass
+
+
+# Exact same as proposal above
+class DiscreteVariableInitialProposal(ABC):
+    def __init__(self, values, probs):
+        # Check dims and probs are valid
+        assert len(values) == len(probs), "Invalid PMF specified, x and p" +\
+            " of different lengths"
+        probs = np.array(probs)
+        tolerance = np.sqrt(np.finfo(np.float64).eps)
+        assert abs(1 - sum(probs)) < tolerance, "Invalid PMF specified," +\
+            " sum of probabilities !~= 1.0"
+        assert all(probs > 0), "Invalid PMF specified, all probabilities" +\
+            " must be > 0"
+        self.x = values
+        self.pmf = probs
+        self.cmf = np.cumsum(probs)
+
+    def sample(self, rng: RNG = RNG(), target: Union[None, 'DiscreteVariableTarget'] = None) -> DiscreteVariable:
+        q = rng.random()  # random unif(0,1)
+        return self.x[np.argmax(self.cmf >= q)]
+
+    def eval(self, y: DiscreteVariable, target: Union[None, 'DiscreteVariableTarget'] = None) -> float:
+        try:
+            i = self.x.index(y)
+            logp = math.log(self.pmf[i])
+        except ValueError:
+            print("Warning: value " + str(y) + " not in pmf")
+            logp = -math.inf
+        return logp
+
+
+class DiscreteVariableTarget(ABC):
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def eval(self, x: DiscreteVariable) -> float:
+        pass
+
+    def evaluatePrior(self, x: DiscreteVariable) -> float:
+        pass

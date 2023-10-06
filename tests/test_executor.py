@@ -11,6 +11,12 @@ class ExampleParticleClass(DiscreteVariable):
     def __eq__(self, other):
         return self.x == other.x
 
+    def getProposalType(self):
+        return super().getProposalType()
+
+    def getTargetType(self):
+        return super().getTargetType()
+
 
 @pytest.mark.parametrize(
     "x,expected",
