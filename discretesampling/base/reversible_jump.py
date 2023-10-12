@@ -1,45 +1,34 @@
-from ..base import types
-from ..base.algorithms import rjmcmc
-from discretesampling.base.random import RNG
-from discretesampling.base.algorithms.continuous import NUTS
+from typing import Type
 import numpy as np
-import copy
+from scipy.special import logsumexp
+from discretesampling.base.algorithms import rjmcmc
+from discretesampling.base.random import RNG
+from discretesampling.base.types import (
+    DiscreteVariable, DiscreteVariableTarget,
+    DiscreteVariableProposal, DiscreteVariableInitialProposal
+)
+from discretesampling.base.algorithms.continuous import ContinuousSampler, NUTS
 
 
-def set_proposal_attributes(
-        base_DiscreteVariableTarget,
-        stan_model,
-        data_function,
-        continuous_proposal_type,
-        continuous_sampler_type,
-        update_probability=0.5
-):
-    global base_target
-    global model
-    global data_func
-    global cont_proposal_type
-    global cont_sampler_type
-    global update_prob
-
-    # attributes used in proposal (must be set prior to sampling)
-    base_target = base_DiscreteVariableTarget
-    model = stan_model
-    data_func = data_function
-    cont_proposal_type = continuous_proposal_type
-    cont_sampler_type = continuous_sampler_type
-    update_prob = update_probability
+class ReversibleJumpParameters():
+    def __init__(
+        self,
+        update_probability=0.5,
+        continuous_sampler: ContinuousSampler = NUTS(),
+        **kwargs
+    ):
+        self.update_probability = update_probability
+        self.continuous_sampler = continuous_sampler
+        self.__dict__.update(kwargs)
 
 
-# ReversibleJumpVariable inherits from DiscreteVariable
-class ReversibleJumpVariable(types.DiscreteVariable):
-    def __init__(self, DiscreteVariables, ContinuousVariables):
-        self.discrete = DiscreteVariables
-        self.continuous = ContinuousVariables
+class ReversibleJumpVariable(DiscreteVariable):
+    def __init__(self, discrete: DiscreteVariable, continuous: np.ndarray):
+        self.discrete = discrete
+        self.continuous = continuous
 
-        # need to store the current and proposed momenta, plus NUTS parameters if we are using NUTS
-        self.r0 = 0
-        self.r1 = 0
-        self.NUTS_params = {}
+    def __eq__(self, other):
+        return (self.discrete == other.discrete) and (self.continuous == other.continuous)
 
     @classmethod
     def getProposalType(self):
@@ -52,119 +41,138 @@ class ReversibleJumpVariable(types.DiscreteVariable):
 
 # ReversibleJumpProposal uses discrete proposals defined by other DiscreteVariableProposal
 # The main purpose of this proposal class proposes new continuous parameters based on the discrete proposal
-class ReversibleJumpProposal(types.DiscreteVariableProposal):
-    def __init__(self, currentReversibleJumpVariable, rng=RNG()):
-        self.currentReversibleJumpVariable = currentReversibleJumpVariable
-        self.rjmcmc = rjmcmc.DiscreteVariableRJMCMC(
-            type(currentReversibleJumpVariable.discrete),
-            base_target,
-            model,
-            data_func,
-            cont_proposal_type,
-            cont_sampler_type,
-            True, True, False,
-            update_prob
-        )
-        # copy over previous NUTS parameters
-        if cont_sampler_type == NUTS:
-            self.rjmcmc.csampler.NUTS_params = self.currentReversibleJumpVariable.NUTS_params
-
-        self.rng = rng
+class ReversibleJumpProposal(DiscreteVariableProposal):
+    def __init__(
+            self,
+            discrete_proposal,
+            params: ReversibleJumpParameters = ReversibleJumpParameters()
+    ):
+        self.params = params
+        self.discrete_proposal = discrete_proposal
 
     @classmethod
-    def norm(self, x):
-        return self.base_DiscreteVariableProposal.norm(x.discrete)
+    def norm(self, x: ReversibleJumpVariable):
+        return self.discrete_proposal.norm(x.discrete)
 
     @classmethod
     def heuristic(self, x, y):
         # Proposal can be type specified by discrete variables or continuous update
-        return self.base_DiscreteVariableProposal.heuristic(x.discrete, y.discrete) or x.discrete == y.discrete
+        return self.discrete_proposal.heuristic(x.discrete, y.discrete) or x.discrete == y.discrete
 
-    def sample(self, target=None):
+    def propose(self, current_discrete, current_continuous):
+        proposed_discrete = current_discrete
+        proposed_continuous = current_continuous
 
-        proposedReversibleJumpVariable = copy.deepcopy(self.currentReversibleJumpVariable)
+        return proposed_discrete, proposed_continuous
 
-        current_discrete = self.currentReversibleJumpVariable.discrete
-        current_continuous = self.currentReversibleJumpVariable.continuous
+    def sample(self, current: ReversibleJumpVariable, rng: RNG = RNG(), target: 'ReversibleJumpTarget' = None):
+        [proposed_discrete, proposed_continuous] = self.propose(current.discrete, current.continuous)
+        proposed = ReversibleJumpVariable(proposed_discrete, proposed_continuous)
 
-        [proposed_discrete, proposed_continuous, r0, r1] = self.rjmcmc.propose(current_discrete, current_continuous)
-        proposedReversibleJumpVariable.discrete = proposed_discrete
-        proposedReversibleJumpVariable.continuous = proposed_continuous
+        return proposed
 
-        if cont_sampler_type == NUTS:
-            proposedReversibleJumpVariable.r0 = r0
-            proposedReversibleJumpVariable.r1 = r1
-            proposedReversibleJumpVariable.NUTS_params = self.rjmcmc.csampler.NUTS_params
+    def eval(self, current, proposed, target: 'ReversibleJumpTarget' = None):
+        if current.discrete == proposed.discrete:
+            log_acceptance_ratio = self.eval_continuous(current, proposed)
+        else:
+            log_acceptance_ratio = self.eval_discrete(current, proposed)
 
-        return proposedReversibleJumpVariable
+        log_acceptance_ratio = min(0, log_acceptance_ratio)
+        return log_acceptance_ratio
 
-    def eval(self, proposedReversibleJumpVariable):
-        current_discrete = self.currentReversibleJumpVariable.discrete
-        current_continuous = self.currentReversibleJumpVariable.continuous
+    def eval_continuous(self, current, proposed):
+        # continuous move
+        log_acceptance_ratio = (
+            self.params.continuous_sampler.eval(current.continuous, current.discrete, proposed.continuous)
+            - np.log(self.params.update_probability)
+        )
+        return log_acceptance_ratio
 
-        proposed_discrete = proposedReversibleJumpVariable.discrete
-        proposed_continuous = proposedReversibleJumpVariable.continuous
+    def eval_discrete(self, current, proposed):
+        # discrete move
+        forward_proposal = self.discrete_proposal
+        reverse_proposal = self.discrete_proposal
+        discrete_forward_logprob = forward_proposal.eval(current.discrete, proposed.discrete)
+        discrete_reverse_logprob = reverse_proposal.eval(proposed.discrete, current.discrete)
 
-        r0 = proposedReversibleJumpVariable.r0
-        r1 = proposedReversibleJumpVariable.r1
+        continuous_proposal_logprob = self.continuous_proposal.eval(
+            current.discrete, current.continuous,
+            proposed.discrete, proposed.continuous
+        )
 
-        log_acceptance_ratio = self.rjmcmc.eval(current_discrete, current_continuous, proposed_discrete, proposed_continuous,
-                                                r0, r1)
+        # Setup data for stan model
+        current_data = self.data_function(current.discrete)
+        proposed_data = self.data_function(proposed.discrete)
+        param_length = self.stan_model.num_unconstrained_parameters(current_data)
+        p_param_length = self.stan_model.num_unconstrained_parameters(proposed_data)
 
-        if log_acceptance_ratio > 0:
-            log_acceptance_ratio = 0
+        # P(theta | discrete_variables)
+        current_continuous_target = self.stan_model.eval(current_data, current.continuous[0:param_length])[0]
+        proposed_continuous_target = self.stan_model.eval(proposed_data, proposed.continuous[0:p_param_length])[0]
 
+        # P(discrete_variables)
+        current_discrete_target = self.discrete_target.eval(current.discrete)
+        proposed_discrete_target = self.discrete_target.eval(proposed.discrete)
+
+        jacobian = 0  # math.log(1)
+
+        log_acceptance_ratio = (proposed_continuous_target - current_continuous_target
+                                + proposed_discrete_target - current_discrete_target
+                                + discrete_reverse_logprob - discrete_forward_logprob
+                                + continuous_proposal_logprob + jacobian
+                                - np.log(1 - self.params.update_probability))
         return log_acceptance_ratio
 
 
-class ReversibleJumpTarget(types.DiscreteVariableTarget):
+class ReversibleJumpTarget(DiscreteVariableTarget):
+    def __init__(self, discreteTarget: DiscreteVariableTarget, continuousTarget, data_function):
+        self.discreteTarget = discreteTarget
+        self.continuousTarget = continuousTarget
+        self.data_function = data_function
 
-    def eval(self, proposedReversibleJumpVariable):
-        proposed_discrete = proposedReversibleJumpVariable.discrete
-        proposed_continuous = proposedReversibleJumpVariable.continuous
-        proposed_data = data_func(proposed_discrete)
-        param_length = model.num_unconstrained_parameters(proposed_data)
-        proposed_continuous_target = model.eval(proposed_data, proposed_continuous[0:param_length])[0]
-        proposed_discrete_target = base_target.eval(proposed_discrete)
-        target = proposed_continuous_target + proposed_discrete_target
-        return target
+    def eval(self, x: ReversibleJumpVariable) -> float:
+        proposed_data = self.data_function(x.discrete)
+        param_length = self.continuousTarget.num_unconstrained_parameters(proposed_data)
+
+        # Evaluate continuous and discrete logprobs
+        logprob_continuous, gradient = self.continuousTarget.eval(proposed_data, x.continuous[0:param_length])
+        logprob_discrete = self.discreteTarget.eval(x.discrete)
+
+        logprob = logprob_continuous + logprob_discrete
+        return logprob
 
 
-class ReversibleJumpInitialProposal(types.DiscreteVariableInitialProposal):
-    def __init__(self, base_DiscreteVariableType, base_DiscreteVariableInitialProposal):
+class ReversibleJumpInitialProposal(DiscreteVariableInitialProposal):
+    def __init__(
+        self,
+        base_DiscreteVariableType: Type[DiscreteVariable],
+        base_DiscreteVariableInitialProposal,
+        reversibleJumpParameters: ReversibleJumpParameters = None
+    ):
         self.base_type = base_DiscreteVariableType
-        self.base_proposal = base_DiscreteVariableInitialProposal
+        self.base_initial_proposal = base_DiscreteVariableInitialProposal
+        self.params = reversibleJumpParameters
 
-    def sample(self, rng=RNG(), target=None):
-        rjmcmc_proposal = rjmcmc.DiscreteVariableRJMCMC(self.base_type, base_target, model,
-                                                        data_func, cont_proposal_type, cont_sampler_type, True, True, False, update_prob)
-        proposed_discrete = self.base_proposal.sample()
-        if hasattr(proposed_discrete.value, "__len__"):
-            empty_discrete = self.base_type(np.zeros(proposed_discrete.value.shape()))
-        else:
-            empty_discrete = self.base_type(0)
+    def sample(self, rng: RNG = RNG(), target: ReversibleJumpTarget = None):
+        proposed_discrete = self.base_initial_proposal.sample(rng)
+        empty_discrete = self.base_type()
         # get initial continuous proposal by performing a birth move from a 0-dimensional model
-        proposed_continuous = cont_proposal_type().sample(empty_discrete, np.array([]), proposed_discrete, rng=rng)
+        proposed_continuous = self.params.continuous_proposal.sample(empty_discrete, np.array([]), proposed_discrete, rng=rng)
 
         # do an initial continuous move in case we need to initialise NUTS
-        [proposed_continuous, r0, r1] = rjmcmc_proposal.csampler.sample(proposed_continuous, proposed_discrete)
+        [proposed_continuous, r0, r1] = self.params.continuous_sampler.sample(proposed_continuous, proposed_discrete, rng=rng)
 
-        proposedReversibleJumpVariable = ReversibleJumpVariable(proposed_discrete, proposed_continuous)
+        proposed = ReversibleJumpVariable(proposed_discrete, proposed_continuous)
 
-        if cont_sampler_type == NUTS:
-            proposedReversibleJumpVariable.r0 = r0
-            proposedReversibleJumpVariable.r1 = r1
-            proposedReversibleJumpVariable.NUTS_params = rjmcmc_proposal.csampler.NUTS_params
+        return proposed
 
-        return proposedReversibleJumpVariable
-
-    def eval(self, proposedReversibleJumpVariable, target=None):
-        proposed_discrete = proposedReversibleJumpVariable.discrete
+    def eval(self, proposed, target=None):
+        proposed_discrete = proposed.discrete
         if hasattr(proposed_discrete.value, "__len__"):
             empty_discrete = self.base_type(np.zeros(proposed_discrete.value.shape()))
         else:
             empty_discrete = self.base_type(0)
-        proposed_continuous = proposedReversibleJumpVariable.continuous
-        continuous_logprob = cont_proposal_type().eval(empty_discrete, np.array([]), proposed_discrete, proposed_continuous)
+        proposed_continuous = proposed.continuous
+        continuous_logprob = g_cont_proposal_type().eval(empty_discrete, np.array([]), proposed_discrete, proposed_continuous)
         discrete_logprob = self.base_proposal.eval(proposed_discrete)
         return continuous_logprob + discrete_logprob

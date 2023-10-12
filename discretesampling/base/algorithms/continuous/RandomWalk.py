@@ -34,7 +34,6 @@ class RandomWalk(ContinuousSampler):
         # Discrete part of target p(discrete_variables) cancels
         log_acceptance_ratio = (proposed_target - current_target
                                 + reverse_logprob - forward_logprob)
-        if log_acceptance_ratio > 0:
-            log_acceptance_ratio = 0
+        log_acceptance_ratio = min(0, log_acceptance_ratio)
 
         return log_acceptance_ratio

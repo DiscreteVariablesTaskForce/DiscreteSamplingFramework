@@ -4,9 +4,9 @@ from scipy.stats import multivariate_normal
 
 from discretesampling.base.random import RNG
 import discretesampling.domain.spectrum as spec
-from discretesampling.base.algorithms.rjmcmc import DiscreteVariableRJMCMC
 from discretesampling.base.stan_model import StanModel
 from discretesampling.base.algorithms.continuous.RandomWalk import RandomWalk
+from discretesampling.base.reversible_jump import ReversibleJumpProposal, ReversibleJumpInitialProposal, ReversibleJumpParameters, ReversibleJumpTarget
 
 
 stan_model_path = "examples/stanmodels/mixturemodel.stan"
@@ -148,23 +148,14 @@ class continuous_proposal():
 # initialise stan model
 model = StanModel(stan_model_path)
 
-rjmcmc = DiscreteVariableRJMCMC(
-    spec.SpectrumDimension,
-    spec.SpectrumDimensionTarget(3, 2),
-    model,
-    data_function,
-    continuous_proposal,
-    RandomWalk,
-    False,
-    False,
-    True,
-    0.5,
-    spec.SpectrumDimensionInitialProposal(10),
-)
+params = ReversibleJumpParameters()
 
-n_chains = 4
-samples = [rjmcmc.sample(10) for c in range(n_chains)]
+discrete_proposal = spec.SpectrumDimensionProposal()
+proposal = ReversibleJumpProposal(discrete_proposal)
 
-dims = [[x[0].value for x in chain] for chain in samples]
+initial_discrete_proposal = spec.SpectrumDimensionInitialProposal()
+initial_proposal = ReversibleJumpInitialProposal(initial_discrete_proposal)
 
-print("Done")
+discrete_target = spec.SpectrumDimensionTarget(3, 2)
+continuous_target = model
+target = ReversibleJumpTarget(discrete_target, continuous_target, data_function)

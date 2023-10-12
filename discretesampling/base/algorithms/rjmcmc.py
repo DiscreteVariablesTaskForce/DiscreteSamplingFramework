@@ -52,8 +52,8 @@ class DiscreteVariableRJMCMC():
             [proposed_continuous, r0, r1] = self.csampler.sample(current_continuous, current_discrete)
         else:
             # Perform discrete update
-            forward_proposal = self.proposalType(current_discrete)
-            proposed_discrete = forward_proposal.sample()
+            forward_proposal = self.proposalType()
+            proposed_discrete = forward_proposal.sample(current_discrete, rng=self.rng)
 
             # Birth/death continuous dimensions
             # It would probably be better if this was called as above, with separate eval() and sample() functions.
@@ -74,7 +74,7 @@ class DiscreteVariableRJMCMC():
         return proposed_discrete, proposed_continuous, r0, r1
 
     def sample(self, N):
-        current_discrete = self.initialProposal.sample()
+        current_discrete = self.initialProposal.sample(rng=self.rng)
         self.continuous_proposal = self.continuous_proposal_type()
         if hasattr(current_discrete.value, "__len__"):
             empty_discrete = self.variableType(np.zeros(current_discrete.value.shape()))
@@ -111,10 +111,10 @@ class DiscreteVariableRJMCMC():
                     - np.log(self.update_probability)
         else:
             # discrete move
-            forward_proposal = self.proposalType(current_discrete)
-            reverse_proposal = self.proposalType(proposed_discrete)
-            discrete_forward_logprob = forward_proposal.eval(proposed_discrete)
-            discrete_reverse_logprob = reverse_proposal.eval(current_discrete)
+            forward_proposal = self.proposalType()
+            reverse_proposal = self.proposalType()
+            discrete_forward_logprob = forward_proposal.eval(current_discrete, proposed_discrete)
+            discrete_reverse_logprob = reverse_proposal.eval(proposed_discrete, current_discrete)
 
             if self.always_update and not (self.continuous_update == NUTS and self.accept_reject is False):
                 # we need to sum over all of the possible combinations of birth / death moves + updates to get to
