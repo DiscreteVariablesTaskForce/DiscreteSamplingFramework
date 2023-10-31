@@ -29,7 +29,7 @@ dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
 try:
     treeSamples = dtMCMC.sample(500)
 
-    mcmcLabels = dt.stats(treeSamples, X_test).predict(X_test, use_majority=True)
+    mcmcLabels = dt.stats(treeSamples.samples, X_test).predict(X_test, use_majority=True)
     mcmcAccuracy = [dt.accuracy(y_test, mcmcLabels)]
     print("MCMC mean accuracy: ", (mcmcAccuracy))
 except ZeroDivisionError:
@@ -40,7 +40,7 @@ dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 try:
     treeSMCSamples = dtSMC.sample(10, 1000)
 
-    smcLabels = dt.stats(treeSMCSamples, X_test).predict(X_test, use_majority=True)
+    smcLabels = dt.stats(treeSMCSamples.samples, X_test).predict(X_test, use_majority=True)
     smcAccuracy = [dt.accuracy(y_test, smcLabels)]
     print("SMC mean accuracy: ", np.mean(smcAccuracy))
 

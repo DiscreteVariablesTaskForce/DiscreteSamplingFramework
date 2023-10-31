@@ -7,6 +7,7 @@ from discretesampling.base.executor import Executor
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
+from discretesampling.base.output import SMCOutput
 
 
 class DiscreteVariableSMC():
@@ -37,7 +38,7 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, Tsmc, N, seed=0, verbose=True):
+    def sample(self, Tsmc, N, seed=0, gather_results=True, verbose=True):
         loc_n = int(N/self.exec.P)
         rank = self.exec.rank
         mvrs_rng = RNG(seed)
@@ -87,5 +88,10 @@ class DiscreteVariableSMC():
             current_particles = new_particles
             progress_bar.update(1)
 
+        if gather_results:
+            current_particles = self.exec.gather_all(current_particles)
+            logWeights = self.exec.gather(logWeights, [N])
+
+        results = SMCOutput(current_particles, logWeights)
         progress_bar.close()
-        return current_particles
+        return results

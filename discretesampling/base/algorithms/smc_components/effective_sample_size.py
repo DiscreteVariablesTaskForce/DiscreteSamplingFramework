@@ -1,7 +1,8 @@
 import numpy as np
+from discretesampling.base.executor import Executor
 
 
-def ess(logw, exec):
+def ess(logw, exec: Executor = Executor()):
     """
     Description
     -----------

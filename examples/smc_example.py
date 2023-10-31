@@ -25,7 +25,7 @@ dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal,
 
 try:
     treeSamples = dtSMC.sample(10, 10)
-    smcLabels = dt.stats(treeSamples, X_test).predict(X_test, use_majority=True)
+    smcLabels = dt.stats(treeSamples.samples, X_test).predict(X_test, use_majority=True)
     smc_acc = dt.accuracy(y_test, smcLabels)
     print(numpy.mean(smc_acc))
 except ZeroDivisionError:

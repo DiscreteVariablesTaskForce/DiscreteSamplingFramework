@@ -1,12 +1,18 @@
 import pytest
 from discretesampling.base.algorithms import DiscreteVariableMCMC
 from discretesampling.domain import spectrum
+from discretesampling.base.output import MCMCOutput
 
 
 @pytest.mark.parametrize(
     "seed,T,expected",
-    [(0, 10, [spectrum.SpectrumDimension(i) for i in [31, 30, 30, 30, 30, 29, 28, 27, 28, 27]]),
-     (1, 10, [spectrum.SpectrumDimension(i) for i in [27, 28, 27, 26, 25, 26, 27, 26, 25, 24]])]
+    [
+        (0, 10, MCMCOutput(
+            [spectrum.SpectrumDimension(i) for i in [31, 30, 30, 30, 30, 29, 28, 27, 28, 27]]
+        )),
+        (1, 10, MCMCOutput(
+         [spectrum.SpectrumDimension(i) for i in [27, 28, 27, 26, 25, 26, 27, 26, 25, 24]]))
+    ]
 
 )
 def test_mcmc(seed, T, expected):
