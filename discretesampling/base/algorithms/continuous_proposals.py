@@ -1,8 +1,8 @@
 import copy
 import numpy as np
 from scipy.special import logsumexp
-from ...base.random import RNG
-from ...base.util import u2c, c2u_array
+from discretesampling.base.random import RNG
+from discretesampling.base.util import u2c, c2u_array
 
 
 def sample_offsets(grid_size, min_vals, max_vals, rng=RNG()):
@@ -105,7 +105,7 @@ def grid_search_logprobs(data_function, stan_model, grid_size, min_vals, max_val
 
 
 def forward_grid_search(data_function, stan_model, grid_size, min_vals, max_vals, offsets, inds, current_continuous,
-                        proposed_discrete):
+                        proposed_discrete, rng=RNG()):
     # input:
     # data_function      - function returning data passed to Stan model for given discrete parameters
     # stan_model         - initialised stan_model object
@@ -180,7 +180,8 @@ def forward_grid_search(data_function, stan_model, grid_size, min_vals, max_vals
     max_lp = np.max(lp_vals)  # need to normalise log_prob values in order to do sum over prob
     p_vals = np.exp(lp_vals - max_lp)  # need to ensure this never underflows / overflows
     probs = p_vals / np.sum(p_vals)
-    samp = np.random.choice(range(0, grid_size), p=probs)
+
+    samp = rng.randomChoices(range(0, grid_size), weights=probs)
     param_ind1 = 0
     param_ind2 = 0
     for param_num in range(0, num_params):

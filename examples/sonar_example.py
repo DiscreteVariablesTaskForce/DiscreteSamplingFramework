@@ -69,7 +69,7 @@ class continuous_proposal():
             # Add new components
             offsets = sample_offsets(self.grid_size, self.min_vals, self.max_vals, rng)
             [params_temp, forward_logprob] = forward_grid_search(data_function, model, self.grid_size, self.min_vals,
-                                                                 self.max_vals, offsets, self.inds, params, y)
+                                                                 self.max_vals, offsets, self.inds, params, y, rng=rng)
 
         elif (dim_x > dim_y):
             # randomly choose one to remove
@@ -136,7 +136,8 @@ with open(data_path, 'r') as f:
         stationary_data.append([key, value])
 
 n_chains = 1
-samples = [rjmcmc.sample(10) for c in range(n_chains)]
+seed = 1
+samples = [rjmcmc.sample(10, seed=seed+c) for c in range(n_chains)]
 
 dims = [[x[0].value for x in chain] for chain in samples]
 

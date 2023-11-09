@@ -4,6 +4,7 @@ import numpy as np
 from discretesampling.base.random import RNG
 from discretesampling.base.algorithms.continuous.RandomWalk import RandomWalk
 import discretesampling.base.reversible_jump as rj
+from discretesampling.base.reversible_jump.reversible_jump import ReversibleJumpParameters
 import discretesampling.domain.spectrum as spec
 from discretesampling.base.algorithms import DiscreteVariableSMC
 from discretesampling.base.algorithms.continuous_proposals import (
@@ -196,21 +197,21 @@ class continuous_proposal:
 # initialise stan model
 model = StanModel(stan_model_path)
 
-# set variables used in the proposal
-rj.set_proposal_attributes(
-    spec.SpectrumDimensionTarget(3, 2),
-    model,
-    data_function,
-    continuous_proposal,
-    RandomWalk,
-    0.5
+# Parameters used globally
+rj_params = ReversibleJumpParameters(
+    model=model, data_function=data_function,
+    update_probability=0.5, continuous_sampler=RandomWalk,
+    continuous_proposal=continuous_proposal()
 )
 
 # define target
-target = rj.ReversibleJumpTarget()
-initialProposal = rj.ReversibleJumpInitialProposal(spec.SpectrumDimension, spec.SpectrumDimensionInitialProposal(1))
+target = rj.ReversibleJumpTarget(spec.SpectrumDimensionTarget(3, 2), model, data_function)
+initialProposal = rj.ReversibleJumpInitialProposal(
+    spec.SpectrumDimension, spec.SpectrumDimensionInitialProposal(1), reversibleJumpParameters=rj_params)
+proposal = rj.ReversibleJumpProposal(spec.SpectrumDimensionProposal, rj_params)
 
-specSMC = DiscreteVariableSMC(rj.ReversibleJumpVariable, target, initialProposal)
+specSMC = DiscreteVariableSMC(rj.ReversibleJumpVariable, target,
+                              initialProposal, proposal=proposal, Lkernel=proposal)
 
 with open(data_path, 'r') as f:
     json_data = (json.load(f))

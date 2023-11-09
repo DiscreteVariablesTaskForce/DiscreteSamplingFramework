@@ -15,23 +15,21 @@ class ContinuousSampler(ABC):
             Stan model desribing continuous posterior
         data_function : Callable
             Function which generates Stan model data from a :class:`DiscreteVariable`
-        rng : RNG, optional
-            RNG for random number generation, by default RNG()
         """
 
-    def __init__(self, model: StanModel, data_function: Callable, rng: RNG = RNG(), **kwargs):
+    def __init__(self, model: StanModel, data_function: Callable, **kwargs):
         """Constructor method
         """
         self.model = model
         self.data_function = data_function
-        self.rng = rng
 
     @abstractmethod
     def sample(
         self,
         current_continuous: np.ndarray,
         current_discrete: DiscreteVariable,
-        **kwargs
+        rng=RNG(),
+        ** kwargs
     ) -> np.ndarray:
         """Sample vector of parameters in continuous space
 

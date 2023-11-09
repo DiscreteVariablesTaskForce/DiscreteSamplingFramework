@@ -13,12 +13,14 @@ from discretesampling.base.algorithms.continuous import ContinuousSampler, NUTS
 class ReversibleJumpParameters():
     def __init__(
         self,
+        model,
+        data_function,
         update_probability=0.5,
-        continuous_sampler: ContinuousSampler = NUTS(),
+        continuous_sampler: ContinuousSampler = NUTS,
         **kwargs
     ):
         self.update_probability = update_probability
-        self.continuous_sampler = continuous_sampler
+        self.continuous_sampler = continuous_sampler(model, data_function, **kwargs)
         self.__dict__.update(kwargs)
 
 
@@ -45,7 +47,7 @@ class ReversibleJumpProposal(DiscreteVariableProposal):
     def __init__(
             self,
             discrete_proposal,
-            params: ReversibleJumpParameters = ReversibleJumpParameters()
+            params: ReversibleJumpParameters
     ):
         self.params = params
         self.discrete_proposal = discrete_proposal
@@ -160,6 +162,7 @@ class ReversibleJumpInitialProposal(DiscreteVariableInitialProposal):
         proposed_continuous = self.params.continuous_proposal.sample(empty_discrete, np.array([]), proposed_discrete, rng=rng)
 
         # do an initial continuous move in case we need to initialise NUTS
+        # [proposed_continuous, r0, r1] = self.params.continuous_sampler.sample(proposed_continuous, proposed_discrete, rng=rng)
         [proposed_continuous, r0, r1] = self.params.continuous_sampler.sample(proposed_continuous, proposed_discrete, rng=rng)
 
         proposed = ReversibleJumpVariable(proposed_discrete, proposed_continuous)
@@ -173,6 +176,7 @@ class ReversibleJumpInitialProposal(DiscreteVariableInitialProposal):
         else:
             empty_discrete = self.base_type(0)
         proposed_continuous = proposed.continuous
-        continuous_logprob = g_cont_proposal_type().eval(empty_discrete, np.array([]), proposed_discrete, proposed_continuous)
-        discrete_logprob = self.base_proposal.eval(proposed_discrete)
+        continuous_logprob = self.params.continuous_proposal.eval(
+            empty_discrete, np.array([]), proposed_discrete, proposed_continuous)
+        discrete_logprob = self.base_initial_proposal.eval(proposed_discrete)
         return continuous_logprob + discrete_logprob

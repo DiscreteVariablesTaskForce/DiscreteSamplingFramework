@@ -11,7 +11,7 @@ from discretesampling.base.random import RNG
 
 # SpectrumDimension inherits from DiscreteVariable
 class SpectrumDimension(DiscreteVariable):
-    def __init__(self, value):
+    def __init__(self, value=0):
         super().__init__()
         self.value = value
 

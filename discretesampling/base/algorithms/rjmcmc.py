@@ -28,32 +28,28 @@ class DiscreteVariableRJMCMC():
         self.always_update = always_update
         self.update_probability = update_probability
 
-        self.rng = RNG()
-
         # initialise samplers for continuous parameters
         if self.continuous_update is RandomWalk:
-            self.csampler = RandomWalk(self.stan_model, self.data_function, self.rng)
+            self.csampler = RandomWalk(self.stan_model, self.data_function)
         elif self.continuous_update is NUTS:
-            if do_warmup:
-                self.csampler = NUTS(True, self.stan_model, self.data_function, self.rng, 0.9, warmup_iters)
-            else:
-                self.csampler = NUTS(False, self.stan_model, self.data_function, self.rng, 0.9, warmup_iters)
+            self.csampler = NUTS(self.stan_model, self.data_function, update_probability=0.9,
+                                 warmup_iters=warmup_iters, do_warmup=do_warmup)
         else:
             raise NameError("Continuous update type not defined")
 
-    def propose(self, current_discrete, current_continuous):
+    def propose(self, current_discrete, current_continuous, rng):
         proposed_discrete = current_discrete
-        q = self.rng.random()
+        q = rng.random()
         r0 = 0
         r1 = 0
         # Update vs Birth/death
         if (q < self.update_probability):
             # Perform update in continuous space
-            [proposed_continuous, r0, r1] = self.csampler.sample(current_continuous, current_discrete)
+            [proposed_continuous, r0, r1] = self.csampler.sample(current_continuous, current_discrete, rng=rng)
         else:
             # Perform discrete update
             forward_proposal = self.proposalType()
-            proposed_discrete = forward_proposal.sample(current_discrete, rng=self.rng)
+            proposed_discrete = forward_proposal.sample(current_discrete, rng=rng)
 
             # Birth/death continuous dimensions
             # It would probably be better if this was called as above, with separate eval() and sample() functions.
@@ -65,16 +61,18 @@ class DiscreteVariableRJMCMC():
                 # comparing NUTS proposals between two starting points without sampled momenta / NUTS parameters)
                 init_proposed_continuous = self.continuous_proposal_type().sample(current_discrete, current_continuous,
                                                                                   proposed_discrete,
-                                                                                  self.rng)
-                [proposed_continuous, r0, r1] = self.csampler.sample(init_proposed_continuous, proposed_discrete)
+                                                                                  rng=rng)
+                [proposed_continuous, r0, r1] = self.csampler.sample(init_proposed_continuous, proposed_discrete, rng=rng)
             else:
                 proposed_continuous = self.continuous_proposal.sample(current_discrete, current_continuous, proposed_discrete,
-                                                                      self.rng)
+                                                                      rng=rng)
 
         return proposed_discrete, proposed_continuous, r0, r1
 
-    def sample(self, N):
-        current_discrete = self.initialProposal.sample(rng=self.rng)
+    def sample(self, N, seed=0):
+        rng = RNG(seed=seed)
+
+        current_discrete = self.initialProposal.sample(rng=rng)
         self.continuous_proposal = self.continuous_proposal_type()
         if hasattr(current_discrete.value, "__len__"):
             empty_discrete = self.variableType(np.zeros(current_discrete.value.shape()))
@@ -82,16 +80,16 @@ class DiscreteVariableRJMCMC():
             empty_discrete = self.variableType(0)
 
         # get initial continuous proposal by performing a birth move from a 0-dimensional model
-        current_continuous = self.continuous_proposal.sample(empty_discrete, np.array([]), current_discrete, self.rng)
+        current_continuous = self.continuous_proposal.sample(empty_discrete, np.array([]), current_discrete, rng=rng)
         samples = []
         for i in range(N):
-            [proposed_discrete, proposed_continuous, r0, r1] = self.propose(current_discrete, current_continuous)
+            [proposed_discrete, proposed_continuous, r0, r1] = self.propose(current_discrete, current_continuous, rng=rng)
             log_acceptance_ratio = self.eval(current_discrete, current_continuous, proposed_discrete, proposed_continuous,
                                              r0, r1)
             if log_acceptance_ratio > 0:
                 log_acceptance_ratio = 0
             acceptance_probability = min(1, math.exp(log_acceptance_ratio))
-            q = self.rng.random()
+            q = rng.random()
             # Accept/Reject
             if (q < acceptance_probability):
                 current_discrete = proposed_discrete

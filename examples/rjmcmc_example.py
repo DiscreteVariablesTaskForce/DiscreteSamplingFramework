@@ -3,11 +3,15 @@ import numpy as np
 from scipy.stats import multivariate_normal
 
 from discretesampling.base.random import RNG
+from discretesampling.base.reversible_jump import ContinuousProposal
 import discretesampling.domain.spectrum as spec
 from discretesampling.base.stan_model import StanModel
 from discretesampling.base.algorithms.continuous.RandomWalk import RandomWalk
-from discretesampling.base.reversible_jump import ReversibleJumpProposal, ReversibleJumpInitialProposal, ReversibleJumpParameters, ReversibleJumpTarget
-
+from discretesampling.base.reversible_jump import (
+    ReversibleJumpProposal, ReversibleJumpInitialProposal, ReversibleJumpParameters, ReversibleJumpTarget,
+    ReversibleJumpVariable
+)
+from discretesampling.base.algorithms.mcmc import DiscreteVariableMCMC
 
 stan_model_path = "examples/stanmodels/mixturemodel.stan"
 
@@ -21,7 +25,7 @@ def data_function(x):
 
 # What params should be evaluated if we've made a discrete move from x to y
 # where params is the params vector for the model defined by x
-class continuous_proposal():
+class continuous_proposal(ContinuousProposal):
     def __init__(self):
         # grid search parameters
         self.grid_size = 1000
@@ -148,14 +152,22 @@ class continuous_proposal():
 # initialise stan model
 model = StanModel(stan_model_path)
 
-params = ReversibleJumpParameters()
+params = ReversibleJumpParameters(model, data_function, continuous_proposal=continuous_proposal())
 
 discrete_proposal = spec.SpectrumDimensionProposal()
-proposal = ReversibleJumpProposal(discrete_proposal)
+proposal = ReversibleJumpProposal(discrete_proposal, params=params)
 
-initial_discrete_proposal = spec.SpectrumDimensionInitialProposal()
-initial_proposal = ReversibleJumpInitialProposal(initial_discrete_proposal)
+initial_discrete_proposal = spec.SpectrumDimensionInitialProposal(20)
+initial_proposal = ReversibleJumpInitialProposal(
+    spec.SpectrumDimension,
+    initial_discrete_proposal,
+    reversibleJumpParameters=params
+)
 
 discrete_target = spec.SpectrumDimensionTarget(3, 2)
 continuous_target = model
 target = ReversibleJumpTarget(discrete_target, continuous_target, data_function)
+
+
+rjmcmc = DiscreteVariableMCMC(ReversibleJumpVariable, target, initial_proposal, proposal)
+samples = rjmcmc.sample(100, 100, seed=0)
