@@ -1,5 +1,5 @@
 from discretesampling.base.util import pad, restore
-from discretesampling.base.executor.MPI.distributed_fixed_size_redistribution.redistribution import (
+from smccomponents.resample.mpi.redistribution import (
     fixed_size_redistribution
 )
 

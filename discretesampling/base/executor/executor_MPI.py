@@ -2,9 +2,7 @@ from mpi4py import MPI
 import numpy as np
 from scipy.special import logsumexp
 from discretesampling.base.executor import Executor
-from discretesampling.base.executor.MPI.distributed_fixed_size_redistribution.prefix_sum import (
-    inclusive_prefix_sum
-)
+from smccomponents.resample.mpi.prefix_sum import inclusive_prefix_sum
 from discretesampling.base.executor.MPI.variable_size_redistribution import (
     variable_size_redistribution
 )
