@@ -118,3 +118,33 @@ class DiscreteVariableTarget(ABC):
 
     def evaluatePrior(self, x: DiscreteVariable) -> float:
         pass
+
+class JumpProposal(ABC):
+
+    def __init__(self, moves):
+        self.moves = moves  #List of possible discrete moves
+        self.n_moves = len(moves)
+
+    @abstractmethod
+    # Tunable probability for within- or across-model jumps
+    def jumpProb(self):
+
+        pass
+
+    @abstractmethod
+    # Method to select which move is selected for an across-model jump
+    # Defaults to uniform choice over move list
+    def chooseMove(self):
+
+        return np.random.choice(self.moves)
+
+    def do_undo(self):
+
+        r = np.random.uniform(0,1)
+        if r <0.5:
+            return True
+        else:
+            return False
+
+
+

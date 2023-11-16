@@ -32,6 +32,7 @@ class AdditiveStructureTarget(DiscreteVariableTarget):
         n = len(list(chain.from_iterable(x.discrete_set)))
         return 1 / bell(n)
 
+
     def log_likelihood(self, y, mean, var):
         return -log(var) - (0.5 * log(2 * pi)) - (0.5 * pow((y - mean) / var, 2))
 
