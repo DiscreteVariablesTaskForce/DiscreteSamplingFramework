@@ -12,12 +12,19 @@ from scipy.stats import invgamma
 
 class UnivariateGMMProposal(DiscreteVariableProposal):
 
-    def __init__(self, means, covs, compwts, g, alpha, la, delta):
+    def __init__(self, means, covs, compwts, g, alpha, la, delta, allocation_structure):
         self.compwts = list(gmm_util.normalise(compwts))
         self.means = means
         self.covs = covs
         self.n_comps = len(self.compwts)
         self.indices = [i for i in range(self.n_comps)]
+
+        'Merge with allocation structure'
+        self.data = allocation_structure.data
+        self.current_allocations = allocation_structure.proposed_allocations
+        self.current_logprob = allocation_structure.proposed_logprob
+        self.proposal_allocations = allocation_structure.proposed_allocations
+        self.proposal_logprob = allocation_structure.proposed_logprob
         
         'Retrieve or generate hyperparameters for distribution'
         self.g = g
@@ -32,9 +39,6 @@ class UnivariateGMMProposal(DiscreteVariableProposal):
         self.last_birth = None
         self.last_death = None
 
-    def get_data_allocations(self, data_allocations):
-
-        pass
 
     def jump_proposal(self):
         u = np.random.uniform(0,1)
@@ -45,7 +49,6 @@ class UnivariateGMMProposal(DiscreteVariableProposal):
 
     def dv_sample(self, gmm, alloc, move_type):
         r = self.jump_proposal()
-
 
         if move_type == 'split_merge':
             if r == 1:
@@ -88,25 +91,32 @@ class UnivariateGMMProposal(DiscreteVariableProposal):
             print('Discrete move not known, returning original proposal')
             new_gmm = gmm
 
-        return new_gmm
+        return new_gmm.getProposalType()
+
+    def eval(self):
+        if self.last_action == 'split':
+
+            pass
+
+        elif self.last_action == 'merge':
+
+            pass
+
+        elif self.last_action == 'birth':
+
+            pass
+
+        elif self.last_action == 'death':
+
+            pass
+
+        else:
+
+            return 0
 
 
-    def get_beta_parameters(self):
-        s = sum([i**-1 for i in self.covs])
-        return [self.g + (self.alpha * self.n_comps), self.h + s]
 
-    def get_dirichlet_parameters(self):
-        dirichlet_parameters = [self.delta]*len(self.compwts)
-        for i in self.data_allocations():
-            dirichlet_parameters[i] += 1
-        return dirichlet_parameters
 
-    def get_empty_components(self):
-        dp = self.get_dirichlet_parmeters()
-        empty_components = []
-        for i in range(len(dp)):
-            if dp[i] == self.delta:
-                empty_components.append(i)
 
     def eval_at_x(self, x) -> float:
         return sum([self.compwts[i] * self.eval_component(i, x) for i in range(self.n_modes)])
@@ -117,15 +127,15 @@ class UnivariateGMMProposal(DiscreteVariableProposal):
         return (((x - self.means[ind]) ** 2) / (2 * self.covs[ind] ** 2)) - np.log(
                 np.sqrt(2 * np.pi) * self.covs[ind])
 
-    def eval_likelihood_ratio(self, current, proposed):
+    def eval_likelihood_ratio(self, current, proposed, allocation_structure):
         if proposed.last_action == 'parameters_rejected':
             return 0
         else:
             curr_loglikelihood = 0
             prop_loglikelihood = 0
             for i in range(len(proposed.data)):
-                curr_loglikelihood += current.eval_component(current.data_allocations[i], current.data[i])
-                prop_loglikelihood += proposed.eval_component(proposed.data_allocations[i], proposed.data[i])
+                curr_loglikelihood += current.eval_component(allocation_structure.current_data_allocations[i], allocation_structure.data[i])
+                prop_loglikelihood += proposed.eval_component(allocation_structure.proposed_data_allocations[i], allocation_structure.data[i])
 
             return prop_loglikelihood - curr_loglikelihood
 
@@ -146,7 +156,7 @@ class UnivariateGMMProposal(DiscreteVariableProposal):
                 flip = 1
                 action_index = current.last_split[0]
                 uvals = current.last_split[2]
-                log_palloc = p_alloc[2]
+                log_palloc = self.proposal_logprob
                 muj = current.means[action_index]
                 varj = current.covs[action_index]
                 wtj = current.compwts[action_index]

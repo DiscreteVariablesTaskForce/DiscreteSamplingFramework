@@ -37,11 +37,8 @@ while i<=2:
 
 w_prior = np.random.dirichlet([1,1,1])
 
-test_uni = gmm.UnivariateGMM(0.2, 2, 3, 1, sorted(m_prior), c_prior, w_prior)
-test_alloc = gmm.AllocationStructure(s)
-test_alloc_dist = test_uni.getProposalType()
-test_alloc.propose_allocation(test_uni)
-print('First parameters: {}'.format(test_uni.means, test_uni.covs,test_uni.compwts))
+
+
 
 '''
 def test_component_count():
@@ -74,7 +71,10 @@ def test_discrete_update():
     print('With probability {}'.format(test_alloc.proposed_logprob))
 '''
 
-def test_sweep_test():
+def test_sweep():
+    prop = gmm.UnivariateGMM(0.2, 2, 3, 1, sorted(m_prior), c_prior, w_prior)
+    test_alloc = gmm.AllocationStructure(s, prop)
+    print('First parameters: {}'.format([prop.means, prop.covs, prop.compwts]))
     i = 0
     while i <20:
         print('iteration {}'.format(i))
@@ -85,23 +85,22 @@ def test_sweep_test():
         print('Initial weights: {}'.format(prop.compwts))
         prop = prop.update_weights(test_alloc)
         print('New weights: {}'.format(prop.compwts))
-
         curr_alloc = test_alloc.current_allocations
-        curr_count = test_alloc.get_allocation_count(prop, curr_alloc)
-        prop_alloc = test_alloc.current_allocations
-        prop_count = test_alloc.get_allocation_count(prop, prop_alloc)
-        print('Allocation count before move:{}'.format(curr_count))
-        print('Allocation count after move:{}'.format(prop_count))
+        if test_alloc.proposed_allocations is None:
+            curr_count = test_alloc.get_allocation_count(prop, curr_alloc)
+        else:
+            curr_count = test_alloc.get_allocation_count(prop, prop_alloc)
+        print('Allocation count after move:{}'.format(curr_count))
+
 
         'Parameter change step'
-        prop = test_uni.update_parameters(test_alloc)
-        curr_alloc = test_alloc.current_allocations
-        curr_count = test_alloc.get_allocation_count(prop, curr_alloc)
-        prop_alloc = test_alloc.current_allocations
-        prop_count = test_alloc.get_allocation_count(prop, prop_alloc)
-        print('Allocation count before move:{}'.format(curr_count))
-        print('Allocation count after move:{}'.format(prop_count))
-        print('Updated parameters to {}'.format([prop.means, prop.covs, prop.compwts]))
+        print('Initial parameters are {}'.format([prop.means, prop.covs, prop.compwts]))
+        prop = prop.update_parameters(test_alloc)
+        prop_alloc = test_alloc.proposed_allocations
+        curr_count = test_alloc.get_allocation_count(prop, prop_alloc)
+
+        print('Allocation count after move:{}'.format(curr_count))
+        print('Updated parameters are {}'.format([prop.means, prop.covs, prop.compwts]))
 
 
         'allocation_update step'
@@ -110,29 +109,50 @@ def test_sweep_test():
         test_alloc.propose_allocation(prop)
         curr_alloc = test_alloc.current_allocations
         curr_count = test_alloc.get_allocation_count(prop, curr_alloc)
-        prop_alloc = test_alloc.current_allocations
+        prop_alloc = test_alloc.proposed_allocations
         prop_count = test_alloc.get_allocation_count(prop, prop_alloc)
         print('Allocation count before move:{}'.format(curr_count))
         print('Allocation count after move:{}'.format(prop_count))
 
         'Beta Update Step'
         print('Updating beta')
-        prop.beta = prop.get_beta_prior(test_alloc)
         print('Old beta: {}'.format(prop.beta))
         prop = prop.update_beta(test_alloc)
         print('New beta: {}'.format(prop.beta))
 
+        'Split/merge'
+        print('Split/merge move')
+        test_alloc.clear_current_proposal()
         curr_alloc = test_alloc.current_allocations
         curr_count = test_alloc.get_allocation_count(prop, curr_alloc)
-        prop_alloc = test_alloc.current_allocations
+        prop_dist = prop.getProposalType()
+
+        prop = prop_dist.dv_sample(prop, test_alloc, 'split_merge')
+
+        prop_alloc = test_alloc.proposed_allocations
         prop_count = test_alloc.get_allocation_count(prop, prop_alloc)
         print('Allocation count before move:{}'.format(curr_count))
         print('Allocation count after move:{}'.format(prop_count))
+        print('POst dv parameters are {}'.format([prop.means, prop.covs, prop.compwts]))
 
         'Split/merge'
+        print('Birth/death move')
+        test_alloc.clear_current_proposal()
+        curr_alloc = test_alloc.current_allocations
+        curr_count = test_alloc.get_allocation_count(prop, curr_alloc)
+        prop_dist = prop.getProposalType()
+
+        prop = prop_dist.dv_sample(prop, test_alloc, 'birth_death')
+
+        prop_alloc = test_alloc.proposed_allocations
+        prop_count = test_alloc.get_allocation_count(prop, prop_alloc)
+        print('Allocation count before move:{}'.format(curr_count))
+        print('Allocation count after move:{}'.format(prop_count))
+        print('POst dv parameters are {}'.format([prop.means, prop.covs, prop.compwts]))
+
 
 
         i+=1
 
-    print('Final parameters: {}'.format(test_uni.means, test_uni.covs, test_uni.compwts))
+    print('Final parameters: {}'.format(prop.means, prop.covs, prop.compwts))
     print('Final allocation count: {}'.format(prop_count))
