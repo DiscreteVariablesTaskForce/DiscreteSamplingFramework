@@ -120,31 +120,54 @@ class DiscreteVariableTarget(ABC):
         pass
 
 class JumpProposal(ABC):
+    'Jump proposal class that can be updated using proposal data'
 
-    def __init__(self, moves):
-        self.moves = moves  #List of possible discrete moves
-        self.n_moves = len(moves)
-
-    @abstractmethod
-    # Tunable probability for within- or across-model jumps
-    def jumpProb(self):
-
-        pass
+    def __init__(self, move):
+        self.move = move #user-defined label for the discrete move to be made
 
     @abstractmethod
-    # Method to select which move is selected for an across-model jump
-    # Defaults to uniform choice over move list
-    def chooseMove(self):
+    def jump_prob(self, rng: RNG = RNG(), x: Union[None, DiscreteVariableProposal] = None) -> int:
+        '''
+        Parameters
+        ----------
+        rng: Random Number Generator for deciding forward/reverse moves
+        x: DiscreteVariableProposal, can be used to inform parameters in the jump decision function
 
-        return np.random.choice(self.moves)
+        Returns
+        -------
+        1 if 'forward' jump to be made, -1 if 'reverse jump', 0 if the move is rejected
+        Default is a coin flip
+        '''
 
-    def do_undo(self):
-
-        r = np.random.uniform(0,1)
-        if r <0.5:
-            return True
+        r = rng.random()
+        if r < 0.5:
+            return 1
         else:
-            return False
+            return -1
+
+    @abstractmethod
+    def jump_eval(self, x: Union[None,DiscreteVariableProposal]=None, type = 'Forward') -> float:
+        '''
+
+        Parameters
+        ----------
+        x: DiscreteVariableProposal
+        Used if jump_prob function updates from a proposal
+
+        type: String in ['Reverse', 'None', 'Forward']
+        Move to return probability
+
+        Returns
+        -------
+        The probability of a forward/reverse/rejected jump
+
+        '''
+        if type == 'Forward':
+            return 0.5
+        elif type == 'Reverse':
+            return 0.5
+        else:
+            return 0
 
 
 

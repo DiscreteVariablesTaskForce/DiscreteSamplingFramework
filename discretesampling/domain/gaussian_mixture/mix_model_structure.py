@@ -11,35 +11,19 @@ from scipy.stats import invgamma
 
 class AllocationStructure:
     """
-    Separate class which keeps the actual data and its allocations
+    Separate class which keeps the actual data for computing allocations
     """
-    def __init__(self, data, prior):
+    def __init__(self, data, initial_gmm):
         self.data = data
-        self.current_allocations = None
-        self.current_logprob = None
-        self.proposed_allocations = None
-        self.proposed_logprob = None
+        self.allocation = {k:[] for k in initial_gmm.indices}
+        self.log_palloc = 0
 
         self.zeta = np.median(self.data)
         self.data_range = max(self.data) - min(self.data)
         self.kappa = 1 / self.data_range ** 2
         self.h = 10 / self.data_range ** 2
 
-        self.propose_allocation(prior)
-
-    def clear_current_proposal(self):
-        """
-        Returns
-        -------
-        Updates current allocations and log prob with any proposed version
-        Then clears proposed allocations and log prob
-        """
-
-        if self.proposed_allocations is not None:
-            self.current_allocations = copy.deepcopy(self.proposed_allocations)
-            self.current_logprob = copy.copy(self.proposed_logprob)
-            self.proposed_allocations = None
-            self.proposed_logprob = None
+        self.propose_allocation(initial_gmm)
 
     def propose_allocation(self, gmm):
         """
@@ -47,15 +31,14 @@ class AllocationStructure:
         ----------
 
         gmm: Univariate GMM to which data will be allocated
-        Specific components of the gmm whose data allocations will be updated
 
         Returns
         -------
-
+        Updated allocation dictionary according to the parameters of the input gmm
         """
+        data_allocations = {ind:[] for ind in gmm.indices}
         log_palloc = 0
         indices = gmm.indices
-        data_allocations = []
         for i in range(len(self.data)):
             log_prob_alloc = []
             for j in indices:
@@ -63,66 +46,81 @@ class AllocationStructure:
                 fac = np.log(gmm.compwts[j]) - np.log(np.sqrt(gmm.covs[j]))
                 log_prob_alloc.append(fac + logp)
 
-                prob_alloc = np.exp(log_prob_alloc - logsumexp(log_prob_alloc))
-                prob_cdf = np.cumsum(gmm_util.normalise(prob_alloc))
+            prob_alloc = np.exp(log_prob_alloc - logsumexp(log_prob_alloc))
+            prob_cdf = np.cumsum(gmm_util.normalise(prob_alloc))
+            q = np.random.uniform(0, 1)
+
+            try:
+                comp_index = gmm_util.find_rand(prob_cdf, q)
+            except:
+                raise Exception('Cannot compute probabilities at logprob {}, cumprob {}'.format(prob_alloc, prob_cdf))
+            log_palloc += log_prob_alloc[comp_index]
+            data_allocations[comp_index].append(self.data[i])
+
+        self.allocation = data_allocations
+        self.log_palloc = log_palloc
+
+    def get_counts(self):
+        return [len(self.allocation[k]) for k in self.allocation]
+
+    def get_empties(self):
+        return [k for k in list(self.allocation.keys()) if len(self.allocation[k]) == 0]
+
+    def birth_allocation(self, index):
+        #print('Insertion at {}'.format(index))
+        new_dict = {index:[]}
+        for i in self.allocation:
+            if i < index:
+                new_dict[i] = self.allocation[i]
+            elif i >= index:
+                new_dict[i+1] = self.allocation[i]
+
+        self.allocation = new_dict
+
+    def kill_allocation(self,index):
+        if len(self.allocation[index]) !=0:
+            return Exception('Component {} has data allocated to it and cannot be erased'.format(index))
+        else:
+            end = max(list(self.allocation.keys()))
+            for i in self.allocation:
+                if i > index:
+                    self.allocation[i-1] = self.allocation[i]
+            del self.allocation[end]
+
+    def split_allocation(self, gmm):
+        if gmm.last_move != 'split':
+            raise Exception('No split has occurred to allocate!')
+        else:
+            ind = gmm.last_split[0]
+            split_means = [gmm.means[ind], gmm.means[ind+1]]
+            split_covs = [gmm.covs[ind], gmm.covs[ind+1]]
+            split_wts = gmm_util.normalise([gmm.compwts[ind], gmm.compwts[ind+1]])
+            log_palloc = 0
+            data_to_allocate = self.allocation[ind]
+            new_allocations = [[],[]]
+            for i in range(len(data_to_allocate)):
+                log_prob_alloc = []
+                for j in [0,1]:
+                    logp = -(data_to_allocate[i] - split_means[j]) ** 2 / (2 * split_covs[j])
+                    fac = np.log(split_wts[j]) - np.log(np.sqrt(split_covs[j]))
+                    log_prob_alloc.append(fac + logp)
+
+                prob_cdf = np.cumsum([np.exp(i) for i in log_prob_alloc])[0]
                 q = np.random.uniform(0, 1)
 
-                comp_index = gmm_util.find_rand(prob_cdf, q)
-                log_palloc += log_prob_alloc[comp_index]
-                data_allocations.append(comp_index)
-
-        if self.current_allocations is None:
-            print('No allocation yet, proposing new one')
-            self.current_allocations = data_allocations
-            self.current_logprob = log_palloc
-        elif self.proposed_allocations is None:
-            print('Adding an allocation proposal')
-            self.proposed_allocations = data_allocations
-            self.proposed_logprob = log_palloc
-        else:
-            print('Shifting proposal!')
-            self.clear_current_proposal()
-            self.proposed_allocations = data_allocations
-            self.proposed_logprob = log_palloc
-
-    def propose_allocation_update(self, update_indices, gmm):
-
-        if self.current_allocations is None:
-            raise Exception('No existing allocation to update!')
-        elif len(gmm.means) == 1:
-            self.proposed_allocations = len(self.data)
-            self.proposed_logprob = 0
-        else:
-            log_palloc = 0
-            data_allocations = []
-            for i in range(len(self.data)):
-                if self.current_allocations[i] in update_indices:
-                    log_prob_alloc = []
-                    for j in update_indices:
-                        logp = -(self.data[i] - gmm.means[j]) ** 2 / (2 * gmm.covs[j])
-                        fac = np.log(gmm.compwts[j]) - np.log(np.sqrt(gmm.covs[j]))
-                        log_prob_alloc.append(fac + logp)
-
-                        prob_alloc = log_prob_alloc - logsumexp(log_prob_alloc)
-                        print('Logprobs are {}'.format(prob_alloc))
-                        prob_cdf = np.cumsum(gmm_util.normalise([np.exp(i) for i in prob_alloc]))
-                        print('Cumulative probability is {}'.format(prob_cdf))
-                        q = np.random.uniform(0, 1)
-
-                        comp_index = gmm_util.find_rand(prob_cdf, q)+min(update_indices)
-                        log_palloc += log_prob_alloc[comp_index-min(update_indices)]
-                        data_allocations.append(comp_index)
-
+                if q < prob_cdf:
+                    new_allocations[0].append(data_to_allocate[i])
+                    log_palloc += log_prob_alloc[0]
                 else:
-                    data_allocations.append(self.proposed_allocations[i])
+                    new_allocations[1].append(data_to_allocate[i])
+                    log_palloc += log_prob_alloc[1]
 
-        if self.proposed_allocations is not None:
-            self.clear_current_proposal()
+            self.birth_allocation(ind)
+            self.allocation[ind] = new_allocations[0]
+            self.allocation[ind+1] = new_allocations[1]
+            self.log_palloc = log_palloc
 
-        self.proposed_allocations = data_allocations
-        self.proposed_logprob = log_palloc
-
-    def propose_merged_allocation(self, index):
+    def merge_allocation(self, gmm):
         """
 
         Parameters
@@ -136,90 +134,20 @@ class AllocationStructure:
         and updates allocations and empty components accordingly.
         NB if the index+1th component is empty, this is equivalent to a reversal of a death move
         """
-        if self.current_allocations is None:
-            raise Exception('No current allocation to merge')
+        if gmm.last_move != 'merge':
+            raise Exception('The previous move was not a merge step')
         else:
-            proposed_allocations = []
-            for i in range(len(self.current_allocations)):
-                if self.current_allocations[i] > index:
-                    proposed_allocations.append(self.current_allocations[i] -1)
-                else:
-                    proposed_allocations.append(self.current_allocations[i])
+            i = gmm.last_merge[0]
+            new_allocation = {}
+            for k in self.allocation:
+                if k == i:
+                    new_allocation[k] = self.allocation[k]+self.allocation[k+1]
+                elif k < i:
+                    new_allocation[k] = self.allocation[k]
+                elif k > i+1:
+                    new_allocation[k-1] = self.allocation[k]
 
-            print('Merged allocation set: {}'.format(set(proposed_allocations)))
-
-        if self.proposed_allocations is not None:
-            self.clear_current_proposal()
-
-        self.proposed_allocations = proposed_allocations
-        self.logprob = 1
-
-    def insert_empty_allocation(self, index):
-        """
-
-        Parameters
-        ----------
-        index: non-negative integer
-
-        Returns
-        -------
-        Shifts the allocation of all data at indices greater than input index by +1
-        """
-        if self.current_allocations is None:
-            raise Exception('No current allocation to insert component')
-        elif self.proposed_allocations is not None:
-            raise Exception('A proposal allocation already exists')
-        else:
-            self.proposed_allocations = copy.deepcopy(self.current_allocations)
-            for i in range(len(self.proposed_allocations)):
-                if self.proposed_allocations[i] > index:
-                    self.proposed_allocations[i] += 1
-
-    def get_allocation_count(self, gmm, data_allocations):
-        """
-
-        Parameters
-        ----------
-        gmm: univariate gmm structure
-        data_allocations: pre-existing set of data allocations,
-        taken from the current_allocations or proposed_allocations attribute.
-
-        Returns
-        -------
-        A list of counts of allocations for all components
-        """
-        if max(data_allocations) > max(gmm.indices):
-            #print('Data allocations: {}, proposal indices {}'.format(set(data_allocations), gmm.indices))
-            raise Exception('Some data allocated to non-existent indices: check input structure')
-        else:
-            allocation_count = []
-            for i in gmm.indices:
-                c = data_allocations.count(i)
-                allocation_count.append(c)
-
-        return allocation_count
-
-    def get_empty_indices(self, gmm, data_allocations):
-        """
-        Parameters
-        ----------
-        gmm: Univarite GMM structure
-        data_allocations: current list of data allocations
-
-        Returns
-        -------
-        List of any component indices for which no data is assigned
-        """
-        if max(data_allocations) > max(gmm.indices):
-            raise Exception('Some data allocated to non-existent indices: check input structure')
-        else:
-            empty_indices = []
-            for i in gmm.indices:
-                if data_allocations.count(i) == 0:
-                    empty_indices.append(i)
-
-            return empty_indices
-
+            self.allocation = new_allocation
 
 class UnivariateGMM(DiscreteVariable):
     def __init__(self, g, alpha, la, delta, means, covs, compwts):
@@ -240,21 +168,14 @@ class UnivariateGMM(DiscreteVariable):
         self.beta = None
 
         'Track last action'
-        self.last_action = None
-        self.last_split = None
+        self.last_move = None
         self.last_merge = None
         self.last_birth = None
         self.last_death = None
 
-    def getProposalType(self):
+    def getProposalType(self, allocation_structure):
 
-        proposal = UnivariateGMMProposal(self.means, self.covs, self.compwts, self.g, self.alpha, self.la, self.delta)
-
-        proposal.last_action = self.last_action
-        proposal.last_split = self.last_split
-        proposal.last_merge = self.last_merge
-        proposal.last_birth = self.last_birth
-        proposal.last_death = self.last_death
+        proposal = UnivariateGMMProposal(self, allocation_structure)
 
         return proposal
 
@@ -262,7 +183,7 @@ class UnivariateGMM(DiscreteVariable):
         return UnivariateGMMTarget(self.means, self.covs, self.compwts)
 
     def get_beta_prior(self, data_allocation):
-        return np.random.gamma(self.g, data_allocation.h)
+        self.beta = np.random.gamma(self.g, data_allocation.h)
 
     def insert_component(self, mu, cov, wt):
         """
@@ -349,6 +270,7 @@ class UnivariateGMM(DiscreteVariable):
         ]
         """
         prop = copy.deepcopy(self)
+        prop_alloc = copy.deepcopy(allocation_structure)
 
         split_index = np.random.choice(self.indices)
 
@@ -380,27 +302,20 @@ class UnivariateGMM(DiscreteVariable):
             prop.means = test_means
             prop.covs = gmm_util.insert_pair(prop.covs, newcovs, split_index)
             prop.compwts = list(gmm_util.normalise(gmm_util.insert_pair(prop.compwts, new_wts, split_index)))
-            prop.indices.append(len(self.indices))
+            prop.indices = [i for i in range(len(prop.compwts))]
             prop.n_comps = len(self.compwts)
 
-            self.last_action = 'split'
-            self.last_split = [split_index, [self.means[split_index], self.covs[split_index], self.compwts[split_index]], [u_1, u_2, u_3]]
+            prop.last_move = 'split'
+            prop.last_split = [split_index, [self.means[split_index], self.covs[split_index], self.compwts[split_index]],[u_1, u_2, u_3]]
+            prop_alloc.split_allocation(prop)
 
-            if allocation_structure.current_allocations is not None:
-                print('Adding an index at {}'.format(split_index))
-                allocation_structure.insert_empty_allocation(split_index)
-                allocation_structure.propose_allocation_update([split_index, split_index+1],prop)
-            else:
-                allocation_structure.propose_allocation(prop)
 
         else:
-            print('Not ordered!')
-            allocation_structure.proposed_allocations = allocation_structure.current_allocations
-            allocation_structure.proposed_logprob = 0
-            self.last_action = 'split_rejected'
+            #print('Not ordered!')
+            prop.last_move = 'split_rejected'
 
-        print('Updated means'.format(prop.means))
-        return prop
+        #print('Updated means'.format(prop.means))
+        return prop, prop_alloc
 
     def merge(self, allocation_structure):
         """
@@ -420,9 +335,11 @@ class UnivariateGMM(DiscreteVariable):
         ]
         """
         prop = copy.deepcopy(self)
+        prop_alloc = copy.deepcopy(allocation_structure)
 
         if len(prop.means) > 1:
             merge_index = np.random.choice(self.indices[:len(self.indices)-1])
+            #print('Merging at index {}'.format(merge_index))
             merge_wts = [self.compwts[merge_index], self.compwts[merge_index + 1]]
             merge_covs = [self.covs[merge_index], self.covs[merge_index + 1]]
             merge_means = [self.means[merge_index], self.means[merge_index + 1]]
@@ -447,17 +364,15 @@ class UnivariateGMM(DiscreteVariable):
             c = (1-(u_2**2))*prop.covs[merge_index]*np.sqrt(prop.compwts[merge_index]/merge_wts[0])
             u_3 = merge_covs[0]/c
 
-            self.last_action = 'merge'
-            self.last_merge = [merge_index, [merge_wts, merge_covs, merge_wts], [u_1, u_2, u_3]]
+            prop.last_move = 'merge'
+            prop.last_merge = [merge_index, [merge_means, merge_covs, merge_wts], [u_1, u_2, u_3]]
 
-            allocation_structure.propose_merged_allocation(merge_index)
+            prop_alloc.merge_allocation(prop)
 
         else:
-            self.last_action = 'merge_rejected'
-            allocation_structure.proposed_allocations = allocation_structure.current_allocations
-            allocation_structure.current_logprob = 0
+            prop.last_move = 'merge_rejected'
 
-        return prop
+        return prop, prop_alloc
 
     def birth(self, allocation_structure):
         """
@@ -475,6 +390,7 @@ class UnivariateGMM(DiscreteVariable):
         Updates data allocations with new empty component
         """
         prop = copy.deepcopy(self)
+        prop_alloc = copy.deepcopy(allocation_structure)
 
         if self.beta is None:
             self.beta = self.get_beta_prior(allocation_structure)
@@ -484,12 +400,12 @@ class UnivariateGMM(DiscreteVariable):
         new_cov = 1/np.random.gamma(self.alpha, self.beta)
         ind = prop.insert_component(new_mu, new_cov, new_wt)
 
-        allocation_structure.insert_empty_allocation(ind)
-        allocation_structure.proposed_logprob = 0
+        prop_alloc.birth_allocation(ind)
 
-        self.last_action = 'birth'
+        prop.last_move = 'birth'
+        prop.last_birth = ind
 
-        return prop
+        return prop, prop_alloc
 
     def death(self, allocation_structure):
         """
@@ -507,24 +423,25 @@ class UnivariateGMM(DiscreteVariable):
         """
 
         prop = copy.deepcopy(self)
-        empties = allocation_structure.get_empty_indices(self, allocation_structure.current_allocations)
+        prop_alloc = copy.deepcopy(allocation_structure)
+        empties = allocation_structure.get_empties()
 
-        if not empties:
-            allocation_structure.proposed_allocations = allocation_structure.current_allocations
+        if empties == [] or len(self.means) == 1:
+            allocation_structure.proposed_allocations = allocation_structure.allocation
             allocation_structure.proposed_logprob = 0
-            self.last_action = 'death_rejected'
-
+            prop.last_move = 'death_rejected'
 
         else:
             death_index = np.random.choice(empties)
-            print('Killing index {}'.format(death_index))
+            #print('Killing index {}'.format(death_index))
             prop.remove_component(death_index)
 
-            allocation_structure.propose_merged_allocation(death_index)
-            allocation_structure.proposed_logprob = 0
-            self.last_action = 'death'
+            prop.last_move = 'death'
+            prop.last_death = death_index
+            prop_alloc.kill_allocation(death_index)
 
-        return prop
+
+        return prop, prop_alloc
 
     def update_weights(self, allocation_structure):
         """
@@ -534,26 +451,13 @@ class UnivariateGMM(DiscreteVariable):
         Proposal distribution with weights updated according current data allocation
         """
         prop = copy.deepcopy(self)
+        counts = allocation_structure.get_counts()
 
-        if allocation_structure.current_allocations is None:
-            raise Exception('No data allocations to determine weight update')
-        elif allocation_structure.proposed_allocations is None:
-            print('Referring to current allocations')
-            allocs = allocation_structure.current_allocations
-            print('Allocation counts: {}'.format(allocation_structure.get_allocation_count(prop,allocs)))
-        else:
-            allocation_structure.clear_current_proposal()
-            allocs = allocation_structure.current_allocations
-            print('Referring to proposed structure')
-            print('Allocation counts: {}'.format(allocation_structure.get_allocation_count(prop, allocs)))
-
-        print('Update')
-
-        new_dirichlet = [(self.delta + i) for i in allocation_structure.get_allocation_count(prop, allocs)]
+        new_dirichlet = [(self.delta + i) for i in counts]
         prop.compwts = list(np.random.dirichlet(new_dirichlet))
 
-        self.last_action = 'weights'
-        return prop
+        self.last_move = 'weights'
+        return prop, allocation_structure
 
     def update_parameters(self, allocation_structure):
         """
@@ -569,55 +473,60 @@ class UnivariateGMM(DiscreteVariable):
 
         new_means = []
         new_covs = []
-        all_counts = allocation_structure.get_allocation_count(self, allocation_structure.current_allocations)
+        all_counts = allocation_structure.get_counts()
         alloc_sums = []
         meandiff_sums = []
+        meandiff_avs = []
 
         for i in self.indices:
-            alloc_sum = 0
+            alloc_sum = sum(allocation_structure.allocation[i])
             meandiff_sum = 0
-            for j in range(len(allocation_structure.data)):
-                if allocation_structure.current_allocations[j] == i:
-                    alloc_sum += allocation_structure.data[j]
-                    meandiff_sum += (allocation_structure.data[j] - self.means[i])**2
+            meandiff_av = 0
+            for j in allocation_structure.allocation[i]:
+                meandiff_sum += self.means[i]-j
+                meandiff_av += (self.means[i]-j)**2
 
             alloc_sums.append(alloc_sum)
             meandiff_sums.append(meandiff_sum)
+            if allocation_structure.allocation[i]:
+                meandiff_avs.append(meandiff_av/len(allocation_structure.allocation[i]))
+            else:
+                meandiff_avs.append(0)
 
+        'Compute new covariances'
         for i in self.indices:
             #print('Perturbing var {}={}'.format(i, self.covs[i]))
 
-            cov_shape= self.alpha + (all_counts[i]/2)
-            cov_scale = self.beta + (meandiff_sums[i]/2)
-            print('Var Parameters are {},{}'.format(cov_shape, cov_scale))
-            r = np.log(np.random.gamma(cov_shape, cov_scale))
-            new_covs.append(np.exp(-2*r))
+            cov_shape= self.alpha + all_counts[i]
+            cov_scale = self.beta + meandiff_avs[i] + ((allocation_structure.kappa*all_counts[i]*(meandiff_sums[i]**2)))/(allocation_structure.kappa+all_counts[i])
+            #print('Var Parameters are {},{}'.format(cov_shape, cov_scale))
+            r = invgamma.rvs(cov_shape, scale=cov_scale)
+            new_covs.append(r)
             #print('New var {}={}'.format(i, new_covs[-1]))
 
-        inv_covs = [i**-2 for i in new_covs]
+        inv_covs = [i**-1 for i in new_covs]
+        #print('New covariances: {}'.format(new_covs))
+
+        'compute new covariances from updated means'
         for i in self.indices:
             #print('Perturbing mean {}={}'.format(i, self.means[i]))
-            mu_scale = ((inv_covs[i]*alloc_sums[i])+(kappa*zeta))/((inv_covs[i]*all_counts[i]) + kappa)
-            mu_shape = np.log(((inv_covs[i]*all_counts[i]) + kappa)**-1)
-            print('Mean Parameters are {},{}'.format(mu_scale, np.exp(mu_shape)))
-            new_means.append(np.random.normal(mu_scale, np.exp(mu_shape)))
+            mu_scale = ((allocation_structure.kappa*allocation_structure.zeta) + alloc_sums[i])/(all_counts[i]+allocation_structure.kappa)
+            mu_shape = new_covs[i]/(allocation_structure.kappa+all_counts[i])
+            #print('Mean Parameters are {},{}'.format(mu_scale, np.exp(mu_shape)))
+            new_means.append(np.random.normal(mu_scale, mu_shape))
 
             #print('New mean {}={}'.format(i, new_means[-1]))
 
         if gmm_util.check_ordered(new_means):
             prop.means = new_means
-            for i in range(len(self.compwts)):
-                prop.covs[i] = np.random.normal(self.covs[i], 1)
-            self.last_action = 'parameters_accepted'
+            prop.covs = new_covs
+            self.last_move = 'parameters'
         else:
-            self.last_action = 'parameters_rejected'
+            self.last_move = 'parameters_rejected'
 
-        allocation_structure.proposed_allocations = allocation_structure.current_allocations
-        allocation_structure.proposed_logprob = 0
+        return prop, allocation_structure
 
-        return prop
-
-    def update_beta(self, data_allocation):
+    def update_beta(self, allocation_structure):
         """
         Updates parameter governing potential range of covariances of new components
         See Richardson & Green 1997 for details
@@ -627,10 +536,22 @@ class UnivariateGMM(DiscreteVariable):
         Updates beta parameter of distribution, which will be applied to any subsequent parameter updates.
         """
 
-        inv_covs = [1 / i for i in self.covs]
-        prop = copy.deepcopy(self)
+        #print('Using covariances: {}'.format(self.covs))
+        inv_covs = [i**-1 for i in self.covs]
+        #print('Inverse covariances are {}'.format(inv_covs))
 
-        prop.beta = np.random.gamma(self.g + (self.n_comps * self.alpha), sum(inv_covs) + data_allocation.h)
-        self.last_action = 'beta'
+        try:
+            self.beta = np.random.gamma(self.g + (self.n_comps * self.alpha), sum(inv_covs) + allocation_structure.h)
+            self.last_move = 'beta'
+        except:
+            raise Exception('Issue with input parameters: {},{},{}'.format((self.n_comps * self.alpha), sum(inv_covs), allocation_structure.h))
 
-        return prop
+        return self, allocation_structure
+
+    def propose_allocation_update(self, allocation_structure):
+        allocation_structure.propose_allocation(self)
+
+        self.last_move = 'allocation'
+
+        return self, allocation_structure
+

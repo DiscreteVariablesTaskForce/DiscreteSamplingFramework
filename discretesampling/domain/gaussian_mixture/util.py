@@ -35,3 +35,6 @@ def normalise(l):
         l[i] = l[i]/s
     return l
 
+def allocation_counter(l, inds):
+    return [l.count(i) for i in inds]
+

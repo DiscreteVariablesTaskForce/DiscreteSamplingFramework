@@ -56,3 +56,9 @@ class DiscreteVariableMCMC():
 
         progress_bar.close()
         return samples
+
+class GMM_MCMC_sweep():
+
+    def __init__(self):
+
+        pass

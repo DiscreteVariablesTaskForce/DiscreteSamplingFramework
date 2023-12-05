@@ -24,13 +24,25 @@ class UnivariateGMMTarget(DiscreteVariableTarget):
         #evaluate a single mix component
 
         return norm.pdf(x, self.means[ind], np.sqrt(self.covs[ind]))
-    def evaluatePrior(self, x: DiscreteVariable) -> float:
+    def evaluatePrior(self, x: DiscreteVariable, data) -> float:
 
         pass
 
-    def sample(self):
+    def sample(self, size = 1):
+        comp_select = np.cumsum(self.compwts)
+        sample = []
+        i=0
 
-        pass
+        while i <= size:
+            q = np.random.uniform(0,1)
+            index = gmm_util.find_rand(comp_select, q)
+            sample.append(np.random.normal(self.means[index], self.covs[index]))
+            i+=1
+
+        if size == 1:
+            return sample[0]
+        else:
+            return sample
 
 class MultivariateGMMTarget(DiscreteVariableTarget):
 
@@ -54,7 +66,7 @@ class MultivariateGMMTarget(DiscreteVariableTarget):
 
         return norm.pdf(x, self.means[ind], np.sqrt(self.covs[ind]))
 
-    def evaluatePrior(self, x: DiscreteVariable) -> float:
+    def evaluatePrior(self, x, h) -> float:
 
         pass
 
