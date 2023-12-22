@@ -22,8 +22,12 @@ def insert_pair(l, ins, ind):
 
 
 def find_rand(l, q):
-    inds = np.where(l>q)
-    return inds[0][0]
+    if len(l) == 1:
+        return 0
+    else:
+        inds = np.where(l>q)
+        return inds[0][0]
+
 #check that a list is sorted
 def check_ordered(l):
     l_check = sorted(copy.copy(l))

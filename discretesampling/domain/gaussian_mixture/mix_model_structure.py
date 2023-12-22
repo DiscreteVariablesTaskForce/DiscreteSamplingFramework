@@ -1,10 +1,12 @@
 import numpy as np
+import math
 import copy
 from bisect import bisect
 from discretesampling.base.types import DiscreteVariable
 from discretesampling.domain.gaussian_mixture.mix_model_distribution import UnivariateGMMProposal
 from discretesampling.domain.gaussian_mixture.mix_model_target import UnivariateGMMTarget
 import discretesampling.domain.gaussian_mixture.util as gmm_util
+import discretesampling.domain.gaussian_mixture.mix_model_initial_proposal as mmi
 from scipy.special import logsumexp
 from scipy.stats import invgamma
 
@@ -13,7 +15,7 @@ class AllocationStructure:
     """
     Separate class which keeps the actual data for computing allocations
     """
-    def __init__(self, data, initial_gmm):
+    def __init__(self, h_epsilon, data, initial_gmm):
         self.data = data
         self.allocation = {k:[] for k in initial_gmm.indices}
         self.log_palloc = 0
@@ -21,7 +23,8 @@ class AllocationStructure:
         self.zeta = np.median(self.data)
         self.data_range = max(self.data) - min(self.data)
         self.kappa = 1 / self.data_range ** 2
-        self.h = 10 / self.data_range ** 2
+        self.h_epsilon = h_epsilon
+        self.h = h_epsilon / self.data_range ** 2
 
         self.propose_allocation(initial_gmm)
 
@@ -42,9 +45,16 @@ class AllocationStructure:
         for i in range(len(self.data)):
             log_prob_alloc = []
             for j in indices:
-                logp = -(self.data[i] - gmm.means[j]) ** 2 / (2 * gmm.covs[j])
-                fac = np.log(gmm.compwts[j]) - np.log(np.sqrt(gmm.covs[j]))
-                log_prob_alloc.append(fac + logp)
+                try:
+                    logp = (self.data[i] - gmm.means[j])**2 / (2 * gmm.covs[j])
+                except OverflowError:
+                    logp = None
+
+                fac = math.log(gmm.compwts[j]) - (0.5*math.log(gmm.covs[j]))
+                if logp is None:
+                    log_prob_alloc.append(fac)
+                else:
+                    log_prob_alloc.append(fac - logp)
 
             prob_alloc = np.exp(log_prob_alloc - logsumexp(log_prob_alloc))
             prob_cdf = np.cumsum(gmm_util.normalise(prob_alloc))
@@ -102,10 +112,10 @@ class AllocationStructure:
                 log_prob_alloc = []
                 for j in [0,1]:
                     logp = -(data_to_allocate[i] - split_means[j]) ** 2 / (2 * split_covs[j])
-                    fac = np.log(split_wts[j]) - np.log(np.sqrt(split_covs[j]))
+                    fac = math.log(split_wts[j]) - (0.5*math.log(split_covs[j]))
                     log_prob_alloc.append(fac + logp)
 
-                prob_cdf = np.cumsum([np.exp(i) for i in log_prob_alloc])[0]
+                prob_cdf = np.cumsum([math.exp(i) for i in log_prob_alloc])[0]
                 q = np.random.uniform(0, 1)
 
                 if q < prob_cdf:
@@ -172,6 +182,10 @@ class UnivariateGMM(DiscreteVariable):
         self.last_merge = None
         self.last_birth = None
         self.last_death = None
+
+    def getInitialProposalType(self, data):
+
+        return mmi.UnivariateGMMInitialProposal(self.la, self.g, self.alpha, self.delta, self.h_epsilon, data).return_initial_distribution()
 
     def getProposalType(self, allocation_structure):
 
@@ -309,6 +323,9 @@ class UnivariateGMM(DiscreteVariable):
             prop.last_split = [split_index, [self.means[split_index], self.covs[split_index], self.compwts[split_index]],[u_1, u_2, u_3]]
             prop_alloc.split_allocation(prop)
 
+            self.last_move = 'merge'
+            self.last_merge = [split_index, [newmeans, newcovs, new_wts], [u_1, u_2, u_3]]
+
 
         else:
             #print('Not ordered!')
@@ -347,8 +364,8 @@ class UnivariateGMM(DiscreteVariable):
             prop.compwts[merge_index] = sum(merge_wts)
             prop.means[merge_index] = (merge_wts[0]*merge_means[0] + merge_wts[1]*merge_means[1])/sum(merge_wts)
             comp1 = merge_wts[0]*(merge_covs[0]+merge_means[0]**2)
-            comp2 = merge_wts[1] * (merge_covs[1]+merge_means[1]**2)
-            extract_comp = sum(merge_wts)*self.means[merge_index]**2
+            comp2 = merge_wts[1]*(merge_covs[1]+merge_means[1]**2)
+            extract_comp = sum(merge_wts)*prop.means[merge_index]**2
             final = (comp1+comp2-extract_comp)/sum(merge_wts)
             prop.covs[merge_index] = final
             prop.compwts = list(gmm_util.normalise(prop.compwts))
@@ -357,17 +374,24 @@ class UnivariateGMM(DiscreteVariable):
             del (prop.indices[-1])
             prop.remove_component(merge_index+1)
 
-            u_1 = merge_wts[0]/sum(merge_wts)
-            a = prop.means[merge_index] - merge_means[0]
-            b = np.sqrt(prop.covs[merge_index]*(merge_wts[1]/merge_wts[0]))
-            u_2 = a/b
-            c = (1-(u_2**2))*prop.covs[merge_index]*np.sqrt(prop.compwts[merge_index]/merge_wts[0])
-            u_3 = merge_covs[0]/c
+            u_1 = min(1, merge_wts[0]/sum(merge_wts))
+            a = np.abs(prop.means[merge_index] - merge_means[0])
+            try:
+                b = 0.5*(math.log(prop.covs[merge_index]) + math.log(merge_wts[1]) - math.log(merge_wts[0]))
+                u_2 = min(1,a/(math.exp(b)))
+            except:
+                print('Problem with {}'.format(prop.covs[merge_index]))
+                u_2 = 0
+
+            u_3 = (merge_covs[0]*merge_wts[0])/(prop.covs[merge_index]*prop.compwts[merge_index]*(1-(u_2**2)))
 
             prop.last_move = 'merge'
             prop.last_merge = [merge_index, [merge_means, merge_covs, merge_wts], [u_1, u_2, u_3]]
 
             prop_alloc.merge_allocation(prop)
+
+            self.last_move='split'
+            self.last_split = [merge_index, [prop.means[merge_index], prop.covs[merge_index], prop.compwts[merge_index]],[u_1, u_2, u_3]]
 
         else:
             prop.last_move = 'merge_rejected'
@@ -405,6 +429,9 @@ class UnivariateGMM(DiscreteVariable):
         prop.last_move = 'birth'
         prop.last_birth = ind
 
+        self.last_move = 'death'
+        self.last_death = ind
+
         return prop, prop_alloc
 
     def death(self, allocation_structure):
@@ -440,6 +467,8 @@ class UnivariateGMM(DiscreteVariable):
             prop.last_death = death_index
             prop_alloc.kill_allocation(death_index)
 
+            self.last_move = 'birth'
+            self.last_birth = death_index
 
         return prop, prop_alloc
 
