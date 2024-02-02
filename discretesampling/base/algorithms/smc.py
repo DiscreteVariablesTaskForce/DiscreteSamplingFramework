@@ -7,6 +7,8 @@ from discretesampling.base.executor import Executor
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
+#from discretesampling.base.algorithms.smc_components.systematic_resampling import systematic_resampling
+#from discretesampling.base.algorithms.smc_components.importance_resampling import importance_resampling
 
 
 class DiscreteVariableSMC():
@@ -55,8 +57,13 @@ class DiscreteVariableSMC():
             neff = ess(logWeights, self.exec)
 
             if math.log(neff) < math.log(N) - math.log(2):
-                current_particles, logWeights = systematic_resampling(
-                    current_particles, logWeights, mvrs_rng, exec=self.exec)
+                 current_particles, logWeights = systematic_resampling(
+                       current_particles, logWeights, mvrs_rng, exec=self.exec)
+                 # current_particles, logWeights = systematic_resampling_log(
+                 #      current_particles, np.exp(logWeights), mvrs_rng)
+                 #   current_particles, logWeights = importance_resampling(
+                 #       current_particles, np.exp(logWeights), mvrs_rng)
+
 
             new_particles = copy.copy(current_particles)
 

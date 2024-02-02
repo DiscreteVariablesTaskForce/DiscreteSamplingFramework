@@ -15,21 +15,21 @@ a = 15
 target = dt.RegressionTreeTarget(a)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
-dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
-try:
-    treeSamples = dtMCMC.sample(100)
-
-    mcmcLabels = dt.RegressionStats(treeSamples, X_test).predict(X_test, use_majority=True)
-    mcmcAccuracy = [dt.accuracy_mse(y_test, mcmcLabels)]
-
-    print("MCMC mean MSE: ", (mcmcAccuracy))
-except ZeroDivisionError:
-    print("MCMC sampling failed due to division by zero")
+# dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
+# try:
+#     treeSamples = dtMCMC.sample(100)
+#
+#     mcmcLabels = dt.RegressionStats(treeSamples, X_test).predict(X_test, use_majority=True)
+#     mcmcAccuracy = [dt.accuracy_mse(y_test, mcmcLabels)]
+#
+#     print("MCMC mean MSE: ", (mcmcAccuracy))
+# except ZeroDivisionError:
+#     print("MCMC sampling failed due to division by zero")
 
 
 dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal)
 try:
-    treeSMCSamples = dtSMC.sample(10, 10)
+    treeSMCSamples = dtSMC.sample(10, 50)
 
     smcLabels = dt.RegressionStats(treeSMCSamples, X_test).predict(X_test, use_majority=True)
     smcAccuracy = [dt.accuracy_mse(y_test, smcLabels)]

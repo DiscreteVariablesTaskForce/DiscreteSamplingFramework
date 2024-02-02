@@ -7,7 +7,7 @@ import discretesampling.domain.decision_tree as dt
 
 
 data = datasets.load_wine()
-
+0
 X = data.data
 y = data.target
 
@@ -24,7 +24,7 @@ dtSMC = DiscreteVariableSMC(dt.Tree, target, initialProposal,
                             use_optimal_L=False, exec=Executor())
 
 try:
-    treeSamples = dtSMC.sample(10, 10)
+    treeSamples = dtSMC.sample(10, 50)
     smcLabels = dt.stats(treeSamples, X_test).predict(X_test, use_majority=True)
     smc_acc = dt.accuracy(y_test, smcLabels)
     print(numpy.mean(smc_acc))
