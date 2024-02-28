@@ -59,12 +59,13 @@ class DiscreteVariableSMC():
             neff = ess(logWeights, self.exec)
 
             if math.log(neff) < math.log(N) - math.log(2):
+
                  # current_particles, logWeights = systematic_resampling(
                  #       current_particles, logWeights, mvrs_rng, exec=self.exec)
                  #  current_particles, logWeights = systematic_resampling(
                  #       current_particles, np.exp(logWeights), mvrs_rng,N)
-                    current_particles, logWeights = importance_resampling_v3(
-                        current_particles, np.exp(logWeights), mvrs_rng, N)
+                current_particles, logWeights = importance_resampling_v3(
+                    current_particles, np.exp(logWeights), mvrs_rng, N)
 
 
             new_particles = copy.copy(current_particles)
