@@ -16,7 +16,7 @@ def importance_resampling_v3(x, w, mvrs_rng , N=None):
     NS = [i for i in range(N) if w[i] > 2 / N]
 
     if not NS:
-        x_new, w_new = systematic_resampling(x, w, mvrs_rng, N)
+        x_new, w_new, _ = systematic_resampling(x, w, mvrs_rng, N)
         return x_new, w_new
 
     w_tot = np.sum(w[S])
@@ -34,7 +34,7 @@ def importance_resampling_v3(x, w, mvrs_rng , N=None):
 
     xS.append(x[NS[0]])
 
-    x_small, w_small = systematic_resampling(xS, WS, mvrs_rng, Nsmall)
+    x_small, w_small, _ = systematic_resampling(xS, WS, mvrs_rng, Nsmall)
     w_small = np.exp(w_small)
     w_small = np.ones(N) / N
 
@@ -80,33 +80,18 @@ def importance_resampling(x, w, mvrs_rng, N=None):
     if N is None:
         N = len(w)
 
-    x_new_s, w_new_s = systematic_resampling(x, w, mvrs_rng, N)
+    _, _, nc = systematic_resampling(x, w, mvrs_rng, N)
 
-    w_new_s = np.exp(w_new_s)
-    quantisedweights = np.zeros_like(x)
+    quantisedweights = nc / N
 
-    for i in range(len(x)):
-        for j in range(len(x_new_s)):
-            if x_new_s[j] == x[i]:
-                quantisedweights[i] += w_new_s[j]
+    x_new, _, ncopies = systematic_resampling(x, quantisedweights, mvrs_rng, N)
 
-    x_new, _ = systematic_resampling(x, quantisedweights, mvrs_rng, N)
-
-
-    w_new = np.zeros_like(x_new)
-
-    for i in range(len(x_new)):
-        for j in range(len(x)):
-            if x_new[i] == x[j]:
-                w_new[i] = w[j] / quantisedweights[j]
+    ww = w / quantisedweights
+    w_new = np.repeat(ww, ncopies, axis=0)
 
     w_new /= np.sum(w_new)
 
-    #log_w_new = np.log(w_new)
-    log_w_new = []
-    for k in w_new:
-        log_w_new.append(np.log(k))
-
+    log_w_new = np.log(w_new)
 
     return x_new, log_w_new
 
@@ -126,6 +111,8 @@ def systematic_resampling(x, w,  mvrs_rng , N=None):
 
     u = mvrs_rng.uniform()
 
+    ncopies = np.zeros(len(x), dtype=int)
+
     for i in range(N):
         j = 0
 
@@ -133,5 +120,6 @@ def systematic_resampling(x, w,  mvrs_rng , N=None):
             j += 1
 
         x_new.append(x[j])
+        ncopies[j] += 1
 
-    return x_new, log_w_new
+    return x_new, log_w_new, ncopies
