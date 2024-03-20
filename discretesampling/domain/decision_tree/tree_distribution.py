@@ -19,7 +19,7 @@ class TreeProposal(DiscreteVariableProposal):
     def heuristic(self, x, y):
         return y < x or abs(x-y) < 2
 
-    def sample(self, start_tree, rng=RNG(), num_nodes=10):
+    def sample(self, start_tree, rng=RNG(), num_nodes=100):
         # self.moves_prob = [0.4, 0.1, 0.1, 0.4] # Good for chipman
         # initialise the probabilities of each move
         moves = ["prune", "swap", "change", "grow"]  # noqa

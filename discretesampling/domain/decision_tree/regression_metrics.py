@@ -188,4 +188,5 @@ def regression_likelihood(x):
         k += 1
     log_likelihood = -(len(x.y_train)/2) * \
         (-np.log(2)+np.log(sum(squared_error)))
+    #print(np.mean(squared_error))
     return log_likelihood, leaf_values
