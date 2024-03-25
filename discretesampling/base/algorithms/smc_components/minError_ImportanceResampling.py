@@ -85,13 +85,6 @@ def importance_resampling(x, w, mvrs_rng, N=None):
 
     x_new, _, ncopies = min_error_continuous_state_resampling(x, quantisedweights, mvrs_rng, N)
 
-    # w_new = np.zeros(len(x_new))
-    #
-    # for i in range(len(x_new)):
-    #     for j in range(len(x)):
-    #         if x_new[i] == x[j]:
-    #             w_new[i] = w[j] / quantisedweights[j]
-
     ww = w / quantisedweights
     w_new = np.repeat(ww, ncopies, axis=0)
 
@@ -120,7 +113,6 @@ def min_error_continuous_state_resampling(x, w,  mvrs_rng , N=None):
         for k in range(nc[j]):
             i += 1
             x_new.append(x[j])
-            # x_new[i-1] = x[j]
 
     NW = N * w
     non_integer_parts = NW - np.floor(NW)
@@ -131,7 +123,6 @@ def min_error_continuous_state_resampling(x, w,  mvrs_rng , N=None):
         x_new.append(x[i])
 
     nc[sorted_indices] += 1
-    # x_new[np.sum(nc):] = x[sorted_indices]
 
     return x_new, log_w_new, nc
 
