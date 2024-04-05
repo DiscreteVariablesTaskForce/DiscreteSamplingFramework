@@ -1,7 +1,7 @@
-import discretesampling.domain.additive_structure as addstruct
-from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
 import numpy as np
 import pandas as pd
+import discretesampling.domain.additive_structure as addstruct
+from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
 
 
 def func(x):
