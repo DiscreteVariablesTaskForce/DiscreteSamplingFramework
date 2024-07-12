@@ -20,7 +20,7 @@ target = dt.TreeTarget(a, b)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
 # Create an MCMC sampler on type dt.Tree with target distribution target
-dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
+dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal, proposal=dt.TreeProposal(X_train))
 
 try:
     treeSamples = dtMCMC.sample(N=1000)
