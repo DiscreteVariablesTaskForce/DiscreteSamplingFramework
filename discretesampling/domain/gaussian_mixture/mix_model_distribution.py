@@ -404,6 +404,10 @@ class GMM_Distribution():
             splits = [self.Gaussian_Mix_Model.components[ind], self.Gaussian_Mix_Model.components[ind + 1]]
             sc = previous.Gaussian_Mix_Model.components[ind]
 
+            l1 = len(self.Data_Allocation.allocation[ind])
+            l2 = len(self.Data_Allocation.allocation[ind + 1])
+            all = len(self.Data_Allocation.all_data())
+
             # compute selected auxiliary random variables and their probability
             u_1 = splits[0][2] / sc[2]
             u_2 = ((splits[1][0] - sc[0]) / (np.sqrt(sc[1]))) * np.sqrt(splits[1][2] / splits[0][2])
@@ -423,9 +427,7 @@ class GMM_Distribution():
             log_mueval = norm.logpdf(splits[1][0], self.kappa) + norm.logpdf(splits[0][0], self.kappa)
             log_vareval = invgamma.logpdf(splits[1][1], self.alpha+(n_i), (self.beta + (var_i) + (self.kappa*n_i*med_i))/(self.kappa + n_i)) + invgamma.logpdf(splits[0][1],
                                                                                                      self.alpha+(n_i), (self.beta + (var_i) + (self.kappa*n_i*med_i))/(self.kappa + n_i))
-            l1 = len(self.Data_Allocation.allocation[ind])
-            l2 = len(self.Data_Allocation.allocation[ind + 1])
-            all = len(self.Data_Allocation.all_data())
+
             log_wteval = beta.logpdf(splits[0][2], self.delta - 1 + l1, all) + beta.logpdf(splits[1][2], self.delta - 1 + l2, all)
 
             #compute jacobian of split function
