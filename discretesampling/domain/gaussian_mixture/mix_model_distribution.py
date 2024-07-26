@@ -6,8 +6,8 @@ from numpy import random
 from scipy.stats import beta
 from scipy.stats import gamma
 from scipy.stats import dirichlet
-from scipy.special import beta as betfunc
 from scipy.stats import poisson
+from scipy.stats import invgamma
 
 import sys
 sys.path.append('C:/Users/mattb242/Desktop/Projects/reversible_jump/local_code/DiscreteSamplingFramework')
@@ -65,10 +65,10 @@ class GMM_Distribution():
         self.delts = [self.delta]*self.Gaussian_Mix_Model.k
         self.zeta = np.median(self.Data_Allocation.all_data())
         self.R = np.ptp(self.Data_Allocation.all_data())
-        self.h = ep_h*self.R**2
-        self.kappa = ep_k*self.R**2
+        self.h = ep_h*self.R**-2
+        self.kappa = ep_k*self.R**-2
 
-        self.beta = gamma.rvs(self.g, scale = (1/self.h))
+        self.beta = gamma.rvs(self.g, scale = self.h)
 
         self.last_move = None
         self.previous_distribution = None
@@ -84,6 +84,7 @@ class GMM_Distribution():
 
         self.Gaussian_Mix_Model = Gaussian_Mix_Model(new_comps)
         self.Data_Allocation = Data_Allocation(new_allocs)
+
     def compute_logprob(self,data):
         lp = 0
         for i in data:
@@ -137,13 +138,12 @@ class GMM_Distribution():
         split_ind = random.choice([i for i in range(self.Gaussian_Mix_Model.k)])
         split_dat = self.Data_Allocation.allocation[split_ind]
 
-        print('Old component: {}'.format(self.Gaussian_Mix_Model.components[split_ind]))
+
 
         ordered = False
         while not ordered:
             us = [beta.rvs(2,2), beta.rvs(2,2), beta.rvs(1,1)]
             sc = self.Gaussian_Mix_Model.components[split_ind]
-
 
             nwt = [sc[2]*us[0], (1-us[0])*sc[2]]
             normwt = np.array(nwt)/sum(nwt)
@@ -155,8 +155,7 @@ class GMM_Distribution():
 
         comp_1 = [nmu[0], nvar[0], nwt[0]]
         comp_2 = [nmu[1], nvar[1], nwt[1]]
-        print('generated u = {}'.format(us))
-        print('resulting components {}, {}'.format(comp_1, comp_2))
+
 
         tempgmm = Gaussian_Mix_Model([[nmu[0], nvar[0], normwt[0]], [nmu[1], nvar[1], normwt[1]]])
         tempdat = tempgmm.allocate_data(split_dat)
@@ -187,12 +186,9 @@ class GMM_Distribution():
 
     def birth(self):
 
-        nmu = norm.rvs(self.zeta, self.kappa)
-        nvar = 1/gamma.rvs(self.alpha, self.beta)
+        nmu = norm.rvs(self.zeta, 1/self.kappa)
+        nvar = invgamma.rvs(self.alpha, self.beta)
         nwt = beta.rvs(1, self.Gaussian_Mix_Model.k)
-
-        print('New component is {}'.format([nmu, nvar, nwt]))
-        print('Old components are {}'.format(self.Gaussian_Mix_Model.components))
 
         new_components = []
         newalloc = {}
@@ -233,7 +229,6 @@ class GMM_Distribution():
 
         empties = [i for i in self.Data_Allocation.allocation.keys() if self.Data_Allocation.allocation[i] == []]
 
-        print('Empties: {}'.format(empties))
         if not empties or self.Gaussian_Mix_Model.k == 1:
             new_dist = GMM_Distribution(self.Gaussian_Mix_Model, self.Data_Allocation, self.la, self.delta, self.alpha, self.g, self.ep_h,
                                         self.ep_k)
@@ -287,7 +282,7 @@ class GMM_Distribution():
         for i in self.Gaussian_Mix_Model.components:
             s_i = sum(self.Data_Allocation.allocation[self.Gaussian_Mix_Model.components.index(i)])
             n_i = len(self.Data_Allocation.allocation[self.Gaussian_Mix_Model.components.index(i)])
-            newcomps.append([norm.rvs((self.zeta*self.kappa+i[1]*s_i)/(i[1]*n_i+self.kappa), (i[1]*self.kappa)/(self.kappa+ n_i*i[1])), i[1], i[2]])
+            newcomps.append([norm.rvs(((self.zeta*self.kappa)+(i[1]**-1*s_i))/((i[1]**-1*n_i)+self.kappa), 1/(self.kappa + (i[1]**-1*n_i))), i[1], i[2]])
 
         newmodel = Gaussian_Mix_Model(newcomps)
         new_dist = GMM_Distribution(newmodel, self.Data_Allocation, self.la, self.delta, self.alpha, self.g, self.ep_h,
@@ -301,8 +296,13 @@ class GMM_Distribution():
         for i in self.Gaussian_Mix_Model.components:
             idat = self.Data_Allocation.allocation[self.Gaussian_Mix_Model.components.index(i)]
             n_i = len(idat)
-            var_i = sum([(j - i[0])**2 for j in idat])
-            newcomps.append([i[0], 1/(gamma.rvs(self.alpha+(n_i/2), scale = (1/(self.beta + var_i)))), i[2]])
+            if n_i == 0:
+                var_i = 0
+            else:
+                var_i = np.var(idat)*n_i
+            med_i = (sum([(j - self.zeta) for j in idat]))**2
+            new_s_i = invgamma.rvs(self.alpha+(n_i), (self.beta + (var_i) + (self.kappa*n_i*med_i))/(self.kappa + n_i))
+            newcomps.append([i[0], new_s_i, i[2]])
 
         newmodel = Gaussian_Mix_Model(newcomps)
         new_dist = GMM_Distribution(newmodel, self.Data_Allocation, self.la, self.delta, self.alpha, self.g, self.ep_h,
@@ -312,8 +312,8 @@ class GMM_Distribution():
     def beta_update(self):
 
         new_dist = copy.deepcopy(self)
-        sumvar = sum([i[1] for i in self.Gaussian_Mix_Model.components])
-        new_dist.beta = gamma.rvs(self.alpha*self.kappa+self.g, scale = (1/self.h + sumvar))
+        sumvar = sum([i[1]**-1 for i in self.Gaussian_Mix_Model.components])
+        new_dist.beta = gamma.rvs((self.alpha*self.Gaussian_Mix_Model.k)+self.g, scale=self.h + sumvar)
 
         return new_dist
 
@@ -345,7 +345,8 @@ class GMM_Distribution():
         for i in self.Gaussian_Mix_Model.components:
             s_i = sum(self.Data_Allocation.allocation[self.Gaussian_Mix_Model.components.index(i)])
             n_i = len(self.Data_Allocation.allocation[self.Gaussian_Mix_Model.components.index(i)])
-            muprob += norm.logpdf(i[0], (self.zeta*self.kappa+i[1]*s_i)/(i[1]*n_i+self.kappa), (i[1]*self.kappa)/(self.kappa+ n_i*i[1]))
+            muprob += norm.logpdf(i[0], ((self.zeta*self.kappa)+(i[1]**-1*s_i))/((i[1]**-1*n_i)+self.kappa), 1/(self.kappa + (i[1]**-1*n_i)))
+
 
         varprob = 0
 
@@ -353,7 +354,7 @@ class GMM_Distribution():
             idat = self.Data_Allocation.allocation[self.Gaussian_Mix_Model.components.index(i)]
             n_i = len(idat)
             var_i = sum([(j - i[0])**2 for j in idat])
-            varprob -= gamma.logpdf(i[1], self.alpha+(n_i/2), scale = (1/(self.beta + var_i)))
+            varprob -= invgamma.logpdf(i[1], self.alpha+(n_i), (self.beta + (var_i) + (self.kappa*n_i*med_i))/(self.kappa + n_i))
 
         return wtprob + muprob + varprob
 
@@ -361,25 +362,19 @@ class GMM_Distribution():
 
     def discrete_forward_sample(self, move_pmf=[0.5, 0, 0.5], disc_pmf=[0.5, 0.5]):
 
-        discrete_moves = [['split', 'birth'], ['merge', 'death']]
-
         move_choice = util.assign_from_pmf(move_pmf)
         move = util.assign_from_pmf(disc_pmf)
         if move_choice == 0:
             if move == 0:
-                print('merging')
                 return self.merge()
             else:
-                print('killing')
                 return self.death()
-        elif move_choice == 0:
-            return self.continuous_forward_sample()
+        elif move_choice == 1:
+            return self
         else:
             if move == 0:
-                print('Splitting')
                 return self.split()
             else:
-                print('Making up')
                 return self.birth()
 
     def split_log_eval(self, previous, split_prob):
@@ -389,9 +384,11 @@ class GMM_Distribution():
         """
         #check if current distribution could have been derived from previous distribution by a split at all
         if self.Gaussian_Mix_Model.k - previous.Gaussian_Mix_Model.k != 1:
-            return 0
+            print('Proposal distribution has more than one additional component compared to current - this cannot have been a split')
+            return 0,0
         elif self.Gaussian_Mix_Model.k > 2 and util.matchlist(self.Gaussian_Mix_Model.means, previous.Gaussian_Mix_Model.means) != 2:
-            return 0
+            print('More than two components in the proposal distribution do not match the current distribution - this cannot have been a split')
+            return 0,0
         #if previous distribution is compatible, find the  split index
         else:
             ind = 0
@@ -400,7 +397,6 @@ class GMM_Distribution():
                     ind+=1
                 else:
                     break
-            print('Split index: {}'.format(ind))
             #if ind == self.Gaussian_Mix_Model.k:
                 #ind+=1
 
@@ -413,7 +409,6 @@ class GMM_Distribution():
             u_2 = ((splits[1][0] - sc[0]) / (np.sqrt(sc[1]))) * np.sqrt(splits[1][2] / splits[0][2])
             u_3 = (splits[0][1]*splits[0][2])/((1-u_2**2)*sc[1]*sc[2])
             us = [u_1, u_2, u_3]
-            print('us:{}'.format(us))
             uprob = beta.logpdf(u_1, 2, 2)+beta.logpdf(u_2, 2, 2)+beta.logpdf(u_3,1,1)
 
             #compute the alloction probability of the split
@@ -426,32 +421,34 @@ class GMM_Distribution():
 
             #compute probabiility of choosing split component values
             log_mueval = norm.logpdf(splits[1][0], self.kappa) + norm.logpdf(splits[0][0], self.kappa)
-            log_vareval = gamma.logpdf(splits[1][1], self.alpha, scale=1 / self.beta) + gamma.logpdf(splits[0][1],
-                                                                                                     self.alpha,
-                                                                                                     scale=1 / self.beta)
+            log_vareval = invgamma.logpdf(splits[1][1], self.alpha+(n_i), (self.beta + (var_i) + (self.kappa*n_i*med_i))/(self.kappa + n_i)) + invgamma.logpdf(splits[0][1],
+                                                                                                     self.alpha+(n_i), (self.beta + (var_i) + (self.kappa*n_i*med_i))/(self.kappa + n_i))
             l1 = len(self.Data_Allocation.allocation[ind])
             l2 = len(self.Data_Allocation.allocation[ind + 1])
-            log_wteval = (self.delta - 1 + l1) * math.log(splits[0][2]) + (self.delta - 1 + l2) * math.log(splits[1][2]) - math.log(betfunc(self.delta, previous.Gaussian_Mix_Model.k*self.delta))
+            all = len(self.Data_Allocation.all_data())
+            log_wteval = beta.logpdf(splits[0][2], self.delta - 1 + l1, all) + beta.logpdf(splits[1][2], self.delta - 1 + l2, all)
 
             #compute jacobian of split function
-            log_J = math.log(sc[2]) +math.log(np.abs(splits[1][0] - splits[0][0]))  +math.log(splits[1][1]) +math.log(splits[0][1]) - math.log(
-                sc[1]) +math.log(1 - (us[1] ** 2)) +math.log(us[2]) + math.log(1 - us[2])
+            log_J = math.log(sc[2]) +math.log(np.abs(splits[1][0] - splits[0][0]))  +math.log(splits[1][1]) +math.log(splits[0][1]) - (math.log(
+                sc[1]) +math.log(1 - (us[1] ** 2)) +math.log(us[2]) + math.log(1 - us[2]))
 
-            q_x = math.log(self.Gaussian_Mix_Model.k, self.la) + poisson.logpmf(
+            p_xy = math.log(self.Gaussian_Mix_Model.k, self.la) + poisson.logpmf(
                 self.Gaussian_Mix_Model.k, self.la)  + log_wteval + log_vareval + log_mueval + log_J
 
             r_x = uprob + palloc + math.log(split_prob)
 
-            return q_x, r_x
+            return p_xy, r_x
 
     def merge_log_eval(self, previous, mergeprob):
 
         # check if current distribution could have been derived from previous distribution by a split at all
         if previous.Gaussian_Mix_Model.k - self.Gaussian_Mix_Model.k != 1:
-            return 0
+            return 0,0
+            print('There is not one fewer component in the proposed distribution than the current - this cannot have been a merge')
         elif previous.Gaussian_Mix_Model.k > 2 and util.matchlist(previous.Gaussian_Mix_Model.means,
                                            self.Gaussian_Mix_Model.means) != 2:
-            return 0
+            print('More than two components in the current distribution differ from the propsoed distriution - this cannot have been a merge')
+            return 0,0
         # if previous distribution is compatible, find the  merge index
         else:
             ind = 0
@@ -461,44 +458,27 @@ class GMM_Distribution():
                 else:
                     break
 
-            print('Merged at index {}'.format(ind))
-
             # isolate the split components from the previous distribution that were merged
-            splits = [previous.Gaussian_Mix_Model.components[ind], previous.Gaussian_Mix_Model.components[ind + 1]]
+            #splits = [previous.Gaussian_Mix_Model.components[ind], previous.Gaussian_Mix_Model.components[ind + 1]]
             sc = self.Gaussian_Mix_Model.components[ind]
 
             #Compute the probability of the new merged component parameters
             log_mueval = norm.logpdf(sc[0], self.kappa)
-            log_vareval = gamma.logpdf(sc[1], self.alpha, scale=1 / self.beta)
+            log_vareval = invgamma.logpdf(sc[1], self.alpha, self.beta)
             l_all = len(self.Data_Allocation.allocation[ind])
-            log_wteval = (self.delta - 1 + l_all) * math.log(sc[2])
+            log_wteval = beta.logpdf(sc[2], self.delta - 1 + l_all, len(self.Data_Allocation.all_data()))
 
+            p_xy = poisson.logpmf(self.Gaussian_Mix_Model.k, self.la) + log_mueval + log_vareval + log_wteval
+            r_x = math.log(mergeprob)
 
-            # compute hypothetical auxiliary randomness to induce 'reverse split'
-            u_1 = splits[0][2] / sc[0]
-            u_2 = ((splits[1][0] - sc[0]) / (np.sqrt(sc[1]))) * np.sqrt(splits[1][2] / splits[0][2])
-            u_3 = (splits[0][1] * splits[0][2]) / ((1 - (u_2 ** 2)) * sc[2] * sc[1])
-            
-
-            us = [u_1, u_2, u_3]
-            print('Jacobian us: {}'.format(us))
-
-            #compute the Jacobian
-            log_J = math.log(sc[2] * (splits[1][0] - splits[0][0]) * splits[1][1] * splits[0][1]) - math.log(
-                sc[1] * (1 - us[1] ** 2) * us[2] * (1 - us[2]))
-
-
-            q_x =  -(poisson.logpmf(self.Gaussian_Mix_Model.k, self.la) + log_mueval + log_vareval + log_wteval + log_J)
-            r_x = -math.log(mergeprob)
-
-            return q_x, r_x
+            return p_xy, r_x
 
     def birth_log_eval(self, previous, birthprob):
 
         if self.Gaussian_Mix_Model.k - previous.Gaussian_Mix_Model.k != 1:
-            return 0
+            return 0,0
         elif util.matchlist(self.Gaussian_Mix_Model.means, previous.Gaussian_Mix_Model.means) != 1:
-            return 0
+            return 0,0
             # if previous distribution is compatible, find the  birth index
         else:
             if self.Gaussian_Mix_Model.components[:previous.Gaussian_Mix_Model.k] == previous.Gaussian_Mix_Model.components:
@@ -510,24 +490,26 @@ class GMM_Distribution():
                         ind += 1
                     else:
                         break
-            print('Insertion at index {}'.format(ind))
 
             sc = self.Gaussian_Mix_Model.components[ind]
 
-            wtprob = math.log(sc[2])*(self.delta-1) + math.log(1-sc[2])*(previous.Gaussian_Mix_Model.k*(self.delta-1)+len(self.Data_Allocation.all_data()))-betfunc(self.delta, (previous.Gaussian_Mix_Model.k)*self.delta)
+            #muprob = norm.logpdf(sc[0], self.zeta, self.kappa)
+            #varprob = gamma.logpdf(sc[1]**-1, self.alpha, scale = 1/self.beta)
+            n_i = len(self.Data_Allocation.all_data())
+            wtprob = beta.logpdf(sc[2], self.delta, n_i + self.Gaussian_Mix_Model.k*(self.delta-1))
             compprob = poisson.logpmf(self.Gaussian_Mix_Model.k, self.la)
 
-            q_x = wtprob + compprob
+            p_xy = wtprob + compprob + math.log(self.Gaussian_Mix_Model.k)
             r_x = math.log(birthprob) + beta.logpdf(sc[2], 1, previous.Gaussian_Mix_Model.k)
 
-        return q_x, r_x
+        return p_xy, r_x
 
     def death_log_eval(self, previous, deathprob):
 
         if previous.Gaussian_Mix_Model.k - self.Gaussian_Mix_Model.k != 1:
-            return 0
+            return 0,0
         elif util.matchlist(previous.Gaussian_Mix_Model.means, self.Gaussian_Mix_Model.means) != 1:
-            return 0
+            return 0,0
             # if previous distribution is compatible, find the  birth index
         else:
             ind = 0
@@ -538,12 +520,12 @@ class GMM_Distribution():
                     break
 
         sc = previous.Gaussian_Mix_Model.components[ind]
-        k_0 = len(previous.Data_Allocation.get_empties())
+        k_0 = len(self.Data_Allocation.get_empties())
 
-        q_x = poisson.logpmf(self.Gaussian_Mix_Model.k, self.la)
-        r_x = math.log(deathprob) - math.log(k_0 + 1) + math.log(sc[2])**self.Gaussian_Mix_Model.k
+        p_xy = poisson.logpmf(self.Gaussian_Mix_Model.k, self.la)
+        r_x = math.log(deathprob) - math.log(k_0 + 1)
 
-        return q_x, r_x
+        return p_xy, r_x
     def discrete_forward_eval(self, splitprob, mergeprob, birthprob, deathprob):
 
         if self.last_move == 'split':
@@ -551,7 +533,6 @@ class GMM_Distribution():
             return self.split_log_eval(self.previous_distribution, splitprob)
 
         elif self.last_move == 'birth':
-            print('Evaluating birth')
 
             return self.birth_log_eval(self.previous_distribution, mergeprob)
 
@@ -567,6 +548,10 @@ class GMM_Distribution():
             return 0, 0
 
 
+    def eval(self):
+        eval = 0
+        for i in self.Data_Allocation.allocation:
+            eval += sum([norm.logpdf(j, self.Gaussian_Mix_Model.means[i], np.sqrt(self.Gaussian_Mix_Model.vars[i])) for j in self.Data_Allocation.allocation[i]])
 
-
+        return eval
 

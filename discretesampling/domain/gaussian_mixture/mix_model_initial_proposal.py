@@ -6,6 +6,7 @@ import pandas as pd
 
 from discretesampling.base.types import DiscreteVariableInitialProposal
 from scipy.stats import gamma
+from scipy.stats import invgamma
 from scipy.stats import poisson
 from scipy.stats import norm
 from scipy.stats import dirichlet
@@ -27,24 +28,22 @@ class UnivariateGMMInitialProposal(DiscreteVariableInitialProposal):
         self.data = data
 
         self.zeta = np.median(data)
-        self.kappa = k_epsilon* (max(data)-min(data))**2
-        self.h = self.h_epsilon*(max(data)-min(data))**2
-        self.beta = gamma.rvs(self.g, scale=1/self.h)
+        self.kappa = k_epsilon* (max(data)-min(data))**-2
+        self.h = self.h_epsilon*(max(data)-min(data))**-2
+        self.beta = gamma.rvs(self.g, scale = self.h)
 
     def get_initial_dist(self):
         init_comps = []
-        k = max(2,poisson.rvs(self.la))
+        k = max(1,poisson.rvs(self.la))
         d = [self.delta]*k
         wt_gen = dirichlet.rvs(d)[0]
-        print('initial weights: {}'.format(wt_gen))
         i = 0
         while i < k:
-            mu_gen = norm.rvs(self.zeta, self.kappa)
-            var_gen = (gamma.rvs(self.alpha, scale = 1/self.beta))**-1
+            mu_gen = norm.rvs(self.zeta, 1/self.kappa)
+            var_gen = (invgamma.rvs(self.alpha, self.beta))
             init_comps.append([mu_gen, var_gen, wt_gen[i]])
             i+=1
 
-        print('Initial components: {}'.format(init_comps))
         gmm =  Gaussian_Mix_Model(init_comps)
 
         alloc = Data_Allocation(gmm.allocate_data(self.data)[0])

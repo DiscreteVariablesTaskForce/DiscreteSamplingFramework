@@ -24,7 +24,6 @@ def find_rand(l, u):
 def assign_from_pmf(pmf):
     cdf = np.cumsum(pmf)
     if np.abs(cdf[-1]-1) >10**-8:
-        print('Error: This is not a PMF, it sums to {}'.format(cdf[-1]))
         return 0
     else:
         u = np.random.uniform(0,1)
