@@ -39,14 +39,17 @@ class UnivariateGMMInitialProposal(DiscreteVariableInitialProposal):
         wt_gen = dirichlet.rvs(d)[0]
         i = 0
         while i < k:
-            mu_gen = norm.rvs(self.zeta, 1/self.kappa)
-            var_gen = (invgamma.rvs(self.alpha, self.beta))
+            mu_gen = norm.rvs(self.zeta, np.sqrt(self.kappa**-1))
+            var_gen = (invgamma.rvs(self.alpha, scale = self.beta))
             init_comps.append([mu_gen, var_gen, wt_gen[i]])
             i+=1
 
         gmm =  Gaussian_Mix_Model(init_comps)
 
-        alloc = Data_Allocation(gmm.allocate_data(self.data)[0])
+        alloc = Data_Allocation(gmm.allocate_data(self.data))
 
-        return GMM_Distribution(gmm, alloc, self.la, self.delta, self.alpha, self.g, self.h_epsilon, self.k_epsilon)
+        ord = GMM_Distribution(gmm, alloc, self.la, self.delta, self.alpha, self.g, self.h_epsilon,
+                               self.k_epsilon).order_components()
+        print(f'Initial components: {ord.Gaussian_Mix_Model.components}')
+        return ord
 

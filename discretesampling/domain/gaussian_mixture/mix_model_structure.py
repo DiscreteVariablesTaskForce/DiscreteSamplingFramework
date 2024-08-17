@@ -3,8 +3,11 @@ sys.path.append('C:/Users/mattb242/Desktop/Projects/reversible_jump/local_code/D
 
 import numpy as np
 import math
+import copy
+
 from scipy.stats import norm
 from scipy.special import logsumexp
+
 
 from discretesampling.domain.gaussian_mixture import util
 
@@ -53,7 +56,6 @@ class Gaussian_Mix_Model:
             return samp
 
     def allocate_data(self, data):
-        log_palloc = 0
         if self.k == 1:
             datdict = {0:data}
         else:
@@ -62,15 +64,26 @@ class Gaussian_Mix_Model:
                 logpmf = [math.log(self.components[j][2])+norm.logpdf(i, self.components[j][0], np.sqrt(self.components[j][1])) for j in range(self.k)]
                 wtsum = logsumexp(logpmf)
                 normwts = logpmf - wtsum
-
                 assign_index = util.assign_from_pmf(np.exp(normwts))
-                log_palloc += norm.logpdf(i, self.means[assign_index], np.sqrt(self.vars[assign_index]))
                 datdict[assign_index].append(i)
 
-        return datdict, log_palloc
+        return datdict
 
-    def insert_blank_component(self, index):
+    def insert_new_component(self, component):
 
-        pass
+        new_components = copy.copy(self.components)
 
+        index = 0
+        while index < self.k and self.components[index][0] <= component[0]:
+            index += 1
+
+        # Insert the sublist into the list_of_lists at the correct position
+        new_components.insert(index, component)
+
+        #Normalise the component weights
+        wtsum = sum([i[2] for i in new_components])
+        for i in new_components:
+            i[2] = i[2]/wtsum
+
+        return Gaussian_Mix_Model(new_components), index
 

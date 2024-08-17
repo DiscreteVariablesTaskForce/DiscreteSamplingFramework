@@ -2,6 +2,8 @@ import copy
 import numpy as np
 import math
 
+def is_ordered(lst):
+    return all(lst[i] <= lst[i + 1] for i in range(len(lst) - 1))
 def insert_pair(l, ins, ind):
 
     update_list = []
@@ -56,7 +58,6 @@ def kill_list(l, ind, renorm=False):
 def bangit(n):
     r = copy.copy(n)
     for i in range(1, n):
-        print('{} x {}'.format(n, n-i))
         n*=(r-i)
 
     return n
