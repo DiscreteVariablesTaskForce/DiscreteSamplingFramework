@@ -411,7 +411,7 @@ class GMM_Distribution():
 
         if not fixed_beta:
             n_5 = n_4.beta_update()
-            print('Beta updated from {} to {}'.format(n_4.beta, n_5.beta))
+            #print('Beta updated from {} to {}'.format(n_4.beta, n_5.beta))
             return n_5
         else:
             return n_4

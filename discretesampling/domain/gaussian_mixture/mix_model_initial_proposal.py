@@ -50,6 +50,6 @@ class UnivariateGMMInitialProposal(DiscreteVariableInitialProposal):
 
         ord = GMM_Distribution(gmm, alloc, self.la, self.delta, self.alpha, self.g, self.h_epsilon,
                                self.k_epsilon).order_components()
-        print(f'Initial components: {ord.Gaussian_Mix_Model.components}')
+        #print(f'Initial components: {ord.Gaussian_Mix_Model.components}')
         return ord
 
