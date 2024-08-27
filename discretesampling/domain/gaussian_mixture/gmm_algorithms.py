@@ -102,7 +102,50 @@ def straight_SMC(init, N, T):
 
         # Propose new samples from the particle front
         proposed_cont = [(front[i].continuous_forward_sample()) for i in range(N)]
-        particles = [(proposed_cont[i].discrete_forward_sample()) for i in range(N)]
+        front = [(proposed_cont[i].discrete_forward_sample()) for i in range(N)]
+
+        # Compute discrete probabilities
+        accrat = []
+        for i in range(N):
+            if front[i].last_move == 'split':
+                fwd = front[i].split_log_eval(proposed_cont[i], 0.25)
+                back = proposed_cont[i].merge_log_eval(front[i], 0.25)
+                acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+                accrat.append(min(0, acc_ratio))
+            elif front[i].last_move == 'merge':
+                fwd = front[i].merge_log_eval(proposed_cont[i], 0.25)
+                back = proposed_cont[i].split_log_eval(front[i], 0.25)
+                acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+                accrat.append(min(0, acc_ratio))
+            elif front[i].last_move == 'birth':
+                fwd = front[i].birth_log_eval(proposed_cont[i], 0.25)
+                back = proposed_cont[i].death_log_eval(front[i], 0.25)
+                acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+                accrat.append(min(0, acc_ratio))
+
+            elif front[i].last_move == 'death':
+                fwd = front[i].death_log_eval(proposed_cont[i], 0.25)
+                back = proposed_cont[i].birth_log_eval(front[i], 0.25)
+                acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+                accrat.append(min(0, acc_ratio))
+            else:
+                accrat.append(0)
+
+        # Update and normalise weights
+        logwts_front = [logwts_front[i] + accrat[i] for i in range(N)]
+        wtsum = logsumexp(logwts_front)
+        normwts = logwts_front - wtsum
+        for i in range(N):
+            logwts_front[i] = normwts[i]
+
+        # retain sample
+        particle_path.append(front)
+        logwt_path.append(logwts_front)
+
+        t += 1
+
+    return particle_path, logwt_path
+
 
 def staggered_SMC(init, N, T):
     t = 0
@@ -132,8 +175,6 @@ def staggered_SMC(init, N, T):
         front = [particle_path[i][j] for i in staggered_pointer for j in range(N)]
         logwts_front = [logwt_path[i][j] for i in staggered_pointer for j in range(N)]
 
-        print(f'Current weight front: {logwts_front}')
-
         # Sample new particles
         proposed_cont = [(front[i].continuous_forward_sample()) for i in range(N)]
         front = [(proposed_cont[i].discrete_forward_sample()) for i in range(N)]
@@ -145,27 +186,27 @@ def staggered_SMC(init, N, T):
                 fwd = front[i].split_log_eval(proposed_cont[i], 0.25)
                 back = proposed_cont[i].merge_log_eval(front[i], 0.25)
                 acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
-                accrat.append(acc_ratio)
+                accrat.append(min(0,acc_ratio))
             elif front[i].last_move == 'merge':
                 fwd = front[i].merge_log_eval(proposed_cont[i], 0.25)
                 back = proposed_cont[i].split_log_eval(front[i], 0.25)
                 acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
-                accrat.append(acc_ratio)
+                accrat.append(min(0,acc_ratio))
             elif front[i].last_move == 'birth':
                 fwd = front[i].birth_log_eval(proposed_cont[i], 0.25)
                 back = proposed_cont[i].death_log_eval(front[i], 0.25)
                 acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
-                accrat.append(acc_ratio)
+                accrat.append(min(0,acc_ratio))
 
             elif front[i].last_move == 'death':
                 fwd = front[i].death_log_eval(proposed_cont[i], 0.25)
                 back = proposed_cont[i].birth_log_eval(front[i], 0.25)
                 acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
-                accrat.append(acc_ratio)
+                accrat.append(min(0,acc_ratio))
             else:
                 accrat.append(0)
 
-        # Normalise weights
+        # Update and normalise weights
         logwts_front = [min(logwts_front[i] + accrat[i], logwts_front[i]) for i in range(N)]
         wtsum = logsumexp(logwts_front)
         normwts = logwts_front - wtsum
@@ -189,6 +230,7 @@ def staggered_SMC(init, N, T):
         #Update staggered_pointer to reference most recently accepted sample
         u = np.random.uniform(size=N)
         for i in range(len(u)):
+            print(accrat[i])
             if u[i] < math.exp(accrat[i]):
                 staggered_pointer[i]+=1
         print(f'Last accepted sample at time t={staggered_pointer}')
