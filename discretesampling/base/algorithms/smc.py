@@ -7,6 +7,12 @@ from discretesampling.base.executor import Executor
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
+from discretesampling.base.algorithms.smc_components.knapsack_resampling import knapsack_resampling
+from discretesampling.base.algorithms.smc_components.minError_ImportanceResampling import min_error_continuous_state_resampling, min_error_importance_resampling
+from discretesampling.base.algorithms.smc_components.variational_resampling import  kl
+from discretesampling.base.algorithms.smc_components.importance_resampling_version3 import importance_resampling_v3
+
+
 
 
 class DiscreteVariableSMC():
@@ -37,7 +43,7 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, Tsmc, N, seed=0, verbose=True):
+    def sample(self, Tsmc, N, resampling, seed=0, verbose=True):
         loc_n = int(N/self.exec.P)
         rank = self.exec.rank
         mvrs_rng = RNG(seed)
@@ -55,8 +61,32 @@ class DiscreteVariableSMC():
             neff = ess(logWeights, self.exec)
 
             if math.log(neff) < math.log(N) - math.log(2):
-                current_particles, logWeights = systematic_resampling(
-                    current_particles, logWeights, mvrs_rng, exec=self.exec)
+                
+                
+                if (resampling == "systematic"):
+                    current_particles, logWeights = systematic_resampling(
+                        current_particles, logWeights, mvrs_rng, exec=self.exec)
+                    
+                elif (resampling == "knapsack"):
+                    current_particles, logWeights, _ = knapsack_resampling(
+                        current_particles, np.exp(logWeights), mvrs_rng)
+                
+                elif (resampling == "min_error"):
+                    current_particles, logWeights, _ = min_error_continuous_state_resampling(
+                        current_particles, np.exp(logWeights), mvrs_rng, N)
+                
+                elif (resampling == "variational"):
+                    new_ancestors, logWeights = kl(logWeights)
+                    current_particles = np.array(current_particles)[new_ancestors].tolist()
+                    
+                elif (resampling == "min_error_imp"):
+                    current_particles, logWeights= min_error_importance_resampling(
+                        current_particles, np.exp(logWeights), mvrs_rng, N)
+                    
+                elif (resampling == "CIR"):
+                    current_particles, logWeights= importance_resampling_v3(
+                        current_particles, np.exp(logWeights), mvrs_rng, N)
+                    
 
             new_particles = copy.copy(current_particles)
 

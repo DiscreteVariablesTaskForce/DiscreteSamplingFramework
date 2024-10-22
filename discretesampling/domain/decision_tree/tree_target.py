@@ -4,6 +4,9 @@ from discretesampling.base.types import DiscreteVariableTarget
 from discretesampling.domain.decision_tree.metrics import calculate_leaf_occurences
 
 
+def catalan(n):
+    return 1 if (n<=1) else ((2 * (n + n - 1) * catalan(n-1))//(n+1))
+
 class TreeTarget(DiscreteVariableTarget):
     def __init__(self, a, b=None):
         self.a = a
@@ -19,9 +22,10 @@ class TreeTarget(DiscreteVariableTarget):
         return (target1+target2+target3)
 
     # (theta|T)
-    def features_and_threshold_probabilities(self, x):
+    def features_and_threshold_probabilities(self, x, continuous_thresholds = False, verbose = False):
         # this need to change
         logprobabilities = []
+        fshape = x.X_train.shape
 
         '''
             the likelihood of choosing the specific feature and threshold must
@@ -29,12 +33,28 @@ class TreeTarget(DiscreteVariableTarget):
             specific feature multiplied by 1/the margins. it should be
             (1/number of features) * (1/(upper bound-lower bound))
         '''
-        for node in x.tree:
-            logprobabilities.append(-math.log(len(x.X_train[0]))
-                                    - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
-                                    )
+        # for node in x.tree:
+        #     logprobabilities.append(-math.log(len(x.X_train[0]))
+        #                             - math.log(max(x.X_train[:, node[3]]) - min(x.X_train[:, node[3]]))
+        #                             )
 
-        logprobability = np.sum(logprobabilities)
+        # logprobability = np.sum(logprobabilities)
+        
+        for node in x.tree: # the root node can also change (but not be removed)
+            lp = -math.log(fshape[1]) # choice of feature at this node
+            if continuous_thresholds: # choice of threshold at this node
+                relevant = x.X_train[:, node[3]]
+                lp -= math.log(max(relevant) - min(relevant))
+            else:
+                lp -= math.log(fshape[0])
+                # if verbose:
+                #     print(ni + 2, fshape[1], fshape[0], np.round(np.exp(-lp)))
+            logprobabilities.append(lp)
+        #
+        logprobability = np.sum(logprobabilities) - math.log(catalan(len(x.tree))) # second term accounts for all the possible tree shapes (different once thresholds are placed in them) 
+
+        # if verbose:
+        #     print(np.round(np.exp(-logprobability)))
         return (logprobability)
 
     def evaluatePrior(self, x):

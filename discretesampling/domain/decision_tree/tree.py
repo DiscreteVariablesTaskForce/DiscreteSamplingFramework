@@ -76,6 +76,15 @@ class Tree(types.DiscreteVariable):
                 depth = node[5]+1
 
         return depth
+    
+    
+    def prunable_node_indices(self):
+        candidates = []
+        for i in range(1, len(self.tree)): # cannot prune the root
+            node_to_prune = self.tree[i]
+            if ((node_to_prune[1] in self.leafs) and (node_to_prune[2] in self.leafs)):
+                candidates.append(i)
+        return(candidates)
 
     def grow_leaf(self, index, rng=RNG()):
         action = "grow"
@@ -138,48 +147,54 @@ class Tree(types.DiscreteVariable):
     def prune(self, rng=RNG()):
         action = "prune"
         self.lastAction = action
+        #print("i am here")
         '''
         For example when we have nodes 0,1,2 and leafs 3,4,5,6 when we prune
         we take the leafs 6 and 5 out, and the
         node 2, now becomes a leaf.
         '''
-        random_index = rng.randomInt(0, len(self.tree)-1)
-        node_to_prune = self.tree[random_index]
-        while random_index == 0:
-            random_index = rng.randomInt(0, len(self.tree)-1)
-            node_to_prune = self.tree[random_index]
+        candidates = self.prunable_node_indices()
+        nc = len(candidates)
+        random_index = rng.randomInt(0, nc-1)
+        index_to_prune = candidates[random_index]
+        node_to_prune = self.tree[index_to_prune]
+        # while random_index == 0:
+        #     random_index = rng.randomInt(0, len(self.tree)-1)
+        #     node_to_prune = self.tree[random_index]
 
-        if (node_to_prune[1] in self.leafs) and\
-                (node_to_prune[2] in self.leafs):
+        # if (node_to_prune[1] in self.leafs) and\
+        #         (node_to_prune[2] in self.leafs):
+        #     print("here")
             # remove the pruned leafs from leafs list and add the node as a
             # leaf
-            self.leafs.append(node_to_prune[0])
-            self.leafs.remove(node_to_prune[1])
-            self.leafs.remove(node_to_prune[2])
-            # delete the specific node from the node lists
-            del self.tree[random_index]
-        else:
+        self.leafs.append(node_to_prune[0])
+        self.leafs.remove(node_to_prune[1])
+        self.leafs.remove(node_to_prune[2])
+        # delete the specific node from the node lists
+        del self.tree[index_to_prune]
+            
+        # else:
 
-            delete_node_indices = []
-            i = 0
-            for node in self.tree:
-                if node_to_prune[1] == node[0] or node_to_prune[2] == node[0]:
-                    delete_node_indices.append(node)
-                i += 1
-            self.tree.remove(node_to_prune)
-            for node in delete_node_indices:
-                self.tree.remove(node)
+        #     delete_node_indices = []
+        #     i = 0
+        #     for node in self.tree:
+        #         if node_to_prune[1] == node[0] or node_to_prune[2] == node[0]:
+        #             delete_node_indices.append(node)
+        #         i += 1
+        #     self.tree.remove(node_to_prune)
+        #     for node in delete_node_indices:
+        #         self.tree.remove(node)
 
-            for i in range(len(self.tree)):
-                for p in range(1, len(self.tree)):
-                    count = 0
-                    for k in range(len(self.tree)-1):
-                        if self.tree[p][0] == self.tree[k][1] or\
-                                self.tree[p][0] == self.tree[k][2]:
-                            count = 1
-                    if count == 0:
-                        self.tree.remove(self.tree[p])
-                        break
+        #     for i in range(len(self.tree)):
+        #         for p in range(1, len(self.tree)):
+        #             count = 0
+        #             for k in range(len(self.tree)-1):
+        #                 if self.tree[p][0] == self.tree[k][1] or\
+        #                         self.tree[p][0] == self.tree[k][2]:
+        #                     count = 1
+        #             if count == 0:
+        #                 self.tree.remove(self.tree[p])
+        #                 break
 
         new_leafs = []
         for node in self.tree:
@@ -196,8 +211,12 @@ class Tree(types.DiscreteVariable):
 
             if count2 == 0:
                 new_leafs.append(node[2])
-
+        
+        
         self.leafs[:] = new_leafs[:]
+        # print(self.leafs)
+        # # print(self.tree)
+        # print("***********")
         return self
 
     def change(self, rng=RNG()):

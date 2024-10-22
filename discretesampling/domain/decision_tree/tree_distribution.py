@@ -49,6 +49,15 @@ class TreeProposal(DiscreteVariableProposal):
 
         return newTree
 
+    
+    def prunable_node_indices(self, tree):
+        candidates = []
+        for i in range(1, len(tree.tree)): # cannot prune the root
+            node_to_prune = tree.tree[i]
+            if ((node_to_prune[1] in tree.leafs) and (node_to_prune[2] in tree.leafs)):
+                candidates.append(i)
+        return(candidates)
+    
     def eval(self, start_tree, sampledTree):
         initialTree = start_tree
         moves_prob = self.moves_prob
@@ -69,7 +78,7 @@ class TreeProposal(DiscreteVariableProposal):
         # Prune
         elif (len(initialTree.tree) > len(sampledTree.tree)):
             logprobability = (log(moves_prob[0])
-                              - log(len(initialTree.tree) - 1))
+                              - log(len(self.prunable_node_indices(initialTree))))
         # Change
         elif (
             len(initialTree.tree) == len(sampledTree.tree)
