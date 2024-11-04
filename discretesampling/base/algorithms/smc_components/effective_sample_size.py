@@ -19,6 +19,7 @@ def ess(logw, exec):
 
     mask = np.invert(np.isneginf(logw))  # mask to filter out any weight = 0 (or -inf in log-scale)
 
-    inverse_neff = np.exp(exec.logsumexp(2*logw[mask]))
+    logw = np.array([logw[i] for i in range(len(logw)) if mask[i]])
+    inverse_neff = np.exp(exec.logsumexp(2*logw))
 
     return 1 / inverse_neff

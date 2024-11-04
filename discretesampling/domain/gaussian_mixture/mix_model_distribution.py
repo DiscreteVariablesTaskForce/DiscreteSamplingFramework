@@ -409,6 +409,8 @@ class GMM_Distribution():
         n_3 = n_2.var_gibbs_update()
         n_4 = n_3.allocation_update()
 
+        self.last_move = 'cont'
+
         if not fixed_beta:
             n_5 = n_4.beta_update()
             #print('Beta updated from {} to {}'.format(n_4.beta, n_5.beta))
@@ -416,7 +418,7 @@ class GMM_Distribution():
         else:
             return n_4
 
-    def continuous_forward_eval(self):
+    def continuous_forward_eval(self, previous):
 
         wtprob = dirichlet.logpdf(self.Gaussian_Mix_Model.wts, np.array([self.delts[i] + len(self.Data_Allocation.allocation[i]) for i in self.Data_Allocation.allocation]))
         muprob = 0
@@ -448,7 +450,8 @@ class GMM_Distribution():
             else:
                 return self.death()
         elif move_choice == 1:
-            return self
+            return self.continuous_forward_sample()
+            self.last_move = 'stick'
         else:
             if move == 0:
                 return self.split()
@@ -469,7 +472,6 @@ class GMM_Distribution():
         log_wteval = dirichlet.logpdf(normwts, dparams)
 
         return kprob, log_mueval, log_vareval, log_wteval
-
 
     def split_log_eval(self, previous, split_prob):
         """
@@ -643,3 +645,8 @@ class GMM_Distribution():
 
         return eval
 
+    def bic(self):
+         return (3*self.Gaussian_Mix_Model.k)*math.log(len(self.Data_Allocation.all_data())) - (2*self.eval())
+
+    def encode(self, current):
+        return current

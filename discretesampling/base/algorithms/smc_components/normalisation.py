@@ -1,7 +1,11 @@
 import numpy as np
+from scipy.special import logsumexp
+
+from discretesampling.base.executor.executor import Executor
+from discretesampling.base.executor.executor_MPI import Executor_MPI
 
 
-def normalise(logw, exec):
+def normalise(logw, exec=Executor()):
     """
     Description
     -----------
@@ -21,8 +25,8 @@ def normalise(logw, exec):
 
     """
 
-    mask = np.invert(np.isneginf(logw))  # mask to filter out any weight = 0 (or -inf in log-scale)
+    m = np.invert(np.isneginf(logw))  # mask to filter out any weight = 0 (or -inf in log-scale)
 
-    log_wsum = exec.logsumexp(logw[mask])
+    log_wsum = exec.logsumexp(np.where(m, logw, 0))
 
     return logw - log_wsum

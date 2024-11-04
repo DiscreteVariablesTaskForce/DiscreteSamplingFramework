@@ -1,7 +1,19 @@
 import numpy as np
 from discretesampling.base.random import RNG
 from discretesampling.base.executor import Executor
+from mpi4py import MPI
 
+def sequential_redistribution(x, ncopies):
+    return np.repeat(x, ncopies, axis=0)
+def fixed_size_redistribution(x, ncopies):
+
+    if MPI.COMM_WORLD.Get_size() > 1:
+        x, ncopies = rot_nearly_sort(x, ncopies)
+        x, ncopies = rot_split(x, ncopies)
+
+    x = sequential_redistribution(x, ncopies)
+
+    return x
 
 def check_stability(ncopies, exec=Executor()):
 
@@ -22,7 +34,6 @@ def check_stability(ncopies, exec=Executor()):
 
     return ncopies
 
-
 def get_number_of_copies(logw, rng=RNG(), exec=Executor()):
     N = len(logw) * exec.P
 
@@ -42,7 +53,8 @@ def systematic_resampling(particles, logw, rng, exec=Executor()):
     N = loc_n * exec.P
 
     ncopies = get_number_of_copies(logw.astype('float32'), rng, exec)
-    particles = exec.redistribute(particles, ncopies)
+    particles = fixed_size_redistribution(particles, ncopies)
     logw = np.log(np.ones(loc_n) / N)
 
     return particles, logw
+

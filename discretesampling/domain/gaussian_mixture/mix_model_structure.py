@@ -87,3 +87,6 @@ class Gaussian_Mix_Model:
 
         return Gaussian_Mix_Model(new_components), index
 
+    def bic(self, data):
+
+        return (3*self.k)*math.log(len(data)) - (2*sum([self.eval(i) for i in data]))
