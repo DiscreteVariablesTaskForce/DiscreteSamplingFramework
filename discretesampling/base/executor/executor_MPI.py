@@ -2,20 +2,11 @@ from mpi4py import MPI
 import numpy as np
 from scipy.special import logsumexp
 from discretesampling.base.executor import Executor
-#from smccomponents.resample.mpi.prefix_sum import inclusive_prefix_sum
+from smccomponents.resample.mpi.prefix_sum import inclusive_prefix_sum
 from discretesampling.base.executor.MPI.variable_size_redistribution import (
     variable_size_redistribution
 )
 
-def inclusive_prefix_sum(array):
-    comm = MPI.COMM_WORLD
-
-    csum = np.cumsum(array).astype(array.dtype)
-    offset = np.zeros(1, dtype=array.dtype)
-    MPI_dtype = MPI._typedict[array.dtype.char]
-    comm.Exscan(sendbuf=[csum[-1], MPI_dtype], recvbuf=[offset, MPI_dtype], op=MPI.SUM)
-
-    return csum + offset
 def LSE(xmem, ymem, dt):
     x = np.frombuffer(xmem, dtype='d')
     y = np.frombuffer(ymem, dtype='d')
