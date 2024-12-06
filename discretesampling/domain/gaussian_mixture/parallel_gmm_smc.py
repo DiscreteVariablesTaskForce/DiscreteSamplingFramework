@@ -27,13 +27,17 @@ def read_floats_from_file(filepath):
                 print(f'Non-float detected in line {line}')
 
     return floats
-def SMCstep(particle, weight, grow_prob=[0.5,0,0.5]):
+
+def RJMCMC_Step(particle, grow_prob=[0.5,0,0.5]):
     # Propose new samples from the particle front
 
     proposed_cont = particle.continuous_forward_sample()
     front = proposed_cont.discrete_forward_sample(move_pmf = grow_prob)
 
     # Compute discrete probabilities
+
+    cont_move = -proposed_cont.continuous_forward_eval(front) + front.continuous_forward_eval(proposed_cont)
+    #print(f'cont move = {cont_move}')
 
     if front.last_move == 'split':
         fwd = front.split_log_eval(proposed_cont, grow_prob[2])
@@ -52,11 +56,49 @@ def SMCstep(particle, weight, grow_prob=[0.5,0,0.5]):
         back = proposed_cont.birth_log_eval(front, grow_prob[2])
         acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
     elif front.last_move == 'stick':
-        acc_ratio = front.eval()-proposed_cont.eval()
+        acc_ratio = proposed_cont.eval()-front.eval() + cont_move
     else:
         acc_ratio = 0
 
+    u = np.random.uniform(0,1)
+    if u < math.exp(acc_ratio):
+        return front, True
+    else:
+        return particle, False
 
+def SMCstep(particle, weight, grow_prob=[0.5,0,0.5]):
+    # Propose new samples from the particle front
+
+    proposed_cont = particle.continuous_forward_sample()
+    front = proposed_cont.discrete_forward_sample(move_pmf = grow_prob)
+
+    # Compute discrete probabilities
+
+    cont_move = -proposed_cont.continuous_forward_eval(front) + front.continuous_forward_eval(proposed_cont)
+    #print(f'cont move = {cont_move}')
+
+    if front.last_move == 'split':
+        fwd = front.split_log_eval(proposed_cont, grow_prob[2])
+        back = proposed_cont.merge_log_eval(front, grow_prob[0])
+        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+    elif front.last_move == 'merge':
+        fwd = front.merge_log_eval(proposed_cont, grow_prob[0])
+        back = proposed_cont.split_log_eval(front, grow_prob[2])
+        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+    elif front.last_move == 'birth':
+        fwd = front.birth_log_eval(proposed_cont, grow_prob[2])
+        back = proposed_cont.death_log_eval(front, grow_prob[0])
+        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+    elif front.last_move == 'death':
+        fwd = front.death_log_eval(proposed_cont, grow_prob[0])
+        back = proposed_cont.birth_log_eval(front, grow_prob[2])
+        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+    elif front.last_move == 'stick':
+        acc_ratio = proposed_cont.eval()-front.eval() + cont_move
+    else:
+        acc_ratio = 0
+
+    #print(f'acceptance rate is {acc_ratio}')
     return front, weight+acc_ratio
 
 def one_step_sample_MPI(x_list,y_list):
@@ -102,6 +144,8 @@ def one_step_sample_MPI(x_list,y_list):
     else:
         return None, None
 
+
+
 def get_k_indices(particles):
     inddict = {}
     for i in particles:
@@ -128,10 +172,34 @@ def get_probdict(particles, weights):
 
     probdicts = {}
     for i in range(1, max(inddict.keys())+1):
-        ps = [allprobs[i-1], allprobs[i], allprobs[i+1]]
+        ps = np.array([max(10**-236,allprobs[i-1]), max(10**-236,allprobs[i]), max(10**-236,allprobs[i+1])])
         probdicts[i] = ps/sum(ps)
 
+    print(f'jump probabilities are {probdicts}')
+
     return probdicts
+
+def RJMCMC(init, T):
+    k = []
+    bic = []
+    path = [init.get_initial_dist()]
+
+    t = 0
+    a = 0
+    while t < T:
+        prop = RJMCMC_Step(path[-1])
+        path.append(prop[0])
+        k.append(prop[0].Gaussian_Mix_Model.k)
+        bic.append(prop[0].bic())
+        print(f'Completed step {t}')
+        t += 1
+        a+=prop[1]
+        print(f'Acceptance rate = {np.round(a/t, 2)}')
+        print(f'Current components = {path[-1].Gaussian_Mix_Model.k}')
+        print(f'Current BIC = {path[-1].bic()}')
+
+
+    return path, k, bic
 
 def wt_informed_onestep_MPI(particles, logweights):
     comm = MPI.COMM_WORLD
@@ -279,6 +347,7 @@ def parallel_systematic_resampling(particles, log_weights):
 
     # Step 2: Compute the cumulative sum of the normalized weights
     cdf = np.cumsum(weights)
+    print(f'CDF = {cdf}')
 
     # Ensure the last value in the CDF is exactly 1 (if numerical errors cause small deviations)
     cdf[-1] = 1.0
@@ -320,7 +389,8 @@ def straight_SMC_MPI(init, N, T):
     while n < N:
         front.append(init.get_initial_dist())
         n += 1
-    logwts_front = [-math.log(n)] * N
+    logwts_front = np.array([-math.log(N)] * N)
+    norm_est = [-np.log(N)]
 
     particle_path = [front]
     logwt_path = [logwts_front]
@@ -329,6 +399,11 @@ def straight_SMC_MPI(init, N, T):
     while t < T:
 
         print(f'Beginning step {t}')
+
+        # Extract latest normalising constant estimate
+        norm_t = logsumexp(logwts_front) - np.log(N)
+        norm_est.append(norm_est[-1] + norm_t)
+        print(f'Z={norm_est[-1]}')
 
         # check ESS of sampling front, and resample if necessary
         neff = ess(logwts_front, exec=Executor_MPI())
@@ -344,6 +419,8 @@ def straight_SMC_MPI(init, N, T):
 
         front, logwts_front = one_step_sample_MPI(front, logwts_front)
 
+
+
         # Update and normalise weights
 
         logwts_front = normalise(logwts_front, exec=Executor_MPI())
@@ -354,7 +431,7 @@ def straight_SMC_MPI(init, N, T):
 
         t += 1
 
-    return particle_path, logwt_path, eff_ss
+    return particle_path, logwt_path, eff_ss, norm_est
 
 def wt_informed_RJSMC_MPI(init,N,T):
     t = 0
@@ -367,7 +444,8 @@ def wt_informed_RJSMC_MPI(init,N,T):
     while n < N:
         front.append(init.get_initial_dist())
         n += 1
-    logwts_front = [-math.log(n)] * N
+    logwts_front = np.array([-math.log(N)] * N)
+    norm_est = [-np.log(N)]
 
     particle_path = [front]
     logwt_path = [logwts_front]
@@ -391,6 +469,11 @@ def wt_informed_RJSMC_MPI(init,N,T):
 
         front, logwts_front = wt_informed_onestep_MPI(front, logwts_front)
 
+        # Extract latest normalising constant estimate
+        norm_t = logsumexp(logwts_front) - np.log(N)
+        norm_est.append(norm_est[-1] + norm_t)
+        print(f'logZ = {norm_est[-1]}')
+
         # Update and normalise weights
         logwts_front = normalise(logwts_front, exec=Executor_MPI())
 
@@ -400,14 +483,5 @@ def wt_informed_RJSMC_MPI(init,N,T):
 
         t += 1
 
-    return particle_path, logwt_path, eff_ss
+    return particle_path, logwt_path, eff_ss, norm_est
 
-if __name__ == "__main__":
-    testdir = 'C:/Users/mattb242/Desktop/Projects/reversible_jump/results/toy_model'
-    gal_test_data = read_floats_from_file('C:/Users/mattb242/Desktop/Projects/reversible_jump/test_data/galaxy.txt')
-    toy_test = Gaussian_Mix_Model([[-8, 1, 0.5], [8, 1, 0.5]])
-    toy_test_data = toy_test.sample(50)
-    init_dist = UnivariateGMMInitialProposal(2, 0.2, 2, 1, 10, 1, toy_test_data)
-    test_SMC = straight_SMC_MPI(init_dist, 20, 3000)
-
-    joblib.dump(test_SMC, testdir + '/straight_parallel_toy.gz')
