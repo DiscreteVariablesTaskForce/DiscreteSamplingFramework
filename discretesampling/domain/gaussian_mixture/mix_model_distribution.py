@@ -9,6 +9,8 @@ from scipy.stats import dirichlet
 from scipy.stats import poisson
 from scipy.stats import invgamma
 from scipy.special import logsumexp
+from pickle import dumps
+from pickle import loads
 
 import sys
 sys.path.append('C:/Users/mattb242/Desktop/Projects/reversible_jump/local_code/DiscreteSamplingFramework')
@@ -16,6 +18,7 @@ sys.path.append('C:/Users/mattb242/Desktop/Projects/reversible_jump/local_code/D
 
 from discretesampling.domain.gaussian_mixture import util
 from discretesampling.domain.gaussian_mixture.mix_model_structure import Gaussian_Mix_Model
+from discretesampling.base.types import DiscreteVariable
 
 class Data_Allocation:
     def __init__(self, allocation):
@@ -29,6 +32,13 @@ class Data_Allocation:
             dat.extend(self.allocation[i])
 
         return dat
+
+    def all_allocations(self):
+        dat_alloc = []
+        for i in self.allocation:
+            dat_alloc.extend([i]*len(self.allocation[i]))
+
+        return dat_alloc
 
     def component_means(self):
         mean_dict = {}
@@ -94,6 +104,7 @@ class Data_Allocation:
 
         return Data_Allocation(new_dict)
 
+
 class GMM_Distribution():
     def __init__(self, Gaussian_Mix_Model, Data_Allocation, la, delta, alpha, g, ep_h, ep_k):
 
@@ -120,6 +131,22 @@ class GMM_Distribution():
 
         self.last_move = None
         self.aux_rand = None
+
+    def encode(self,pad):
+        dat_array = self.Data_Allocation.all_data()
+        print(f'Data length: {len(dat_array)}')
+        alloc_array = self.Data_Allocation.all_allocations()
+        print(f'Allocation length: {len(alloc_array)}')
+        pad_comps = [self.Gaussian_Mix_Model.k] + list(self.Gaussian_Mix_Model.means) + list(self.Gaussian_Mix_Model.vars) + list(self.Gaussian_Mix_Model.wts)
+        params = [self.la, self.delta, self.alpha, self.g, self.ep_h, self.ep_k]
+
+        all_mix = list(dat_array)+list(alloc_array)+pad_comps+params + [0]*(pad) + [pad]
+        all = [float(x) for x in all_mix]
+
+        print(f'everything is {len(all)}')
+
+        return np.array(all)
+
 
     def order_components(self):
 
@@ -389,7 +416,7 @@ class GMM_Distribution():
 
         new_dist = copy.deepcopy(self)
         sumvar = sum([i[1]**-1 for i in self.Gaussian_Mix_Model.components])
-        new_dist.beta = gamma.rvs((self.alpha*self.Gaussian_Mix_Model.k)+self.g, scale= (self.h + sumvar))
+        new_dist.beta = gamma.rvs((self.alpha*self.Gaussian_Mix_Model.k)+self.g, scale = (self.h + sumvar))
 
         return new_dist
 
@@ -419,8 +446,13 @@ class GMM_Distribution():
             return n_4
 
     def continuous_forward_eval(self, previous):
-
-        wtprob = dirichlet.logpdf(self.Gaussian_Mix_Model.wts, np.array([self.delts[i] + len(self.Data_Allocation.allocation[i]) for i in self.Data_Allocation.allocation]))
+        try:
+            wts = np.array([np.round(i,2) for i in self.Gaussian_Mix_Model.wts])
+            wtprob = dirichlet.logpdf(wts/sum(wts), np.array([self.delts[i] + len(self.Data_Allocation.allocation[i]) for i in self.Data_Allocation.allocation]))
+        except:
+            print('Problem!')
+            print(sum(np.array([np.round(i,2) for i in self.Gaussian_Mix_Model.wts])))
+        #print(f'weight prob = {wtprob}')
         muprob = 0
 
         for i in self.Gaussian_Mix_Model.components:
@@ -428,7 +460,7 @@ class GMM_Distribution():
             n_i = len(self.Data_Allocation.allocation[self.Gaussian_Mix_Model.components.index(i)])
             muprob += norm.logpdf(i[0], ((self.zeta*self.kappa)+(i[1]**-1*s_i))/((i[1]**-1*n_i)+self.kappa), np.sqrt(1/(self.kappa + (i[1]**-1*n_i))))
 
-
+        #print(f'mean prob = {muprob}')
         varprob = 0
 
         for i in self.Gaussian_Mix_Model.components:
@@ -436,9 +468,13 @@ class GMM_Distribution():
             n_i = len(idat)
             var_i = np.var(idat)*n_i
 
-            varprob += invgamma.logpdf(i[1], self.alpha+(n_i/2), scale= (self.beta + (var_i/2)))
+            p = invgamma.logpdf(i[1], self.alpha+(n_i/2), scale= (self.beta + (var_i/2)))
+            if p != np.nan:
+                varprob += p
 
         return wtprob + muprob + varprob
+
+
 
     def discrete_forward_sample(self, move_pmf=[0.5, 0, 0.5], disc_pmf=[0.5, 0.5]):
 
@@ -648,5 +684,30 @@ class GMM_Distribution():
     def bic(self):
          return (3*self.Gaussian_Mix_Model.k)*math.log(len(self.Data_Allocation.all_data())) - (2*self.eval())
 
-    def encode(self, current):
-        return current
+
+def decode(encoded_particle):
+    datlen = encoded_particle[-1]
+    justdat = encoded_particle[:datlen]
+    alloc = encoded_particle[datlen:2*datlen].astype(int)
+    alldict = {}
+    for i in range(len(justdat)):
+        if alloc[i] in alldict.keys():
+            alldict[i].append(justdat[i])
+        else:
+            alldict[i] = [justdat[i]]
+
+    decoded_allocation = Data_Allocation(alldict)
+
+    k = encoded_particle[0]
+    means = encoded_particle[2*datlen:(2*datlen)+k]
+    vars = encoded_particle[(2*datlen)+k:(2*datlen)+(2*k)]
+    wts = encoded_particle[(2*datlen)+(2*k):(2*datlen)+(3*k)]
+
+    params = encoded_particle[(2*datlen)+(3*k):(2*datlen)+(3*k)+6]
+
+    comps = [[means[i], vars[i], wts[i]] for i in range(len(means))]
+    mix = Gaussian_Mix_Model(comps)
+
+    decoded_particle = GMM_Distribution(mix, decoded_allocation, *params)
+
+    return decoded_particle

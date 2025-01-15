@@ -7,7 +7,8 @@ import copy
 
 from scipy.stats import norm
 from scipy.special import logsumexp
-
+from pickle import dumps
+from pickle import loads
 
 from discretesampling.domain.gaussian_mixture import util
 
@@ -22,7 +23,6 @@ class Gaussian_Mix_Model:
         self.means = np.array([i[0] for i in self.components])
         self.vars = np.array([i[1] for i in self.components])
         self.wts = np.array([i[2] for i in self.components])
-
 
     def normalise_weights(self):
         normed = self.wts/sum(self.wts)
