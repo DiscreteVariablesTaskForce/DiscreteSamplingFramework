@@ -1,10 +1,12 @@
 import math
 import sys
 import numpy as np
+import copy
 
 
 from discretesampling.base.random import RNG
 from discretesampling.base.executor.executor_MPI import Executor_MPI
+from discretesampling.base.executor import Executor
 from discretesampling.base.algorithms.smc_components.effective_sample_size import ess
 from discretesampling.base.algorithms.smc_components.resampling import systematic_resampling
 from discretesampling.base.algorithms.smc_components.normalisation import normalise
@@ -15,6 +17,13 @@ from discretesampling.domain.gaussian_mixture.mix_model_structure import Gaussia
 
 from mpi4py import MPI
 
+def pad(particles):
+    mlen = max([i.Gaussian_Mix_Model.k for i in particles])
+    return np.array([i.encode(mlen-i.Gaussian_Mix_Model.k) for i in particles])
+
+def restore(coded_particles):
+    #print(f'decoding the following array: {coded_particles}')
+    return np.array([decode(i) for i in coded_particles])
 
 def read_floats_from_file(filepath):
     floats = []
@@ -28,13 +37,6 @@ def read_floats_from_file(filepath):
 
     return floats
 
-def pad(particles):
-    pad_len = max([i.Gaussian_Mix_Model.k for i in particles])
-
-    return np.array([j.encode(3*(pad_len-j.Gaussian_Mix_Model.k)) for j in particles])
-def restore(encoded_particles):
-
-    return np.array([decode(i) for i in encoded_particles])
 
 def RJMCMC_Step(particle, grow_prob=[0.5, 0, 0.5]):
     # Propose new samples from the particle front
@@ -112,6 +114,8 @@ def SMCstep(particle, weight, grow_prob=[0.5, 0, 0.5]):
 
 
 def one_step_sample_MPI(x_list, y_list):
+    print('sample proposition now begins')
+    sys.stdout.flush()
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
@@ -121,6 +125,10 @@ def one_step_sample_MPI(x_list, y_list):
     chunk_size = n // size
     remainder = n % size
 
+    # Debug print: Check the division of work
+    if rank == 0:
+        print(f"Total elements: {n}, chunk size: {chunk_size}, remainder: {remainder}")
+    sys.stdout.flush()
     # Determine the indices for the portion of the list each process will handle
     if rank < remainder:
         local_start = rank * (chunk_size + 1)
@@ -129,27 +137,46 @@ def one_step_sample_MPI(x_list, y_list):
         local_start = rank * chunk_size + remainder
         local_end = local_start + chunk_size
 
+    # Debug print: Check local range for each rank
+    print(f"Rank {rank}: local range {local_start} to {local_end}")
+
     # Step 2: Scatter the x_list and y_list segments to each process
     local_x = x_list[local_start:local_end]
     local_y = y_list[local_start:local_end]
+
+    # Debug print: Check the local chunks
+    #print(f"Rank {rank}: local_x = {local_x}, local_y = {local_y}")
 
     # Step 3: Each process computes func(x, y) for its segment, which now returns two values
     local_results1 = []
     local_results2 = []
 
     for x, y in zip(local_x, local_y):
+
         res1, res2 = SMCstep(x, y)
+
         local_results1.append(res1)
         local_results2.append(res2)
+    # Barrier to ensure all processes have completed before gathering results
+    comm.barrier()
+    sys.stdout.flush()
 
     # Step 4: Gather the results from all processes back at the root process
+    #print(f"Rank {rank}: Reached comm.gather with local_results1 = {local_results1}, local_results2 = {local_results2}")
     gathered_results1 = comm.gather(local_results1, root=0)
     gathered_results2 = comm.gather(local_results2, root=0)
+    comm.barrier()
+    #print('gathering')
+    sys.stdout.flush()
 
     if rank == 0:
         # Flatten the gathered results to get the final result in the original order
         result1 = np.array([item for sublist in gathered_results1 for item in sublist])
         result2 = np.array([item for sublist in gathered_results2 for item in sublist])
+
+        # Debug print: Check the gathered results
+        #print(f"Rank {rank}: gathered results1 = {result1}, gathered results2 = {result2}")
+
         return result1, result2
     else:
         return None, None
@@ -270,79 +297,85 @@ def wt_informed_onestep_MPI(particles, logweights):
 def straight_SMC_MPI(init, N, T):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
-    size = comm.Get_size()
-    t = 0
+
+    loc_n = int(N)
+    # rank = self.exec.rank
+
+    seed = 0
+    mvrs_rng = RNG(seed)
+        # rngs = [RNG(i + rank * loc_n + 1 + seed) for i in range(loc_n)]  # RNG for each particle
+
+    initialParticles = [init.get_initial_dist()] * N
+    current_particles = initialParticles
+    logWeights = np.array([-math.log(N)]*N)
+
+    particle_path = [current_particles]
+    logwt_path = [logWeights]
+
+    # display_progress_bar = verbose and rank == 0
+    # progress_bar = tqdm(total=Tsmc, desc="SMC sampling", disable=not display_progress_bar)
 
     sys.stdout.flush()
+    #current_particles = comm.bcast(current_particles, root=0)
+    #logWeights = comm.bcast(logWeights, root=0)
 
-    n = 0
-    eff_ss = []
+    #front = comm.bcast(front, root=0)
+    #logwts_front = comm.bcast(logwts_front, root=0)
 
-    # Initialise the particles and weights
-    front = []
-    while n < N:
-        front.append(init.get_initial_dist())
-        n += 1
-    logwts_front = np.array([-math.log(N)] * N)
-    print(f'logweights = {logwts_front}')
-    norm_est = [-np.log(N)]
+    for t in range(T):
 
-    particle_path = [front]
-    logwt_path = [logwts_front]
-    sys.stdout.flush()
-
-    if rank == 0:
-        print(f'Beginning step {t}')
-
-    while t < T:
-        sys.stdout.flush()
-
-        print(f'Rank {rank}: Normalizing weights at step {t}')
-        sys.stdout.flush()
-        normed_logwts_front = normalise(np.array(logwts_front), exec=Executor_MPI())
-        print(f'Rank {rank}: Normalisation complete at step {t}')
-
-        # Ensure all ranks proceed synchronously
         comm.barrier()
-        print(f'Rank {rank}: Barrier reached after normalisation.')
+        print(f'beginning step {t}')
+        #print(f'Current particles on rank {rank}: {current_particles}')
         sys.stdout.flush()
 
-        normed_logwts_front = comm.bcast(normed_logwts_front, root=0)
-        print(f'Rank {rank}: Received normalized log weights: {normed_logwts_front}')
-        sys.stdout.flush()
+        logWeights = normalise(logWeights, exec = Executor_MPI())
+        #print(f'normalised logWeights: {logWeights}')
+        neff = ess(logWeights, exec = Executor_MPI())
+
+        if math.log(neff) < math.log(N) - math.log(2):
+            print(f'resampling at step {t} because ESS = {neff}')
+            #rint(f'Current_particles at rank {rank}, are {current_particles}')
+
+            current_particles = pad(current_particles)
+            current_particles, logWeights = systematic_resampling(
+                current_particles, logWeights, mvrs_rng, exec = Executor_MPI())
+            #current_particles = comm.bcast(current_particles, root=0)
+            current_particles = restore(current_particles)
+
+            #print(f'post-resampling Logweights are {logWeights}')
 
 
-        print(f'Rank {rank}:Computing normalisation')
-        neff = ess(normed_logwts_front, exec=Executor_MPI())
-
-        neff = comm.bcast(neff, root=0)
-        print(f'Rank {rank}: ESS calculated as: {neff}')
-        eff_ss.append(neff)
-
-        sys.stdout.flush()
-
-        if math.log(neff) < math.log(len(front)) - math.log(2):
-            print('Resampling')
-            coded_front = pad(front)
-            coded_front, logwts_front = systematic_resampling(coded_front, normed_logwts_front, rng=RNG(), exec=Executor_MPI())
-            coded_front = comm.bcast(coded_front, root = 0)
-            front = restore(coded_front)
+        new_particles = copy.copy(current_particles)
 
         sys.stdout.flush()
 
         # Propose new samples from the particle front in a single step
 
-        if rank == 0:
-            front, logwts_front = one_step_sample_MPI(front, logwts_front)
-            print(f'logwts front:{logwts_front}')
+        #current_particles, logWeights = one_step_sample_MPI(new_particles, logWeights)
 
-            # retain sample
-            particle_path.append(np.array(front))
-            logwt_path.append(np.array(logwts_front))
 
-        t += 1
+        prop_front = []
+        prop_wts = []
+        for i in range(len(current_particles)):
+            i_front, i_wt = SMCstep(new_particles[i], logWeights[i])
+            prop_front.append(i_front)
+            prop_wts.append(i_wt)
 
-    return particle_path, logwt_path, eff_ss, norm_est
+        print(f'Component Lengths: {[i.Gaussian_Mix_Model.k for i in prop_front]}')
+
+        # retain sample
+
+        particle_path.append(np.array(prop_front))
+        logwt_path.append(np.array(prop_wts))
+
+        print(f'Path length {len(particle_path)}')
+
+        current_particles = prop_front
+        logWeights = prop_wts
+
+
+    return particle_path, logwt_path
 
 
 def wt_informed_RJSMC_MPI(init, N, T):
@@ -356,15 +389,15 @@ def wt_informed_RJSMC_MPI(init, N, T):
     eff_ss = []
 
     # Initialise the particles and weights
-    front = []
+    current_particles = []
     while n < N:
-        front.append(init.get_initial_dist())
+        current_particles.append(init.get_initial_dist())
         n += 1
-    logwts_front = np.array([-math.log(N)] * N)
+    logWeights = np.array([-math.log(N)] * N)
     norm_est = [-np.log(N)]
 
-    particle_path = [front]
-    logwt_path = [logwts_front]
+    particle_path = [current_particles]
+    logwt_path = [logWeights]
 
     print(f'Beginning step {t}')
     while t < T:
@@ -388,10 +421,10 @@ def wt_informed_RJSMC_MPI(init, N, T):
         sys.stdout.flush()
 
         if math.log(neff) < math.log(N) - math.log(2):
-            coded_front = pad(front)
+            #coded_front = pad(current_particles)
             coded_front, logwts_front = systematic_resampling(
                 coded_front, normed_logwts_front, rng=RNG(), exec=Executor_MPI())
-            front = restore(coded_front, front)
+            #front = restore(coded_front, current_particles)
 
         sys.stdout.flush()
 
