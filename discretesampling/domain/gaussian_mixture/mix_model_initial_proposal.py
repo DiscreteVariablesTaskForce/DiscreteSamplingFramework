@@ -2,6 +2,7 @@ import sys
 sys.path.append('C:/Users/mattb242/Desktop/Projects/reversible_jump/local_code/DiscreteSamplingFramework')
 
 import numpy as np
+
 import pandas as pd
 
 from discretesampling.base.types import DiscreteVariableInitialProposal
@@ -34,8 +35,8 @@ class UnivariateGMMInitialProposal(DiscreteVariableInitialProposal):
 
     def get_initial_dist(self):
         init_comps = []
-        k = max(1,poisson.rvs(self.la))
-        d = [self.delta]*k
+        k = max(1, poisson.rvs(self.la))
+        d = [self.delta]*(k+1)
         wt_gen = dirichlet.rvs(d)[0]
         i = 0
         while i < k:
@@ -50,6 +51,8 @@ class UnivariateGMMInitialProposal(DiscreteVariableInitialProposal):
 
         ord = GMM_Distribution(gmm, alloc, self.la, self.delta, self.alpha, self.g, self.h_epsilon,
                                self.k_epsilon).order_components()
+
+        ord.last_move = 'stick'
         #print(f'Initial components: {ord.Gaussian_Mix_Model.components}')
         return ord
 

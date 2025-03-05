@@ -28,6 +28,7 @@ def restore(coded_particles):
     return np.array([decode(i) for i in coded_particles])
 '''
 
+
 def read_floats_from_file(filepath):
     floats = []
     with open(filepath, 'r') as f:
@@ -40,6 +41,15 @@ def read_floats_from_file(filepath):
 
     return floats
 
+def get_wt_average_k(parts, wts):
+    normwts = np.exp(normalise(np.array(wts)))
+    ks = np.array([i.Gaussian_Mix_Model.k for i in parts])
+    return np.dot(normwts, ks)
+
+def get_wt_av_bic(parts, wts):
+    normwts = np.exp(normalise(np.array(wts)))
+    bics = np.array([i.bic() for i in parts])
+    return np.dot(normwts, bics)
 
 def RJMCMC_Step(particle, grow_prob=[0.5, 0, 0.5]):
     # Propose new samples from the particle front
@@ -49,42 +59,89 @@ def RJMCMC_Step(particle, grow_prob=[0.5, 0, 0.5]):
 
     # Compute discrete probabilities
 
-    cont_move = -proposed_cont.continuous_forward_eval(front) + front.continuous_forward_eval(proposed_cont)
+    #cont_move = -proposed_cont.continuous_forward_eval(front) + front.continuous_forward_eval(proposed_cont)
     # print(f'cont move = {cont_move}')
 
     if front.last_move == 'split':
-        fwd = front.split_log_eval(proposed_cont, grow_prob[2])
-        back = proposed_cont.merge_log_eval(front, grow_prob[0])
-        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+        fwd = front.split_log_eval(proposed_cont, grow_prob[0])
+        back = proposed_cont.merge_log_eval(front, grow_prob[2])
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
     elif front.last_move == 'merge':
-        fwd = front.merge_log_eval(proposed_cont, grow_prob[0])
-        back = proposed_cont.split_log_eval(front, grow_prob[2])
-        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+        fwd = front.merge_log_eval(proposed_cont, grow_prob[2])
+        back = proposed_cont.split_log_eval(front, grow_prob[0])
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
     elif front.last_move == 'birth':
-        fwd = front.birth_log_eval(proposed_cont, grow_prob[2])
-        back = proposed_cont.death_log_eval(front, grow_prob[0])
-        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+        fwd = front.birth_log_eval(proposed_cont, grow_prob[0])
+        back = proposed_cont.death_log_eval(front, grow_prob[2])
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
     elif front.last_move == 'death':
-        fwd = front.death_log_eval(proposed_cont, grow_prob[0])
-        back = proposed_cont.birth_log_eval(front, grow_prob[2])
-        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+        fwd = front.death_log_eval(proposed_cont, grow_prob[2])
+        back = proposed_cont.birth_log_eval(front, grow_prob[0])
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
     # elif front.last_move == 'stick':
     # acc_ratio = proposed_cont.eval()-front.eval() + cont_move
     else:
-        acc_ratio = 0
+        acc_ratio = 0 #front.eval() - particle.eval()
 
+    acc_prob = min(acc_ratio, 0)
     u = np.random.uniform(0, 1)
-    if u < math.exp(acc_ratio):
+    if u < math.exp(acc_prob):
         return front, True
     else:
         return particle, False
 
+def get_probdict(particles, weights, neff):
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
 
-def SMCstep(particle, weight, grow_prob=[0.5, 0, 0.5]):
+    if rank == 0:
+        essprob = 1-(neff/len(particles))
+        print(f'neff = {neff/len(particles)}')
+        weights = normalise(weights)
+        #sys.stdout.flush()
+        #neff = ess(weights, exec=Executor_MPI())
+        #sys.stdout.flush()
+        #print(f'ess = {neff}')
+        #comm.barrier()
+        #sys.stdout.flush()
+
+        partsort = get_k_indices(particles)
+        inddict = partsort[0]
+        print(f'dictionary keys are {inddict.keys()}')
+        absent = partsort[1]
+        print(f'absent = {absent}')
+        if absent != 0:
+            std = essprob/absent
+        else:
+            std = 0
+
+        allprobs = []
+        for i in inddict:
+            if i == 0:
+                allprobs.append(0)
+            elif inddict[i] == []:
+                allprobs.append(std)
+            else :
+                allprobs.append((neff/len(particles))*sum([np.exp(weights[j]) for j in inddict[i]]))
+
+        allprobs = allprobs/sum(allprobs)
+        print(f'PMF is  {allprobs}')
+        probdicts = {}
+        for i in range(1, max(inddict.keys())):
+            ps = np.array([max(10**-235, allprobs[i - 1]), max(10**-235, allprobs[i]), max(10**-235, allprobs[i + 1])])
+            probdicts[i] = ps / sum(ps)
+
+        return probdicts
+
+    else:
+        return None
+
+def SMCstep(particle, weight, adj_probs = [[1/3, 1/3, 1/3], [1/3,1/3,1/3], [1/3,1/3,1/3]]):
+    #print(particle.last_move)
     # Propose new samples from the particle front
 
     proposed_cont = particle.continuous_forward_sample()
-    front = proposed_cont.discrete_forward_sample(move_pmf=grow_prob)
+    front = proposed_cont.discrete_forward_sample(move_pmf=adj_probs[1])
 
     # Compute discrete probabilities
 
@@ -92,28 +149,33 @@ def SMCstep(particle, weight, grow_prob=[0.5, 0, 0.5]):
     # print(f'cont move = {cont_move}')
 
     if front.last_move == 'split':
-        fwd = front.split_log_eval(proposed_cont, grow_prob[2])
-        back = proposed_cont.merge_log_eval(front, grow_prob[0])
-        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+        fwd = front.split_log_eval(proposed_cont, adj_probs[1][2])
+        back = proposed_cont.merge_log_eval(front, adj_probs[2][0])
+        #print(f'moves: {fwd[0] + fwd[1]}, {back[1] + back[0]}')
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
     elif front.last_move == 'merge':
-        fwd = front.merge_log_eval(proposed_cont, grow_prob[0])
-        back = proposed_cont.split_log_eval(front, grow_prob[2])
-        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+        fwd = front.merge_log_eval(proposed_cont, adj_probs[0][2])
+        back = proposed_cont.split_log_eval(front, adj_probs[1][0])
+        #print(f'moves: {fwd[0] + fwd[1]}, {back[1] + back[0]}')
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
     elif front.last_move == 'birth':
-        fwd = front.birth_log_eval(proposed_cont, grow_prob[2])
-        back = proposed_cont.death_log_eval(front, grow_prob[0])
-        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+        fwd = front.birth_log_eval(proposed_cont, adj_probs[2][0])
+        back = proposed_cont.death_log_eval(front, adj_probs[1][2])
+        #print(f'moves: {fwd[0] + fwd[1]}, {back[1] + back[0]}')
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
     elif front.last_move == 'death':
-        fwd = front.death_log_eval(proposed_cont, grow_prob[0])
-        back = proposed_cont.birth_log_eval(front, grow_prob[2])
-        acc_ratio = (fwd[0] + back[1]) - (fwd[1] + back[0])
+        fwd = front.death_log_eval(proposed_cont, adj_probs[0][2])
+        back = proposed_cont.birth_log_eval(front, adj_probs[1][0])
+        #print(f'moves: {fwd[0] + fwd[1]}, {back[1] + back[0]}')
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
     # elif front.last_move == 'stick':
     # acc_ratio = proposed_cont.eval()-front.eval() + cont_move
     else:
-        acc_ratio = 0
+        acc_ratio = front.eval()-particle.eval()
 
-    # print(f'acceptance rate is {acc_ratio}')
-    return front, weight + acc_ratio
+    #print(f'acceptance rate is {acc_ratio}')
+    #print(f'acceptance ratio: {acc_ratio}')
+    return front, weight + min(0,acc_ratio)
 
 
 def one_step_sample_MPI(particles, weights):
@@ -185,14 +247,15 @@ def one_step_sample_MPI(particles, weights):
 
 
 def get_k_indices(particles):
-    inddict = {}
-    for i in particles:
-        if i.Gaussian_Mix_Model.k not in inddict.keys():
-            inddict[i.Gaussian_Mix_Model.k] = [list(particles).index(i)]
-        else:
-            inddict[i.Gaussian_Mix_Model.k].append(list(particles).index(i))
+    max_k = max((p.Gaussian_Mix_Model.k for p in particles), default=-1)
+    inddict = {k: [] for k in range(max_k + 2)}  # Preallocate dictionary with empty lists
 
-    return dict(sorted(inddict.items()))
+    for i, p in enumerate(particles):
+        inddict[p.Gaussian_Mix_Model.k].append(i)
+
+    absent = sum(1 for v in inddict.values() if not v)  # Count empty lists
+
+    return inddict, absent
 
 
 def get_probdict(particles, weights, neff):
@@ -200,7 +263,9 @@ def get_probdict(particles, weights, neff):
     rank = comm.Get_rank()
 
     if rank == 0:
-        #print('Computing ess')
+        essprob = 1-(neff/len(particles))
+        print(f'neff = {neff/len(particles)}')
+        weights = normalise(weights)
         #sys.stdout.flush()
         #neff = ess(weights, exec=Executor_MPI())
         #sys.stdout.flush()
@@ -208,24 +273,33 @@ def get_probdict(particles, weights, neff):
         #comm.barrier()
         #sys.stdout.flush()
 
-        inddict = get_k_indices(particles)
-        std = neff / (max(inddict.keys()) + 2)
+        partsort = get_k_indices(particles)
+        inddict = partsort[0]
+        print(f'dictionary keys are {inddict.keys()}')
+        absent = partsort[1]
+        print(f'absent = {absent}')
+        if absent != 0:
+            std = essprob/absent
+        else:
+            std = 0
 
         allprobs = []
-        for i in range(max(inddict.keys()) + 2):
+        for i in inddict:
             if i == 0:
-                allprobs.append(10 ** -235)
-            elif i in inddict.keys():
-                allprobs.append(sum([np.exp(weights[j]) for j in inddict[i]]))
-            else:
+                allprobs.append(0)
+            elif inddict[i] == []:
                 allprobs.append(std)
+            else :
+                allprobs.append((neff/len(particles))*sum([np.exp(weights[j]) for j in inddict[i]]))
 
-        probdicts = {}
-        for i in range(1, max(inddict.keys()) + 1):
-            ps = np.array([max(10 ** -236, allprobs[i - 1]), max(10 ** -236, allprobs[i]), max(10 ** -236, allprobs[i + 1])])
+        allprobs = allprobs/sum(allprobs)
+        print(f'PMF is  {allprobs}')
+        probdicts = {0:[0,0,0]}
+        for i in range(1, max(inddict.keys())):
+            ps = np.array([max(10**-235, allprobs[i - 1]), max(10**-235, allprobs[i]), max(10**-235, allprobs[i + 1])])
             probdicts[i] = ps / sum(ps)
 
-        #print(f'jump probabilities are {probdicts}')
+
 
         return probdicts
 
@@ -283,7 +357,7 @@ def wt_informed_onestep_MPI(particles, logweights, neff):
     local_results2 = []
 
     for x, y in zip(particles, logweights):
-        res1, res2 = SMCstep(x, y, grow_prob=probdict[x.Gaussian_Mix_Model.k])
+        res1, res2 = SMCstep(x, y, adj_probs =[probdict[x.Gaussian_Mix_Model.k-1], probdict[x.Gaussian_Mix_Model.k], [x.Gaussian_Mix_Model.k+1]])
         local_results1.append(res1)
         local_results2.append(res2)
 
@@ -313,6 +387,8 @@ def straight_SMC_MPI(init, N, T):
         particle_path = [all_particles]
         logwt_path = [all_wts]
         ess_path = [N]
+        k_path = [current_particles[0].Gaussian_Mix_Model.k]
+        bic_path = [current_particles[0].bic()]
 
     sys.stdout.flush()
 
@@ -330,7 +406,7 @@ def straight_SMC_MPI(init, N, T):
         if rank == 0:
             ess_path.append(neff)
 
-        if math.log(neff) < math.log(N) - math.log(2):
+        if math.log(neff) < math.log(N) + math.log(0.25): #math.log(N) - math.log(2):
 
             current_particles = pad(current_particles, exec = Executor_MPI())
             current_particles, logWeights = systematic_resampling(
@@ -340,12 +416,14 @@ def straight_SMC_MPI(init, N, T):
 
             current_particles = restore(current_particles)
 
+        if rank == 0:
+            k_path.append(get_wt_average_k(current_particles, logWeights))
+            bic_path.append(get_wt_av_bic(current_particles, logWeights))
+
         sys.stdout.flush()
 
         current_particles, logWeights = one_step_sample_MPI(current_particles, logWeights)
         #print(f'rank = {rank}, after sample weights = {logWeights}')
-
-
 
         all_particles = np.array(comm.gather(current_particles, root = 0)).ravel()
         all_wts = np.array(comm.gather(logWeights, root = 0)).ravel()
@@ -357,7 +435,7 @@ def straight_SMC_MPI(init, N, T):
         t+=1
 
 
-    return particle_path, logwt_path, ess_path
+    return particle_path, logwt_path, ess_path, k_path, bic_path
 
 
 def wt_informed_RJSMC_MPI(init, N, T):
@@ -372,7 +450,7 @@ def wt_informed_RJSMC_MPI(init, N, T):
     mvrs_rng = RNG(seed)
     # rngs = [RNG(i + rank * loc_n + 1 + seed) for i in range(loc_n)]  # RNG for each particle
 
-    current_particles = [init.get_initial_dist()] * int(N / size)
+    current_particles = [init.get_initial_dist()] * int(N/size)
 
     logWeights = np.array([-math.log(N)] * int(N / size))
     # print(f'rank = {rank}, weights = {logWeights}')
@@ -387,6 +465,8 @@ def wt_informed_RJSMC_MPI(init, N, T):
         particle_path = [all_particles]
         logwt_path = [all_wts]
         ess_path = [N]
+        k_path = [current_particles[0].Gaussian_Mix_Model.k]
+        bic_path = [current_particles[0].bic()]
 
     comm.barrier()
     #print(f'logWeights at rank {rank} after scattering:{logWeights}')
@@ -411,7 +491,7 @@ def wt_informed_RJSMC_MPI(init, N, T):
 
         sys.stdout.flush()
 
-        if math.log(neff) < math.log(N) - math.log(2):
+        if math.log(neff) < math.log(N) + math.log(0.25):
             current_particles = pad(current_particles, exec=Executor_MPI())
             current_particles, logWeights = systematic_resampling(
                 current_particles, logWeights, mvrs_rng, exec=Executor_MPI())
@@ -422,6 +502,9 @@ def wt_informed_RJSMC_MPI(init, N, T):
         sys.stdout.flush()
 
         # Propose new samples from the particle front in a single step
+        if rank == 0:
+            k_path.append(get_wt_average_k(current_particles, logWeights))
+            bic_path.append(get_wt_av_bic(current_particles, logWeights))
 
         sys.stdout.flush()
 
@@ -446,7 +529,7 @@ def wt_informed_RJSMC_MPI(init, N, T):
 
         t += 1
     if rank == 0:
-        return particle_path, logwt_path, ess_path
+        return particle_path, logwt_path, ess_path, k_path, bic_path
     else:
         return None, None, None
 

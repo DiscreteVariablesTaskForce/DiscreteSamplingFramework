@@ -1,4 +1,5 @@
 import numpy as np
+import sympy as sy
 import math
 import copy
 from scipy.stats import norm
@@ -11,6 +12,7 @@ from scipy.stats import invgamma
 from scipy.special import logsumexp
 from pickle import dumps
 from pickle import loads
+from mpi4py import MPI
 
 import sys
 sys.path.append('C:/Users/mattb242/Desktop/Projects/reversible_jump/local_code/DiscreteSamplingFramework')
@@ -132,18 +134,25 @@ class GMM_Distribution():
         self.last_move = None
         self.aux_rand = None
 
-    def encode(self,pad):
+    def encode(self):
+        lmove_list = ['split, merge, birth, death']
+        if self.last_move in lmove_list:
+            move_code = lmove_list.index(self.last_move)
+        else:
+            move_code = 4
         dat_array = self.Data_Allocation.all_data()
-        print(f'Data length: {len(dat_array)}')
+        #print(f'Data length: {len(dat_array)}')
         alloc_array = self.Data_Allocation.all_allocations()
-        print(f'Allocation length: {len(alloc_array)}')
-        pad_comps = [self.Gaussian_Mix_Model.k] + list(self.Gaussian_Mix_Model.means) + list(self.Gaussian_Mix_Model.vars) + list(self.Gaussian_Mix_Model.wts)
+        #print(f'Allocation length: {len(alloc_array)}')
+        #print(f'Comps to encode {self.Gaussian_Mix_Model.components}')
+        pad_comps = list(self.Gaussian_Mix_Model.means) + list(self.Gaussian_Mix_Model.vars) + list(self.Gaussian_Mix_Model.wts)
+        #print(f'Comp length: {len(pad_comps)}')
         params = [self.la, self.delta, self.alpha, self.g, self.ep_h, self.ep_k]
 
-        all_mix = list(dat_array)+list(alloc_array)+pad_comps+params + [0]*(pad) + [pad]
+        all_mix = [move_code, len(dat_array), self.Gaussian_Mix_Model.k] +(dat_array)+list(alloc_array)+pad_comps+params
         all = [float(x) for x in all_mix]
 
-        print(f'everything is {len(all)}')
+        #print(f'everything for {self.Gaussian_Mix_Model.k} is {len(all)}')
 
         return np.array(all)
 
@@ -301,8 +310,11 @@ class GMM_Distribution():
 
         insertion = self.Gaussian_Mix_Model.insert_new_component([nmu, nvar, nwt])
         s = sum(insertion[0].wts)
-        for i in insertion[0].components:
-            i[2] = i[2]/s
+        for i in range(len(insertion[0].components)):
+            if i != insertion[1]:
+                insertion[0].components[i][2] = insertion[0].components[i][2]*(1-nwt)
+
+        #print(f'Checking weight sum for birth = {sum(insertion[0].wts)}')
 
         new_gmm = insertion[0]
 
@@ -395,16 +407,16 @@ class GMM_Distribution():
     def var_gibbs_update(self):
 
         newcomps = []
-        for i in self.Gaussian_Mix_Model.components:
-            idat = self.Data_Allocation.allocation[self.Gaussian_Mix_Model.components.index(i)]
+        for i in range(self.Gaussian_Mix_Model.k):
+            idat = self.Data_Allocation.allocation[i]
             n_i = len(idat)
             if n_i == 0:
                 var_i = 0
             else:
-                var_i = sum([(j-i[0])**2 for j in idat])
+                var_i = sum([(j-self.Gaussian_Mix_Model.components[i][0])**2 for j in idat])
 
             new_s_i = invgamma.rvs(self.alpha + (n_i/2), scale = self.beta + (var_i/2))
-            newcomps.append([i[0], new_s_i, i[2]])
+            newcomps.append([self.Gaussian_Mix_Model.components[i][0], new_s_i, self.Gaussian_Mix_Model.components[i][2]])
 
         newmodel = Gaussian_Mix_Model(newcomps)
         new_dist = GMM_Distribution(newmodel, self.Data_Allocation, self.la, self.delta, self.alpha, self.g, self.ep_h,
@@ -562,12 +574,24 @@ class GMM_Distribution():
                 palloc += math.log(normed_split_weights[1]) + norm.logpdf(i, splits[1][0], np.sqrt(splits[1][1]))
 
             #compute jacobian of split function
-            J = (sc[2]*np.abs(splits[1][0] - splits[0][0])*splits[1][1] +splits[0][1]) /((
-                sc[1]*(1 - (us[1] ** 2))*us[2] *(1 - us[2])))
 
-            p_xy = ev + priors
+            m, s, w, u_1, u_2, u_3 = sy.symbols('m, s, w, u_1, u_2, u_3')
+            m_1, m_2, s_1, s_2, w_1, w_2, = sy.symbols('m_1, m_2, s_1, s_2, w_1, w_2')
+            q = sy.Matrix([m + u_2 * (s * (sy.sqrt(w_2 / w_1))), m - u_2 * (s * (sy.sqrt(w_1 / w_2))),
+                           sy.sqrt(u_3 * (1 - u_2 ** 2) * s * (w / w_1)),
+                           sy.sqrt((1 - u_3) * (1 - u_2 ** 2) * s * (w / w_2)),
+                           u_1 * w, (1 - u_1) * w])
 
-            r_x = qprob + palloc + math.log(split_prob) - math.log(J)
+            J_sym = q.jacobian([m, s, w, u_1, u_2, u_3])
+            J_mat = J_sym.subs({m:sc[0], s:np.sqrt(sc[1]), w:sc[2], u_1:us[0], u_2:us[1], u_3:us[2], w_1:splits[0][2], w_2:splits[1][2]})
+            J = np.abs(J_mat.det())
+
+            #J = (sc[2]*np.abs(splits[0][0] - splits[1][0])*splits[1][1]*splits[0][1]) /((
+                #sc[1]*(1 - (us[1] ** 2))*us[2] *(1 - us[2])))
+
+            p_xy = ev + priors + math.log(J) + math.lgamma(self.Gaussian_Mix_Model.k + 1)
+
+            r_x =  qprob + palloc + math.log(split_prob)
 
             return p_xy, r_x
 
@@ -575,10 +599,10 @@ class GMM_Distribution():
 
         # check if current distribution could have been derived from previous distribution by a split at all
         if previous.Gaussian_Mix_Model.k - self.Gaussian_Mix_Model.k != 1:
-            raise Exception('Merge Eval Error: More than one extra component in previous distribution')
+            raise Exception(f'Merge Eval Error: More than one extra component in previous distribution')
         elif previous.Gaussian_Mix_Model.k > 2 and util.matchlist(previous.Gaussian_Mix_Model.means,
                                            self.Gaussian_Mix_Model.means) != 2:
-            raise Exception('Merge Eval Error: Distributions differ at more than two parameter vectors')
+            raise Exception(f'Merge Eval Error: Distributions {previous.Gaussian_Mix_Model.means} and {self.Gaussian_Mix_Model.means} differ at more than two parameter vectors')
         # if previous distribution is compatible, find the  merge index
         else:
             ind = 0
@@ -600,10 +624,13 @@ class GMM_Distribution():
             # compute current priors p(k), p(mu), p(sigma) and p(w)
             priors = sum([i for i in self.compute_parameter_priors()])
 
-            p_xy = ev + priors
+            J = 1
+            qprob = 1
+
+            p_xy = ev + priors + math.log(J) + math.lgamma(self.Gaussian_Mix_Model.k + 1)
 
             #Jump is deterministic, so probability is just raw jump probability for merge
-            r_x = math.log(mergeprob)
+            r_x = math.log(qprob) + math.log(mergeprob)
 
 
             return p_xy, r_x
@@ -629,8 +656,11 @@ class GMM_Distribution():
             # compute current priors p(k), p(mu), p(sigma) and p(w)
             priors = sum([i for i in self.compute_parameter_priors()])
 
-            p_xy = ev + priors
-            r_x = math.log(birthprob) + beta.logpdf(sc[2], 1, self.Gaussian_Mix_Model.k) - (previous.Gaussian_Mix_Model.k*math.log(1-sc[2]))
+            qprob = beta.pdf(sc[2], 1, self.Gaussian_Mix_Model.k)
+            J = (1-sc[2])**self.Gaussian_Mix_Model.k
+
+            p_xy = ev + priors + math.log(J)
+            r_x = math.log(qprob) + math.log(birthprob)
 
         return p_xy, r_x
 
@@ -649,8 +679,12 @@ class GMM_Distribution():
         # compute current priors p(k), p(mu), p(sigma) and p(w)
         priors = sum([i for i in self.compute_parameter_priors()])
 
-        p_xy = ev + priors
-        r_x = math.log(deathprob) - math.log(k_0)
+        qprob = 1/(k_0)
+        J = 1
+
+        p_xy = ev + priors + math.log(J)
+        r_x =  math.log(qprob) + math.log(deathprob)
+
         return p_xy, r_x
     def discrete_forward_eval(self, splitprob, mergeprob, birthprob, deathprob):
 
@@ -686,28 +720,45 @@ class GMM_Distribution():
 
 
 def decode(encoded_particle):
-    datlen = encoded_particle[-1]
-    justdat = encoded_particle[:datlen]
-    alloc = encoded_particle[datlen:2*datlen].astype(int)
-    alldict = {}
-    for i in range(len(justdat)):
+    comm = MPI.COMM_WORLD
+    rank = comm.rank
+
+    k = int(encoded_particle[2])
+    datlen = int(encoded_particle[1])
+    move_code = int(encoded_particle[0])
+    #print(f'Data length at rank {rank} is {datlen}')
+    justdat = encoded_particle[3:datlen+3]
+    alloc = encoded_particle[datlen+3:(2*datlen)+3]
+    alldict = {key:[] for key in range(k)}
+    for i in range(len(alloc)):
         if alloc[i] in alldict.keys():
-            alldict[i].append(justdat[i])
+            alldict[alloc[i]].append(justdat[i])
         else:
-            alldict[i] = [justdat[i]]
+            alldict[alloc[i]] = [justdat[i]]
 
     decoded_allocation = Data_Allocation(alldict)
 
-    k = encoded_particle[0]
-    means = encoded_particle[2*datlen:(2*datlen)+k]
-    vars = encoded_particle[(2*datlen)+k:(2*datlen)+(2*k)]
-    wts = encoded_particle[(2*datlen)+(2*k):(2*datlen)+(3*k)]
 
-    params = encoded_particle[(2*datlen)+(3*k):(2*datlen)+(3*k)+6]
+    means = encoded_particle[int((2*datlen)+3):int(((2*datlen)+3)+k)]
+    vars = encoded_particle[int(((2*datlen)+3)+k):int(((2*datlen)+3)+(2*k))]
+    wts = encoded_particle[int(((2*datlen)+3)+(2*k)):int(((2*datlen)+3)+(3*k))]
+
+    params = encoded_particle[int((2*datlen+3)+(3*k)):int((2*datlen+3)+(3*k)+6)]
+
+    #print(f'parameters - {params}')
+
 
     comps = [[means[i], vars[i], wts[i]] for i in range(len(means))]
+    #print(f'components - {comps}')
+    #print(f'decoded comps: {comps}')
     mix = Gaussian_Mix_Model(comps)
 
     decoded_particle = GMM_Distribution(mix, decoded_allocation, *params)
+    move_decode_list = ['split', 'merge', 'birth', 'death', 'other']
+
+    decoded_particle.last_move = move_decode_list[move_code]
+
 
     return decoded_particle
+
+
