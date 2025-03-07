@@ -2,6 +2,7 @@ import math
 import sys
 import numpy as np
 import copy
+import random
 
 
 from discretesampling.base.random import RNG
@@ -89,6 +90,50 @@ def RJMCMC_Step(particle, grow_prob=[0.5, 0, 0.5]):
         return front, True
     else:
         return particle, False
+
+def nRJMCMC_Step(particle, nu=1):
+    # Propose new samples from the particle front
+    print(f'Current nu: {nu}')
+    proposed_cont = particle.continuous_forward_sample()
+    if nu == 1:
+        front = proposed_cont.discrete_forward_sample(move_pmf=[0,0,1])
+    elif nu == -1:
+        front = proposed_cont.discrete_forward_sample(move_pmf=[1,0,0])
+    else:
+        front = proposed_cont
+
+    # Compute discrete probabilities
+
+    #cont_move = -proposed_cont.continuous_forward_eval(front) + front.continuous_forward_eval(proposed_cont)
+    # print(f'cont move = {cont_move}')
+
+    if front.last_move == 'split':
+        fwd = front.split_log_eval(proposed_cont, 1)
+        back = proposed_cont.merge_log_eval(front, 1)
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
+    elif front.last_move == 'merge':
+        fwd = front.merge_log_eval(proposed_cont, 1)
+        back = proposed_cont.split_log_eval(front, 1)
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
+    elif front.last_move == 'birth':
+        fwd = front.birth_log_eval(proposed_cont, 1)
+        back = proposed_cont.death_log_eval(front, 1)
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
+    elif front.last_move == 'death':
+        fwd = front.death_log_eval(proposed_cont, 1)
+        back = proposed_cont.birth_log_eval(front, 1)
+        acc_ratio = (fwd[0] - fwd[1]) - (back[0] - back[1])
+    # elif front.last_move == 'stick':
+    # acc_ratio = proposed_cont.eval()-front.eval() + cont_move
+    else:
+        acc_ratio = 0 #front.eval() - particle.eval()
+
+    acc_prob = min(acc_ratio, 0)
+    u = np.random.uniform(0, 1)
+    if u < math.exp(acc_prob):
+        return front, True, nu
+    else:
+        return particle, False, -nu
 
 def get_probdict(particles, weights, neff):
     comm = MPI.COMM_WORLD
@@ -307,7 +352,7 @@ def get_probdict(particles, weights, neff):
         return None
 
 
-def RJMCMC(init, T):
+def RJMCMC(init, T, burn):
     k = []
     bic = []
     path = [init.get_initial_dist()]
@@ -326,7 +371,37 @@ def RJMCMC(init, T):
         print(f'Current components = {path[-1].Gaussian_Mix_Model.k}')
         print(f'Current BIC = {path[-1].bic()}')
 
-    return path, k, bic
+    return path[burn:], k[burn:], bic[burn:]
+
+def nRJMCMC(init, T, burn):
+    k = []
+    bic = []
+    path = [init.get_initial_dist()]
+    p = random.uniform(0,1)
+
+    t = 0
+    a = 0
+    lastnu = None
+    while t < T:
+        if lastnu is None:
+            prop = nRJMCMC_Step(path[-1])
+        else:
+            prop = nRJMCMC_Step(path[-1], lastnu)
+        path.append(prop[0])
+        k.append(prop[0].Gaussian_Mix_Model.k)
+        bic.append(prop[0].bic())
+        print(f'Completed step {t}')
+        t += 1
+        a += prop[1]
+        if prop[2] != lastnu:
+            print('Reversal!')
+        lastnu = prop[2]
+
+        print(f'Acceptance rate = {np.round(a / t, 2)}')
+        print(f'Current components = {path[-1].Gaussian_Mix_Model.k}')
+        print(f'Current BIC = {path[-1].bic()}')
+
+    return path[burn:], k[burn:], bic[burn:]
 
 
 def wt_informed_onestep_MPI(particles, logweights, neff):
