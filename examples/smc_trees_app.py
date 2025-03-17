@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import graphviz
 import os
+import subprocess
 import matplotlib.pyplot as plt
 
 st.title("🌳 Sequential Monte Carlo Trees Dashboard")
@@ -132,7 +133,8 @@ for filename in tree_files:
 # Create Tabs (without Tree Similarity)
 # ----------------------
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "🌲💪 Train Model",
     "🌲 Single Tree View",
     "🌲🌳 Compare Trees",
     "📊 Feature Importance",
@@ -140,6 +142,65 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📈 Overall Performance",
     "🔒 Robustnes Analysis"
 ])
+
+# ----------------------
+# Tab 0: Train Model
+# ----------------------
+# Ensure "datasets" directory exists
+DATASET_FOLDER = "datasets"
+os.makedirs(DATASET_FOLDER, exist_ok=True)
+
+with tab0:
+    st.header("Upload Dataset")
+
+    # File uploader widget
+    uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
+
+    if uploaded_file is not None:
+        file_path = os.path.join("datasets", uploaded_file.name)
+
+        if os.path.exists(file_path):
+            # Create an expander to act as a confirmation dialog
+            with st.expander(f"⚠️ '{uploaded_file.name}' already exists. Overwrite?", expanded=True):
+                overwrite = st.radio("Do you want to overwrite it?", ("No", "Yes"), index=0)
+
+                if overwrite == "Yes" and st.button("Confirm Overwrite"):
+                    with open(file_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    st.success(f"✅ File '{uploaded_file.name}' successfully overwritten in 'datasets'.")
+                    st.rerun()  # ✅ FIXED: Refresh the UI after overwrite
+
+        else:
+            # If file doesn't exist, allow upload directly
+            if st.button("Upload"):
+                with open(file_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                st.success(f"✅ File '{uploaded_file.name}' successfully uploaded in 'datasets'.")
+
+    # Model selection dropdown
+    model_choice = st.selectbox("Choose a Supervised Learning Method", ["SMC", "MCMC", "Random Forest", "XGBoost"])
+
+
+    # Function to dynamically run the correct model
+    def run_model(model_name, dataset_name):
+        model_scripts = {
+            "SMC": "decision_tree_driver.py",
+            "MCMC": "MCMC_driver.py",
+            "Random Forest": "RF_driver.py",
+            "XGBoost": "XGBoost_driver.py",
+        }
+        script_name = model_scripts.get(model_name)
+
+        if script_name:
+            subprocess.run(["python", script_name, dataset_name], check=True)
+            st.success(f"{model_name} model training started!")
+        else:
+            st.error("Invalid model selection.")
+
+
+    # Train button
+    if st.button("Train Model"):
+        run_model(model_choice, uploaded_file.name)
 
 # ----------------------
 # Tab 1: Single Tree View

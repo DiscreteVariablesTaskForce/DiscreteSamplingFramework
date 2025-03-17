@@ -20,7 +20,7 @@ import numpy as np
 
 
 
-df = pd.read_csv(r"yourdataset.csv")
+df = pd.read_csv(r"C:\Users\avarsi88\PycharmProjects\Parallel_SMC_sampler_Discrete_Variables\examples\datasets_smc_mcmc_CART\LiverDisorder.csv")
 
 df = df.dropna()
 y = df.Target
