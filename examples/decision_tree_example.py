@@ -13,14 +13,14 @@ from sklearn.model_selection import train_test_split
 import pandas as pd
 from sklearn.datasets import load_wine
 import numpy as np
-from discretesampling.domain.decision_tree.helper_functions import *
-from art.attacks import DecisionTreeAttack
-from art.classifiers import SklearnClassifier
+#from discretesampling.domain.decision_tree.helper_functions import *
+#from art.attacks import DecisionTreeAttack
+#from art.classifiers import SklearnClassifier
 
 
 
 
-df = pd.read_csv(r"C:\Users\efthi\OneDrive\Desktop\PhD\datasets_smc_mcmc_CART\Contraceptive.csv")
+df = pd.read_csv(r"yourdataset.csv")
 
 df = df.dropna()
 y = df.Target
