@@ -91,21 +91,16 @@ def RJMCMC_Step(particle, grow_prob=[0.5, 0, 0.5]):
     else:
         return particle, False
 
-def nRJMCMC_Step(particle, nu=1):
+def nRJMCMC_Step(particle, tau = 0.5, nu=1):
     # Propose new samples from the particle front
     print(f'Current nu: {nu}')
+    stick = False
     proposed_cont = particle.continuous_forward_sample()
+
     if nu == 1:
-        front = proposed_cont.discrete_forward_sample(move_pmf=[0,0,1])
+        front = proposed_cont.discrete_forward_sample(move_pmf=[0,tau,1-tau])
     elif nu == -1:
-        front = proposed_cont.discrete_forward_sample(move_pmf=[1,0,0])
-    else:
-        front = proposed_cont
-
-    # Compute discrete probabilities
-
-    #cont_move = -proposed_cont.continuous_forward_eval(front) + front.continuous_forward_eval(proposed_cont)
-    # print(f'cont move = {cont_move}')
+        front = proposed_cont.discrete_forward_sample(move_pmf=[1-tau,tau,0])
 
     if front.last_move == 'split':
         fwd = front.split_log_eval(proposed_cont, 1)
@@ -126,7 +121,8 @@ def nRJMCMC_Step(particle, nu=1):
     # elif front.last_move == 'stick':
     # acc_ratio = proposed_cont.eval()-front.eval() + cont_move
     else:
-        acc_ratio = 0 #front.eval() - particle.eval()
+        acc_ratio = 0
+
 
     acc_prob = min(acc_ratio, 0)
     u = np.random.uniform(0, 1)
@@ -134,8 +130,8 @@ def nRJMCMC_Step(particle, nu=1):
         return front, True, nu
     else:
         return particle, False, -nu
-
-def get_probdict(particles, weights, neff):
+'''
+def get_probdict(particles, weights, neff, alpha=1):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
 
@@ -152,11 +148,11 @@ def get_probdict(particles, weights, neff):
 
         partsort = get_k_indices(particles)
         inddict = partsort[0]
-        print(f'dictionary keys are {inddict.keys()}')
+        #print(f'dictionary keys are {inddict.keys()}')
         absent = partsort[1]
-        print(f'absent = {absent}')
+        #print(f'absent = {absent}')
         if absent != 0:
-            std = essprob/absent
+            std = (alpha*essprob)/absent
         else:
             std = 0
 
@@ -170,7 +166,7 @@ def get_probdict(particles, weights, neff):
                 allprobs.append((neff/len(particles))*sum([np.exp(weights[j]) for j in inddict[i]]))
 
         allprobs = allprobs/sum(allprobs)
-        print(f'PMF is  {allprobs}')
+        #print(f'PMF is  {allprobs}')
         probdicts = {}
         for i in range(1, max(inddict.keys())):
             ps = np.array([max(10**-235, allprobs[i - 1]), max(10**-235, allprobs[i]), max(10**-235, allprobs[i + 1])])
@@ -180,7 +176,7 @@ def get_probdict(particles, weights, neff):
 
     else:
         return None
-
+'''
 def SMCstep(particle, weight, adj_probs = [[1/3, 1/3, 1/3], [1/3,1/3,1/3], [1/3,1/3,1/3]]):
     #print(particle.last_move)
     # Propose new samples from the particle front
@@ -303,12 +299,12 @@ def get_k_indices(particles):
     return inddict, absent
 
 
-def get_probdict(particles, weights, neff):
+def get_probdict(particles, weights, neff, alpha=1):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
 
     if rank == 0:
-        essprob = 1-(neff/len(particles))
+        essprob = 1-((alpha*neff)/len(particles))
         print(f'neff = {neff/len(particles)}')
         weights = normalise(weights)
         #sys.stdout.flush()
@@ -324,7 +320,7 @@ def get_probdict(particles, weights, neff):
         absent = partsort[1]
         print(f'absent = {absent}')
         if absent != 0:
-            std = essprob/absent
+            std = (essprob)/absent
         else:
             std = 0
 
@@ -335,9 +331,9 @@ def get_probdict(particles, weights, neff):
             elif inddict[i] == []:
                 allprobs.append(std)
             else :
-                allprobs.append((neff/len(particles))*sum([np.exp(weights[j]) for j in inddict[i]]))
+                allprobs.append(((alpha*neff)/len(particles))*sum([np.exp(weights[j]) for j in inddict[i]]))
 
-        allprobs = allprobs/sum(allprobs)
+        #allprobs = allprobs/sum(allprobs)
         print(f'PMF is  {allprobs}')
         probdicts = {0:[0,0,0]}
         for i in range(1, max(inddict.keys())):
@@ -350,6 +346,7 @@ def get_probdict(particles, weights, neff):
 
     else:
         return None
+
 
 
 def RJMCMC(init, T, burn):
@@ -373,7 +370,7 @@ def RJMCMC(init, T, burn):
 
     return path[burn:], k[burn:], bic[burn:]
 
-def nRJMCMC(init, T, burn):
+def nRJMCMC(init, T, burn, tau = 0.5):
     k = []
     bic = []
     path = [init.get_initial_dist()]
@@ -384,9 +381,9 @@ def nRJMCMC(init, T, burn):
     lastnu = None
     while t < T:
         if lastnu is None:
-            prop = nRJMCMC_Step(path[-1])
+            prop = nRJMCMC_Step(path[-1], tau = tau)
         else:
-            prop = nRJMCMC_Step(path[-1], lastnu)
+            prop = nRJMCMC_Step(path[-1], tau = tau , nu = lastnu)
         path.append(prop[0])
         k.append(prop[0].Gaussian_Mix_Model.k)
         bic.append(prop[0].bic())
@@ -401,10 +398,10 @@ def nRJMCMC(init, T, burn):
         print(f'Current components = {path[-1].Gaussian_Mix_Model.k}')
         print(f'Current BIC = {path[-1].bic()}')
 
-    return path[burn:], k[burn:], bic[burn:]
+    return path[burn:], k, bic
 
 
-def wt_informed_onestep_MPI(particles, logweights, neff):
+def wt_informed_onestep_MPI(particles, logweights, neff, alpha = 1):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
@@ -422,7 +419,7 @@ def wt_informed_onestep_MPI(particles, logweights, neff):
     if rank == 0:
         #print('getting the probability dictionary')
         sys.stdout.flush()
-        probdict = get_probdict(all_ps, all_wts, neff)
+        probdict = get_probdict(all_ps, all_wts, neff, alpha = alpha)
 
     probdict = comm.bcast(probdict, root = 0)
 
@@ -481,7 +478,7 @@ def straight_SMC_MPI(init, N, T):
         if rank == 0:
             ess_path.append(neff)
 
-        if math.log(neff) < math.log(N) + math.log(0.25): #math.log(N) - math.log(2):
+        if math.log(neff) < math.log(N) - math.log(N*(1-(t/T))):
 
             current_particles = pad(current_particles, exec = Executor_MPI())
             current_particles, logWeights = systematic_resampling(
@@ -566,7 +563,7 @@ def wt_informed_RJSMC_MPI(init, N, T):
 
         sys.stdout.flush()
 
-        if math.log(neff) < math.log(N) + math.log(0.25):
+        if math.log(neff) < math.log(N) - math.log(N*(1-(t/T))):
             current_particles = pad(current_particles, exec=Executor_MPI())
             current_particles, logWeights = systematic_resampling(
                 current_particles, logWeights, mvrs_rng, exec=Executor_MPI())
@@ -588,7 +585,7 @@ def wt_informed_RJSMC_MPI(init, N, T):
 
         # retain sample
         #print('Doing new sample')
-        current_particles, logWeights = wt_informed_onestep_MPI(current_particles, logWeights, neff)
+        current_particles, logWeights = wt_informed_onestep_MPI(current_particles, logWeights, neff, alpha = 1-(t/T))
         sys.stdout.flush()
         all_particles = np.array(comm.gather(current_particles, root=0)).ravel()
         all_Weights = np.array(comm.gather(logWeights, root=0)).ravel()
