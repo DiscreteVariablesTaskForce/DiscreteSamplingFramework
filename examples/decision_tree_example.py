@@ -20,18 +20,26 @@ y = data.target
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=5)
 
+# Poisson prior on the number of LEAVES:
+#   log P(k) = k*log(a) - log(e^a - 1) - log(k!)
+# See incremental_decision_tree_example.py, which is set up to match this.
 a = 15
-b = 5
+b = None
 target = dt.TreeTarget(a, b)
 initialProposal = dt.TreeInitialProposal(X_train, y_train)
 
 dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
 try:
-    treeSamples = dtMCMC.sample(500)
+    treeSamples = dtMCMC.sample(20_000)
 
-    mcmcLabels = dt.stats(treeSamples, X_test).predict(X_test, use_majority=True)
-    mcmcAccuracy = [dt.accuracy(y_test, mcmcLabels)]
-    print("MCMC mean accuracy: ", (mcmcAccuracy))
+    mcmcLabels = dt.stats(treeSamples[19_000:], X_test).predict(X_test, use_majority=True)
+    # dt.accuracy already returns a percentage
+    mcmcAccuracy = dt.accuracy(y_test, mcmcLabels)
+    print("MCMC acceptance rate:  %.3f (last 1000: %.3f)"
+          % (dtMCMC.acceptance_rate, dtMCMC.tail_acceptance_rate))
+    print("MCMC mean leaves:      %.1f"
+          % np.mean([len(t.leafs) for t in treeSamples[19_000:]]))
+    print("MCMC mean accuracy:    %.2f%%" % mcmcAccuracy)
 except ZeroDivisionError:
     print("MCMC sampling failed due to division by zero")
 

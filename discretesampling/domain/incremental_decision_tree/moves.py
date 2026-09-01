@@ -231,7 +231,10 @@ def evaluate_subtree_move(state, ctx, move, node, idx, rng):
 
     elif move == "prune":
         old_feat = int(state.nodes[node][3])
-        lp_old_thr = problem.lp_vals[old_feat]
+        # The reverse grow would have to re-draw this threshold, so this is the
+        # PROPOSAL density, not the prior -- the two differ once
+        # threshold_proposal is not "uniform".
+        lp_old_thr = problem.lp_thr_proposal(old_feat, float(state.nodes[node][4]))
 
         q_f = mp_f[move] / (1.0 if stump else float(num_terminal_nodes))
         q_b = mp_b["grow"] / max(1.0, num_leaves - 1.0)
@@ -250,7 +253,10 @@ def evaluate_subtree_move(state, ctx, move, node, idx, rng):
         # rejecting the matching reverse. The sound test is on the resulting
         # tree, which is what the admissibility check after the move makes.
         old_feat = int(state.nodes[node][3])
-        prop_correction = problem.lp_vals[old_feat] - lp_thr
+        # Reverse density of re-drawing the threshold this change overwrites:
+        # again the PROPOSAL density, not the prior.
+        prop_correction = (problem.lp_thr_proposal(old_feat, float(state.nodes[node][4]))
+                           - lp_thr)
 
     return prop_correction, {'node': node, 'feat': feat, 'thr': thr, 'stump': stump}
 

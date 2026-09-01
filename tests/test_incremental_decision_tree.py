@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from scipy.special import gammaln, logsumexp
 
 from discretesampling.base.algorithms import DiscreteVariableSMC, DiscreteVariableMCMC
 from discretesampling.base.executor import Executor
@@ -488,3 +489,175 @@ def test_subsampled_kernels_sample_the_same_posterior():
                 f"{name} disagrees with the full-data kernel on P(nodes={k}): "
                 f"{got[:, k].mean():.4f} vs {reference[:, k].mean():.4f} "
                 f"({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+def _exact_log_dm(problem, C):
+    """
+    Dirichlet-Multinomial log-density, vectorised over the rows of C.
+    Checked against the target's own scalar log_dm below, so the reference
+    stays tied to the implementation it is grading.
+    """
+    a0, alpha, K = problem._a0, problem.alpha, problem.num_classes
+    return (gammaln(a0) - gammaln(a0 + C.sum(axis=1))
+            + gammaln(C + alpha).sum(axis=1) - K * gammaln(alpha))
+
+
+def exact_p_stump(problem, target, grid=50_001):
+    """
+    The exact P(0 internal nodes) for a problem capped at max_tree_size=1.
+
+    With that cap the model is either the root-only tree or a single split
+    (feature f, threshold t), so the normalising constant is a 1-D integral
+    per feature rather than a sum over an unbounded tree space:
+
+        pi(0) = exp(log_prior(0, 1) + log_dm(root counts))
+        pi(1) = exp(log_prior(1, 2) + lp_feats)
+                * sum_f  Integral p(t) exp(log_dm(left) + log_dm(right)) dt
+
+    exp(problem.lp_vals[f]) is exactly the uniform density of t over that
+    feature's range, so the integral against it is a plain average over an
+    evenly spaced grid. Sorting the rows by the feature turns every threshold
+    into a prefix cut, so all grid points are evaluated in one pass.
+    """
+    lp0 = target.log_prior(0, 1) + target.log_dm(problem.root_counts())
+
+    K, y = problem.num_classes, problem.y
+    per_feature = []
+    for f in range(problem.n_features):
+        v_min, v_max = problem.vals[f]
+        thr = np.linspace(v_min, v_max, grid)
+        col = np.asarray(problem.X[:, f])
+        order = np.argsort(col, kind="stable")
+        ys, cols = y[order], col[order]
+        cumulative = np.zeros((len(ys) + 1, K), dtype=np.int64)
+        for k in range(K):
+            cumulative[1:, k] = np.cumsum(ys == k)
+        # a row goes left when its feature value is < thr
+        left = cumulative[np.searchsorted(cols, thr, side="left")]
+        right = cumulative[-1] - left
+        ll = _exact_log_dm(problem, left) + _exact_log_dm(problem, right)
+        per_feature.append(logsumexp(ll) - np.log(grid))
+
+    lp1 = target.log_prior(1, 2) + problem.lp_feats + logsumexp(per_feature)
+    return float(np.exp(lp0 - logsumexp([lp0, lp1])))
+
+
+def test_exact_log_dm_reference_matches_the_target():
+    """The vectorised reference must agree with the target's own log_dm."""
+    problem = make_problem(n=40, d=2, seed=3, min_samples_leaf=0, max_tree_size=1)
+    target = idt.IncrementalTreeTarget(problem)
+    counts = np.array([[0, 0], [1, 0], [3, 5], [12, 1], [7, 7], [20, 0]])
+    assert np.allclose(_exact_log_dm(problem, counts),
+                       [target.log_dm(c) for c in counts])
+
+
+@pytest.mark.parametrize("name", ["MH", "DA", "HINTS"])
+def test_kernels_match_the_exact_posterior(name):
+    """
+    Every kernel must reproduce the exact posterior over model size, not merely
+    agree with each other.
+
+    test_subsampled_kernels_sample_the_same_posterior uses the MH kernel as its
+    reference, so a bias shared by all three -- or one in MH alone -- passes it
+    unnoticed. This grades them against a posterior computed in closed form.
+
+    Weakly identified on purpose: y carries no signal and lam is tuned so the
+    two models sit near 0.59/0.41. Where one model dominates, P(0) pins to 0 or
+    1 and the comparison has no power to detect anything.
+    """
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0,
+                           min_samples_leaf=0, max_tree_size=1)
+    problem.y = np.random.default_rng(0).integers(
+        0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem)
+    exact = exact_p_stump(problem, target)
+    assert 0.2 < exact < 0.8, f"reference problem lost its power: P(0)={exact}"
+
+    make = {
+        "MH": lambda: idt.IncrementalTreeProposal(),
+        "DA": lambda: idt.DAProposal(target, ss_prop=0.25, min_data=20),
+        "HINTS": lambda: idt.HINTSProposal(target, ss_prop=0.25, min_data=20),
+    }[name]
+
+    # Calibrated, not guessed. Against the unmodified kernels this sits at
+    # ~1.6 sigma; dropping the threshold density from the grow correction shows
+    # up at 216 sigma, and over-weighting grow by 15% -- the |T|/(|T|+1) slip
+    # evaluate_subtree_move warns about -- at 6.7 sigma. Halve either the seeds
+    # or the iterations and that second one walks through.
+    estimates = []
+    for seed in range(8):
+        chain = DiscreteVariableMCMC(
+            idt.IncrementalTree, target, init, proposal=make()
+        ).sample(40_000, seed=seed, verbose=False)[5_000:]
+        estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
+
+    estimates = np.array(estimates)
+    se = estimates.std(ddof=1) / np.sqrt(len(estimates))
+    diff = estimates.mean() - exact
+    assert abs(diff) < 4.0 * se + 0.003, (
+        f"{name} disagrees with the exact posterior on P(0 nodes): "
+        f"{estimates.mean():.4f} vs {exact:.4f} "
+        f"({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+def test_non_uniform_threshold_proposal_keeps_the_target():
+    """
+    A threshold proposal that is not the prior must still sample the prior's
+    posterior.
+
+    This is the regression guard for splitting lp_thr_proposal (proposal
+    density) out of lp_vals (threshold prior). While the reverse corrections in
+    evaluate_subtree_move read lp_vals, any non-uniform proposal scored the
+    forward draw under one density and the reverse under another, which breaks
+    detailed balance while *raising* the acceptance rate -- so it looks like
+    better mixing rather than a bug. The exact reference below depends only on
+    the prior, so it is unmoved by threshold_proposal and catches exactly that.
+    """
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0, min_samples_leaf=0,
+                           max_tree_size=1, threshold_proposal="data")
+    problem.y = np.random.default_rng(0).integers(
+        0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem)
+    exact = exact_p_stump(problem, target)
+
+    estimates = []
+    for seed in range(8):
+        chain = DiscreteVariableMCMC(
+            idt.IncrementalTree, target, init,
+            proposal=idt.IncrementalTreeProposal()
+        ).sample(40_000, seed=seed, verbose=False)[5_000:]
+        estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
+
+    estimates = np.array(estimates)
+    se = estimates.std(ddof=1) / np.sqrt(len(estimates))
+    diff = estimates.mean() - exact
+    assert abs(diff) < 4.0 * se + 0.003, (
+        "the 'data' threshold proposal does not target the prior's posterior: "
+        f"{estimates.mean():.4f} vs {exact:.4f} "
+        f"({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+def test_threshold_proposal_density_round_trips():
+    """random_threshold's returned density must be what lp_thr_proposal scores."""
+    for tp in ("uniform", "data"):
+        problem = make_problem(n=80, d=3, seed=1, threshold_proposal=tp)
+        rng = RNG(0)
+        for _ in range(200):
+            feat = problem.random_feature(rng)
+            thr, lp = problem.random_threshold(feat, rng)
+            assert np.isclose(lp, problem.lp_thr_proposal(feat, thr)), (
+                f"{tp}: draw scored {lp} but lp_thr_proposal says "
+                f"{problem.lp_thr_proposal(feat, thr)}")
+            v_min, v_max = problem.vals[feat]
+            assert v_min <= thr <= v_max
+
+
+def test_unknown_threshold_proposal_is_rejected():
+    with pytest.raises(ValueError, match="threshold_proposal"):
+        make_problem(threshold_proposal="kde")
