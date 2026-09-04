@@ -71,3 +71,118 @@ def accuracy(y_true, y_pred):
 def tree_sizes(states):
     """Node count per tree -- the marginal the distributional tests compare."""
     return np.array([len(s.tree) for s in states], dtype=np.int64)
+
+
+# ------------------- classification metrics ------------------- #
+#
+# Written against numpy rather than sklearn.metrics because they are called
+# once per sampler iteration: on a run of any length the per-call overhead of
+# the sklearn entry points, which validate and re-derive the label set every
+# time, costs more than the arithmetic. The label set is fixed by the problem,
+# so it is passed in as num_classes instead of rediscovered.
+
+def confusion_matrix(y_true, y_pred, num_classes=None):
+    """
+    Rows are true classes, columns predicted, as a (K, K) integer array.
+    """
+    y_true = np.asarray(y_true, dtype=np.int64)
+    y_pred = np.asarray(y_pred, dtype=np.int64)
+    if num_classes is None:
+        num_classes = int(max(y_true.max(initial=0), y_pred.max(initial=0))) + 1
+    K = int(num_classes)
+    return np.bincount(y_true * K + y_pred,
+                       minlength=K * K).reshape(K, K)
+
+
+def _safe_divide(num, den):
+    """num/den, defining 0/0 as 0 -- a class with no predictions has no
+    precision and a class with no support has no recall, and neither is a
+    reason to put a nan through the rest of a run's statistics."""
+    out = np.zeros(len(num), dtype=np.float64)
+    np.divide(num, den, out=out, where=den > 0)
+    return out
+
+
+def precision_recall_f1(cm):
+    """
+    Per-class precision, recall and F1, read off a confusion matrix.
+    """
+    tp = np.diag(cm).astype(np.float64)
+    precision = _safe_divide(tp, cm.sum(axis=0).astype(np.float64))
+    recall = _safe_divide(tp, cm.sum(axis=1).astype(np.float64))
+    f1 = _safe_divide(2.0 * precision * recall, precision + recall)
+    return precision, recall, f1
+
+
+def balanced_accuracy(cm):
+    """
+    Mean recall over the classes that appear in y_true. Classes with no support
+    are left out rather than counted as zero, which would otherwise make the
+    figure depend on how many classes the problem declares.
+    """
+    support = cm.sum(axis=1)
+    present = support > 0
+    if not present.any():
+        return float('nan')
+    _, recall, _ = precision_recall_f1(cm)
+    return float(recall[present].mean())
+
+
+def log_loss(y_true, proba, eps=1e-15):
+    """
+    Mean negative log probability of the true class. Unlike accuracy this reads
+    the whole predictive distribution, so it separates a sampler that is right
+    for the right reasons from one that is right and unsure.
+    """
+    y_true = np.asarray(y_true, dtype=np.int64)
+    p = proba[np.arange(len(y_true)), y_true]
+    return float(-np.mean(np.log(np.clip(p, eps, 1.0))))
+
+
+def brier_score(y_true, proba):
+    """
+    Mean squared error of the predicted distribution against the one-hot truth,
+    summed over classes. Bounded, unlike log_loss, so it survives a sampler that
+    puts zero mass on an observed class.
+    """
+    y_true = np.asarray(y_true, dtype=np.int64)
+    sq = np.sum(proba * proba, axis=1)
+    return float(np.mean(sq - 2.0 * proba[np.arange(len(y_true)), y_true] + 1.0))
+
+
+def classification_metrics(y_true, proba, num_classes=None, prefix=""):
+    """
+    Every scalar metric for one prediction, from a single predict_proba pass.
+
+    Returns a flat dict, so a per-iteration record is one call and the caller
+    can stack the results straight into columns. `prefix` names the split, e.g.
+    prefix="test_" gives test_accuracy, test_log_loss, and so on. The confusion
+    matrix is returned under prefix + "confusion" alongside the scalars.
+    """
+    y_true = np.asarray(y_true, dtype=np.int64)
+    y_pred = np.argmax(proba, axis=1)
+    if num_classes is None:
+        num_classes = proba.shape[1]
+    cm = confusion_matrix(y_true, y_pred, num_classes)
+    precision, recall, f1 = precision_recall_f1(cm)
+    support = cm.sum(axis=1) > 0
+    return {
+        prefix + 'accuracy': float(np.trace(cm) / max(cm.sum(), 1)),
+        prefix + 'balanced_accuracy': balanced_accuracy(cm),
+        prefix + 'macro_precision': float(precision[support].mean()) if support.any() else float('nan'),
+        prefix + 'macro_recall': float(recall[support].mean()) if support.any() else float('nan'),
+        prefix + 'macro_f1': float(f1[support].mean()) if support.any() else float('nan'),
+        prefix + 'log_loss': log_loss(y_true, proba),
+        prefix + 'brier': brier_score(y_true, proba),
+        prefix + 'confusion': cm,
+    }
+
+
+def evaluate(states, X, y, weights=None, num_classes=None, prefix=""):
+    """
+    classification_metrics for an ensemble of tree states -- one MCMC state, or
+    a weighted SMC particle set. `weights` are the particle weights on the
+    linear scale; leave them out only for an equally weighted set.
+    """
+    proba = ensemble_predict_proba(states, X, weights)
+    return classification_metrics(y, proba, num_classes, prefix)
