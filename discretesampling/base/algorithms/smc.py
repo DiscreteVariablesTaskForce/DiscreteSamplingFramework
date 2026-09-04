@@ -37,7 +37,7 @@ class DiscreteVariableSMC():
         self.initialProposal = initialProposal
         self.target = target
 
-    def sample(self, Tsmc, N, seed=0, verbose=True):
+    def sample(self, Tsmc, N, seed=0, verbose=True, callback=None):
         loc_n = int(N/self.exec.P)
         rank = self.exec.rank
         mvrs_rng = RNG(seed)
@@ -49,12 +49,17 @@ class DiscreteVariableSMC():
 
         display_progress_bar = verbose and rank == 0
         progress_bar = tqdm(total=Tsmc, desc="SMC sampling", disable=not display_progress_bar)
+        self.ess_history = []
+        self.resampled_history = []
 
         for t in range(Tsmc):
             logWeights = normalise(logWeights, self.exec)
             neff = ess(logWeights, self.exec)
+            self.ess_history.append(neff)
 
-            if math.log(neff) < math.log(N) - math.log(2):
+            resampled = math.log(neff) < math.log(N) - math.log(2)
+            self.resampled_history.append(resampled)
+            if resampled:
                 current_particles, logWeights = systematic_resampling(
                     current_particles, logWeights, mvrs_rng, exec=self.exec)
 
@@ -85,7 +90,12 @@ class DiscreteVariableSMC():
                 logWeights[i] += new_target_logprob - current_target_logprob + reverse_logprob - forward_logprob[i]
 
             current_particles = new_particles
+            if callback is not None:
+                callback(t, current_particles, logWeights, neff, resampled)
             progress_bar.update(1)
 
         progress_bar.close()
+        logWeights = normalise(logWeights, self.exec)
+        self.ess_history.append(ess(logWeights, self.exec))
+        self.logWeights = logWeights
         return current_particles

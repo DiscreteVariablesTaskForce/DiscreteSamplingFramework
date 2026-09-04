@@ -7,6 +7,7 @@ from discretesampling.base.executor import Executor
 from discretesampling.base.random import RNG
 from discretesampling.base.util import pad, restore
 from discretesampling.domain import incremental_decision_tree as idt
+from discretesampling.domain.incremental_decision_tree import diagnostics as dg
 from discretesampling.domain.incremental_decision_tree.moves import (
     apply_subtree_proposal, change_admissible, draw_subtree, evaluate_subtree_move,
     make_context, select_move, subtree_admissible, subtree_node_data)
@@ -423,7 +424,8 @@ def test_mcmc_drives_the_same_proposals(problem, target):
     proposal = idt.DAProposal(target, ss_prop=0.25, min_data=20)
     chain = DiscreteVariableMCMC(idt.IncrementalTree, target,
                                  idt.IncrementalTreeInitialProposal(problem),
-                                 proposal=proposal).sample(200, seed=0, verbose=False)
+                                 proposal=proposal).sample(200, seed=0, verbose=False,
+                                                           keep_samples=True)
     assert len(chain) == 200
     assert all(target.eval(x) > idt.BARRED for x in chain)
 
@@ -471,7 +473,7 @@ def test_subsampled_kernels_sample_the_same_posterior():
         for seed in range(seeds):
             chain = DiscreteVariableMCMC(
                 idt.IncrementalTree, target, init, proposal=make()
-            ).sample(iters, seed=seed, verbose=False)[burn:]
+            ).sample(iters, seed=seed, verbose=False, keep_samples=True)[burn:]
             sizes = idt.tree_sizes(chain)
             out.append([float(np.mean(sizes == k)) for k in range(3)])
         return np.array(out)
@@ -591,7 +593,7 @@ def test_kernels_match_the_exact_posterior(name):
     for seed in range(8):
         chain = DiscreteVariableMCMC(
             idt.IncrementalTree, target, init, proposal=make()
-        ).sample(40_000, seed=seed, verbose=False)[5_000:]
+        ).sample(40_000, seed=seed, verbose=False, keep_samples=True)[5_000:]
         estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
 
     estimates = np.array(estimates)
@@ -631,7 +633,7 @@ def test_non_uniform_threshold_proposal_keeps_the_target():
         chain = DiscreteVariableMCMC(
             idt.IncrementalTree, target, init,
             proposal=idt.IncrementalTreeProposal()
-        ).sample(40_000, seed=seed, verbose=False)[5_000:]
+        ).sample(40_000, seed=seed, verbose=False, keep_samples=True)[5_000:]
         estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
 
     estimates = np.array(estimates)
@@ -661,3 +663,233 @@ def test_threshold_proposal_density_round_trips():
 def test_unknown_threshold_proposal_is_rejected():
     with pytest.raises(ValueError, match="threshold_proposal"):
         make_problem(threshold_proposal="kde")
+
+
+# --------------------------------------------------------------------------- #
+# instrumentation: the move log, the SMC diagnostics and the metrics
+# --------------------------------------------------------------------------- #
+
+def _chain(problem, target, proposal, iters=300, seed=1):
+    mcmc = DiscreteVariableMCMC(idt.IncrementalTree, target,
+                                idt.IncrementalTreeInitialProposal(problem),
+                                proposal=proposal)
+    trace = []
+    mcmc.sample(iters, seed=seed, verbose=False,
+                callback=lambda i, c, a: trace.append((len(c.tree), a)))
+    return mcmc, trace
+
+
+def _make_proposal(name, target):
+    if name == "MH":
+        return idt.IncrementalTreeProposal()
+    if name == "DA":
+        return idt.DAProposal(target, ss_prop=0.25, min_data=20)
+    return idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+
+
+@pytest.mark.parametrize("name", ["MH", "DA", "HINTS"])
+def test_recording_moves_does_not_change_the_chain(problem, target, name):
+    """
+    The whole point of the log is to compare samplers, so it must not perturb
+    the one it is watching. It draws no random numbers, so the chain a run
+    produces has to be identical bit for bit with recording on and off.
+    """
+    off = _chain(problem, target, _make_proposal(name, target))[1]
+    proposal = _make_proposal(name, target)
+    proposal.record_moves = True
+    assert _chain(problem, target, proposal)[1] == off
+
+
+@pytest.mark.parametrize("name", ["MH", "DA", "HINTS"])
+def test_every_call_closes_out_exactly_one_call_row(problem, target, name):
+    """
+    A call that recorded no outcome would silently drop moves from the counts;
+    one that recorded two would double-count them. Every exit has to close the
+    call exactly once.
+    """
+    proposal = _make_proposal(name, target)
+    proposal.record_moves = True
+    _chain(problem, target, proposal, iters=400)
+    log = proposal.move_log.arrays()
+    assert len(log['call_id']) == proposal.n_calls
+    assert np.array_equal(log['call_id'], np.arange(proposal.n_calls))
+    # No move may be attributed to a call that never happened.
+    assert log['call'].max() < proposal.n_calls
+
+
+@pytest.mark.parametrize("name", ["MH", "DA"])
+def test_one_move_per_call_and_its_fate_is_the_calls(problem, target, name):
+    """
+    MH and DA consider exactly one move per iteration, so the move's fate and
+    the call's are the same event seen twice, and the counters have to total
+    them. The comparison against HINTS rests on that: HINTS spends several
+    moves where these spend one.
+    """
+    proposal = _make_proposal(name, target)
+    proposal.record_moves = True
+    _chain(problem, target, proposal, iters=400)
+    log = proposal.move_log.arrays()
+    counters = proposal.counters()
+
+    assert len(log['move']) == proposal.n_calls
+    assert np.array_equal(log['outcome'], log['call_outcome'])
+
+    table = proposal.move_log.counts()
+    # A "stay" is the absence of a move, so it can have no other fate.
+    assert table[dg.MOVE_CODE['stay']].sum() == table[dg.MOVE_CODE['stay'], dg.STAY]
+    assert table[:, dg.STAY].sum() == counters['stays'] - counters['barred'] \
+        - counters['screened_out'] - counters['inadmissible']
+    assert table[:, dg.BARRED].sum() == counters['barred']
+    assert table[:, dg.SCREENED_OUT].sum() == counters['screened_out']
+    assert table[:, dg.INADMISSIBLE].sum() == counters['inadmissible']
+    # n_moved counts the calls that produced a new state, which is exactly the
+    # moves handed on to the outer step. n_inner_moves is a looser count: it
+    # rises before _finish, which can still bar the move afterwards.
+    assert table[:, dg.PROPOSED].sum() == counters['moved']
+    assert table[:, dg.APPLIED].sum() == 0
+    assert counters['inner_moves'] >= counters['moved']
+
+
+def test_hints_move_counts_total_the_sweep_counters(problem, target):
+    proposal = idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+    proposal.record_moves = True
+    _chain(problem, target, proposal, iters=400)
+    log = proposal.move_log.arrays()
+    counters = proposal.counters()
+    table = proposal.move_log.counts()
+
+    # One row per block, and every block emits exactly one.
+    assert len(log['move']) == counters['blocks']
+    assert len(log['move']) > proposal.n_calls
+    assert table[dg.MOVE_CODE['stay']].sum() == table[dg.MOVE_CODE['stay'], dg.STAY]
+    assert table[:, dg.SCREENED_OUT].sum() == counters['screened_out']
+    assert table[:, dg.INADMISSIBLE].sum() == counters['inadmissible']
+    assert table[:, dg.APPLIED].sum() == counters['inner_moves']
+    assert table[:, dg.PROPOSED].sum() == 0, "a block move is applied, not proposed"
+
+    # A sweep can be barred at two levels: an individual block's move, and the
+    # root correction on the sweep as a whole. The counter totals both.
+    call_barred = int((log['call_outcome'] == dg.BARRED).sum())
+    assert table[:, dg.BARRED].sum() + call_barred == counters['barred']
+    assert int((log['call_outcome'] == dg.PROPOSED).sum()) == counters['moved']
+
+
+def test_screened_moves_carry_the_subsample_they_were_judged_on(problem, target):
+    """
+    The subsample size and surrogate ratio are the columns that say what a
+    delayed-acceptance screen actually cost and decided. A move that reached the
+    surrogate carries both; one that never got there carries neither.
+    """
+    proposal = idt.DAProposal(target, ss_prop=0.25, min_data=20)
+    proposal.record_moves = True
+    _chain(problem, target, proposal, iters=400)
+    log = proposal.move_log.arrays()
+
+    # dsurr, not subset, is what marks a screened move: a block can legitimately
+    # hold none of the node's rows, and that empty screen is still a screen.
+    screened = ~np.isnan(log['dsurr'])
+    assert screened.any()
+    assert (log['subset'][~screened] == 0).all()
+    # Only a real move is ever screened, and only a screened one is screened out.
+    assert not (log['outcome'][screened] == dg.STAY).any()
+    assert screened[log['outcome'] == dg.SCREENED_OUT].all()
+    # A subsample cannot hold more rows than the node it was drawn from.
+    assert (log['subset'][screened] <= log['rows'][screened]).all()
+
+    mh = idt.IncrementalTreeProposal()
+    mh.record_moves = True
+    _chain(problem, target, mh, iters=200)
+    # MH screens nothing, so it has no subsample to report.
+    assert (mh.move_log.arrays()['subset'] == 0).all()
+
+
+def test_hints_records_one_row_per_block_of_the_sweep(problem, target):
+    """
+    The per-subsample level the sweep works at: each block draws its own move
+    and screens it on its own rows, and each is a row of the log tagged with
+    the call it belongs to.
+    """
+    proposal = idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+    proposal.record_moves = True
+    _chain(problem, target, proposal, iters=300)
+    log = proposal.move_log.arrays()
+
+    per_call = np.bincount(log['call'], minlength=proposal.n_calls)
+    assert (per_call >= 1).all(), "every sweep runs at least one block"
+    assert per_call.sum() == proposal.counters()['blocks']
+    # A sweep only reaches the outer step if it applied something, and a sweep
+    # that applied nothing cannot have got there.
+    applied = np.bincount(log['call'][log['outcome'] == dg.APPLIED],
+                          minlength=proposal.n_calls)
+    proposed = log['call_outcome'] == dg.PROPOSED
+    assert (applied[proposed] > 0).all()
+    assert not proposed[applied == 0].any()
+
+
+def test_smc_records_ess_and_returns_usable_weights(problem, target):
+    proposal = idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+    smc = DiscreteVariableSMC(idt.IncrementalTree, target,
+                              idt.IncrementalTreeInitialProposal(problem),
+                              proposal=proposal, Lkernel=proposal.lkernel())
+    seen = []
+    particles = smc.sample(8, 32, seed=1, verbose=False,
+                           callback=lambda t, p, lw, n, r: seen.append((t, n, r)))
+
+    assert [s[0] for s in seen] == list(range(8))
+    # One per step, plus the final weights the loop never normalises itself.
+    assert len(smc.ess_history) == 9
+    assert len(smc.resampled_history) == 8
+    assert [s[1] for s in seen] == smc.ess_history[:8]
+    assert [s[2] for s in seen] == smc.resampled_history
+    assert all(1.0 <= e <= 32.0 + 1e-9 for e in smc.ess_history)
+
+    weights = np.exp(smc.logWeights)
+    assert weights.sum() == pytest.approx(1.0)
+    assert len(weights) == len(particles)
+    # Weighted and unweighted ensembles are different estimators; both must at
+    # least be proper distributions over the classes.
+    for w in (weights, None):
+        probs = idt.ensemble_predict_proba(particles, problem.X, w)
+        assert np.allclose(probs.sum(axis=1), 1.0)
+
+
+def test_classification_metrics_agree_with_sklearn(problem, target):
+    from sklearn import metrics as skm
+
+    x, _ = walk(idt.IncrementalTreeProposal(), problem, seed=4, steps=300)
+    proba = idt.predict_proba(x, problem.X)
+    y = problem.y
+    got = idt.classification_metrics(y, proba, problem.num_classes, prefix="t_")
+    pred = np.argmax(proba, axis=1)
+
+    assert np.array_equal(got['t_confusion'], skm.confusion_matrix(y, pred))
+    assert got['t_accuracy'] == pytest.approx(skm.accuracy_score(y, pred))
+    assert got['t_balanced_accuracy'] == pytest.approx(
+        skm.balanced_accuracy_score(y, pred))
+    assert got['t_macro_f1'] == pytest.approx(
+        skm.f1_score(y, pred, average='macro', zero_division=0))
+    assert got['t_macro_precision'] == pytest.approx(
+        skm.precision_score(y, pred, average='macro', zero_division=0))
+    assert got['t_macro_recall'] == pytest.approx(
+        skm.recall_score(y, pred, average='macro', zero_division=0))
+    assert got['t_log_loss'] == pytest.approx(
+        skm.log_loss(y, proba, labels=list(range(problem.num_classes))))
+    # Multiclass Brier, summed over classes, which sklearn has no direct entry
+    # point for in this form.
+    onehot = np.eye(problem.num_classes)[y]
+    assert got['t_brier'] == pytest.approx(np.mean(np.sum((proba - onehot) ** 2, axis=1)))
+
+
+def test_metrics_survive_a_class_that_is_never_predicted():
+    """
+    A short chain can sit on a stump, which predicts one class for everything.
+    Precision for the classes it never names is 0/0, and the run has to carry on
+    with a number rather than a nan.
+    """
+    problem = make_problem(n=120, d=3, seed=2)
+    stump = idt.IncrementalTree.stump(problem)
+    got = idt.classification_metrics(problem.y, idt.predict_proba(stump, problem.X),
+                                     problem.num_classes)
+    assert np.isfinite(got['macro_precision'])
+    assert np.isfinite(got['macro_f1'])
+    assert got['confusion'].sum() == problem.n_rows

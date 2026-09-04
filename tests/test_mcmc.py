@@ -14,6 +14,6 @@ def test_mcmc(seed, T, expected):
     initialProposal = spectrum.SpectrumDimensionInitialProposal(50)  # Uniform sampling from 0-50
 
     specMCMC = DiscreteVariableMCMC(spectrum.SpectrumDimension, target, initialProposal)
-    samples = specMCMC.sample(T, seed=seed)
+    samples = specMCMC.sample(T, seed=seed, keep_samples=True)
 
     assert samples == expected
