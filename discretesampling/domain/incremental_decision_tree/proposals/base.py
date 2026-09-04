@@ -6,6 +6,10 @@ from discretesampling.domain.incremental_decision_tree.problem import BARRED
 from discretesampling.domain.incremental_decision_tree.moves import (
     apply_subtree_proposal, proposal_root_correction, root_correction,
     subtree_admissible)
+from discretesampling.domain.incremental_decision_tree.diagnostics import (
+    MOVE_CODE, MoveLog, PROPOSED, STAY_OUTCOME)
+
+NAN = float('nan')
 
 
 class IncrementalTreeProposalBase(DiscreteVariableProposal):
@@ -17,6 +21,13 @@ class IncrementalTreeProposalBase(DiscreteVariableProposal):
         # Off by default: writing it costs a dict per accepted move, which the
         # tests want and a production run does not.
         self.record_diagnostics = False
+        # Off by default too, and separately: this one is per move *considered*,
+        # not per move accepted, and it is what a sampler comparison reads.
+        self.record_moves = False
+        self.move_log = MoveLog()
+        # The move this sample() call is working on, held until whichever exit
+        # the call takes says what became of it. See diagnostics.MoveLog.
+        self._pending = None
         self.n_calls = 0
         self.n_stays = 0
         self.n_barred = 0
@@ -33,6 +44,37 @@ class IncrementalTreeProposalBase(DiscreteVariableProposal):
                      'n_inadmissible', 'n_moved', 'n_inner_moves'):
             setattr(self, name, 0)
         self.sample_time = 0.0
+        self.move_log.clear()
+        self._pending = None
+
+    # The call index a move belongs to is n_calls, which _timed increments only
+    # once the call has returned -- so during a call it is this call's index.
+
+    def _note(self, move, node, rows, subset=0, dsurr=NAN):
+        """
+        Remember the move now under consideration. Called again for the same
+        move once the surrogate has been evaluated, to fill in the subsample it
+        was screened on; the last note before the exit is the one recorded.
+        """
+        if self.record_moves:
+            self._pending = (MOVE_CODE[move], -1 if node is None else node,
+                             rows, subset, dsurr)
+
+    def _emit(self, outcome):
+        """Record the pending move under `outcome`, if there is one."""
+        pending = self._pending
+        if pending is not None:
+            self.move_log.record(self.n_calls, *pending, outcome)
+            self._pending = None
+
+    def _log(self, move, node, rows, outcome, subset=0, dsurr=NAN):
+        """Note and emit in one step, for a move whose fate is already known --
+        which is every move inside a HINTS sweep, since the sweep decides each
+        one before going on to the next."""
+        if self.record_moves:
+            self.move_log.record(self.n_calls, MOVE_CODE[move],
+                                 -1 if node is None else node, rows, subset,
+                                 dsurr, outcome)
 
     def counters(self):
         """
@@ -101,6 +143,12 @@ class IncrementalTreeProposalBase(DiscreteVariableProposal):
         if reason is not None:
             setattr(self, reason, getattr(self, reason) + 1)
         self.n_stays += 1
+        if self.record_moves:
+            # Every path that gives up on a call ends here, so this is where the
+            # pending move's fate is settled and the call is closed out.
+            outcome = STAY_OUTCOME[reason]
+            self._emit(outcome)
+            self.move_log.end_call(self.n_calls, outcome)
         x._smc_terms = (x, 0.0, 0.0)
         return x
 
@@ -131,6 +179,11 @@ class IncrementalTreeProposalBase(DiscreteVariableProposal):
             return self._stay(x, 'n_barred')
 
         self.n_moved += 1
+        if self.record_moves:
+            # The one exit that does not go through _stay: the proposal has
+            # produced a new state and the outer accept/reject step decides it.
+            self._emit(PROPOSED)
+            self.move_log.end_call(self.n_calls, PROPOSED)
         state_new._smc_terms = (x, float(forward), float(reverse + root_term))
         if self.record_diagnostics:
             # The terms split out, for tests that check the correction against

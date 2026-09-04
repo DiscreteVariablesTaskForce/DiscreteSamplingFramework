@@ -9,6 +9,8 @@ from discretesampling.domain.incremental_decision_tree.subsampling import (
     assign_blocks, block_subset)
 from discretesampling.domain.incremental_decision_tree.proposals.base import (
     IncrementalTreeProposalBase)
+from discretesampling.domain.incremental_decision_tree.diagnostics import (
+    APPLIED, BARRED as BARRED_OUT, INADMISSIBLE, SCREENED_OUT, STAY)
 
 
 class HINTSProposal(IncrementalTreeProposalBase):
@@ -83,6 +85,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
         for j in range(num_blocks):
             move, node = select_move(state_new, ctx, rng)
             if move == "stay":
+                self._log(move, node, 0, STAY)
                 continue
 
             # Full node data, not the block. The min_samples_leaf test inside
@@ -95,15 +98,18 @@ class HINTSProposal(IncrementalTreeProposalBase):
                 state_new, ctx, move, node, node_data, rng)
             if prop_correction <= BARRED:
                 self.n_barred += 1
+                self._log(move, node, len(node_data), BARRED_OUT)
                 continue
 
             subset = block_subset(node_data, block_of, j)
             v_sub, v_sub_prime, _ = self.target.eval_subset(
                 state_new, move, node, prop_move, subset, len(node_data))
+            n_sub, dsurr = len(subset), v_sub_prime - v_sub
 
             log_accept = min(0.0, v_sub_prime - v_sub + prop_correction)
             if not rng.random() < math.exp(log_accept):
                 self.n_screened_out += 1
+                self._log(move, node, len(node_data), SCREENED_OUT, n_sub, dsurr)
                 continue
 
             # Every state the sweep passes through has to be admissible, not
@@ -116,6 +122,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
             if move == "change" and not change_admissible(
                     state_new, node, prop_move['feat'], prop_move['thr'], node_data):
                 self.n_inadmissible += 1
+                self._log(move, node, len(node_data), INADMISSIBLE, n_sub, dsurr)
                 continue
 
             if state_new is x:
@@ -137,6 +144,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
             forward += v_sub_prime
             reverse += v_sub
             self.n_inner_moves += 1
+            self._log(move, node, len(node_data), APPLIED, n_sub, dsurr)
 
         return state_new, forward, reverse
 

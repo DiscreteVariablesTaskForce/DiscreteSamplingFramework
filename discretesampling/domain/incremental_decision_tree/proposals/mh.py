@@ -20,9 +20,11 @@ class IncrementalTreeProposal(IncrementalTreeProposalBase):
         subtree_root, ctx = draw_subtree(x, rng)
         move, node = select_move(x, ctx, rng)
         if move == "stay":
+            self._note(move, node, 0)
             return self._stay(x)
 
         node_data = subtree_node_data(x, ctx, node)
+        self._note(move, node, len(node_data))
         prop_correction, prop_move = evaluate_subtree_move(
             x, ctx, move, node, node_data, rng)
         if prop_correction <= BARRED:

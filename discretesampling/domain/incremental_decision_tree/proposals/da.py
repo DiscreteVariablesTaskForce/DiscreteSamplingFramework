@@ -44,9 +44,11 @@ class DAProposal(IncrementalTreeProposalBase):
         subtree_root, ctx = draw_subtree(x, rng)
         move, node = select_move(x, ctx, rng)
         if move == "stay":
+            self._note(move, node, 0)
             return self._stay(x)
 
         node_data = subtree_node_data(x, ctx, node)
+        self._note(move, node, len(node_data))
         prop_correction, prop_move = evaluate_subtree_move(
             x, ctx, move, node, node_data, rng)
         if prop_correction <= BARRED:
@@ -70,6 +72,7 @@ class DAProposal(IncrementalTreeProposalBase):
                                         self.ss_prop, self.min_data)
         v_sub, v_sub_prime, _ = self.target.eval_subset(
             x, move, node, prop_move, subset, len(node_data))
+        self._note(move, node, len(node_data), len(subset), v_sub_prime - v_sub)
 
         log_accept = min(0.0, v_sub_prime - v_sub + prop_correction)
         if not rng.random() < math.exp(log_accept):
