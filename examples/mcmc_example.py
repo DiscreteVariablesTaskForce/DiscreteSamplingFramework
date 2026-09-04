@@ -23,7 +23,7 @@ initialProposal = dt.TreeInitialProposal(X_train, y_train)
 dtMCMC = DiscreteVariableMCMC(dt.Tree, target, initialProposal)
 
 try:
-    treeSamples = dtMCMC.sample(N=1000)
+    treeSamples = dtMCMC.sample(N=1000, keep_samples=True)
     mcmcLabels = dt.stats(treeSamples[500:999], X_test).predict(X_test)
     mcmc_acc = dt.accuracy(y_test, mcmcLabels)
     print(numpy.mean(mcmc_acc))

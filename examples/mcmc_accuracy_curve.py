@@ -89,7 +89,7 @@ def one_chain(job):
             last_state = current
         curve[i] = last
 
-    mcmc.sample(iters, seed=seed, verbose=False)
+    mcmc.sample(iters, seed=seed, verbose=False, callback=record)
     return curve
 
 

@@ -75,7 +75,7 @@ for name in names:
     idtMCMC = DiscreteVariableMCMC(idt.IncrementalTree, target, initialProposal,
                                    proposal=make_proposal(name))
     try:
-        treeSamples = idtMCMC.sample(N=20_000)
+        treeSamples = idtMCMC.sample(N=20_000, keep_samples=True)
         tail = treeSamples[19_000:]
         mcmcLabels = idt.predict(tail, X_test)
         # idt.accuracy returns a fraction; scale it to match dt.accuracy
@@ -95,8 +95,16 @@ for name in names:
                                  proposal=proposal, Lkernel=proposal.lkernel())
     try:
         treeSMCSamples = idtSMC.sample(10, 1000)
-        smcLabels = idt.predict(treeSMCSamples, X_test)
-        smc_acc = idt.accuracy(y_test, smcLabels)
-        print("SMC-" + name + " mean accuracy: ", np.mean(smc_acc))
+        # The estimator SMC targets is the weighted ensemble; reading the
+        # particles unweighted answers a different question, and after a step
+        # that did not resample the two can be far apart.
+        weights = np.exp(idtSMC.logWeights)
+        smc = idt.evaluate(treeSMCSamples, X_test, y_test, weights=weights,
+                           num_classes=problem.num_classes)
+        print("SMC-%s accuracy:         %.2f%%" % (name, smc['accuracy'] * 100))
+        print("SMC-%s macro F1:         %.4f" % (name, smc['macro_f1']))
+        print("SMC-%s log loss:         %.4f" % (name, smc['log_loss']))
+        print("SMC-%s ESS:              %.1f of 1000 (min over run %.1f)"
+              % (name, idtSMC.ess_history[-1], min(idtSMC.ess_history)))
     except ZeroDivisionError:
         print("SMC-" + name + " sampling failed due to division by zero")

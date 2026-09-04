@@ -6,7 +6,7 @@ initialProposal = spectrum.SpectrumDimensionInitialProposal(50)  # Uniform sampl
 
 specMCMC = DiscreteVariableMCMC(spectrum.SpectrumDimension, target, initialProposal)
 try:
-    samples = specMCMC.sample(1000)
+    samples = specMCMC.sample(1000, keep_samples=True)
 
 except ZeroDivisionError:
     print("MCMC sampling failed due to division by zero")
