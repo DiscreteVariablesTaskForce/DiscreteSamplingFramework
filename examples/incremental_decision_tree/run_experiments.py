@@ -1,20 +1,25 @@
 """
 Run a list of sampler_diagnostics.py experiments in one go.
 
-List what to run in examples/experiments.py (or point --file at a copy of it),
+List what to run in examples/incremental_decision_tree/experiments.py (or point --file at a copy of it),
 then:
 
-    python examples/run_experiments.py --list
-    python examples/run_experiments.py
-    python examples/run_experiments.py --index 2
-    python examples/run_experiments.py --run-id my_sweep
+    python examples/incremental_decision_tree/run_experiments.py --list
+    python examples/incremental_decision_tree/run_experiments.py
+    python examples/incremental_decision_tree/run_experiments.py --index 2
+    python examples/incremental_decision_tree/run_experiments.py --run-id my_sweep
 
 Every experiment in the list writes into the same Results/<run-id>/ directory
 -- one run-id for the whole sweep, not one per experiment -- so
+`evaluate_results.py --run-id <that>` evaluates all of them in one go and
 `plot_diagnostics.py --run-id <that> --name <one of them>` reads any of them
 back afterwards. Two experiments that would write the same .h5 files (the same
 dataset and no distinct 'name') are refused before anything runs, rather than
 one silently overwriting the other partway through a long sweep.
+
+This step only samples and stores trees. No predictive metric is computed
+until evaluate_results.py is run over what it wrote; see sampler_diagnostics.py
+for why the two are separate.
 
 Experiments run one after another; each one's own --jobs (default: this
 machine's cores minus a couple, same as sampler_diagnostics.py) parallelises
@@ -114,8 +119,9 @@ def main():
 
     names = sorted({experiment_name(e) for e in experiments})
     print(f"\nAll {len(experiments)} experiment(s) complete. Results in: {results_dir}")
+    print(f"  python examples/incremental_decision_tree/evaluate_results.py --run-id {run_id}")
     for name in names:
-        print(f"  python examples/plot_diagnostics.py --run-id {run_id} --name {name}")
+        print(f"  python examples/incremental_decision_tree/plot_diagnostics.py --run-id {run_id} --name {name}")
 
 
 if __name__ == "__main__":

@@ -2,27 +2,49 @@
 Per-iteration diagnostics for the incremental decision tree samplers.
 
 Runs MCMC and/or SMC under each of the three proposals and records, for every
-iteration, what the sampler did and how good the tree it landed on was, so the
-samplers and the proposal mechanisms can be put side by side on the same run.
+iteration, what the sampler did and which tree it landed on, so the samplers
+and the proposal mechanisms can be put side by side on the same run.
 
-    python examples/sampler_diagnostics.py --dataset wine
-    python examples/sampler_diagnostics.py --dataset wine --run-id wine_baseline
-    python examples/sampler_diagnostics.py --dataset covtype --iters 20000 \
-        --metric-every 50 --proposals MH DA HINTS
+    python examples/incremental_decision_tree/sampler_diagnostics.py --dataset wine
+    python examples/incremental_decision_tree/sampler_diagnostics.py --dataset wine --run-id wine_baseline
+    python examples/incremental_decision_tree/sampler_diagnostics.py --dataset covtype --iters 20000 \
+        --proposals MH DA HINTS
 
 Results land in Results/<run-id>/ (--run-id defaults to a timestamp, so two
 sweeps never collide; name it explicitly to find a sweep again later, e.g.
-`python examples/plot_diagnostics.py --run-id wine_baseline`). Inside that
+`python examples/incremental_decision_tree/plot_diagnostics.py --run-id wine_baseline`). Inside that
 directory sits a config.json recording what was asked for, and one .h5 per
 (dataset, sampler, proposal) experiment -- see results_io.py for the layout.
+
+Sampling and evaluation are separate steps
+------------------------------------------
+This script samples and stores states. It computes no predictive metrics at
+all. To get accuracy, F1, log loss and the rest:
+
+    python examples/incremental_decision_tree/sampler_diagnostics.py --dataset wine --run-id wine_baseline
+    python examples/incremental_decision_tree/evaluate_results.py --run-id wine_baseline
+    python examples/incremental_decision_tree/plot_diagnostics.py --run-id wine_baseline
+
+The split is what makes a long run affordable and re-readable. One metric
+evaluation routes every row of both splits through a tree, which on covtype
+costs an order of magnitude more than the sampler iteration that produced the
+tree; evaluating inline therefore made the diagnostics *be* the run, and fixed
+at sampling time which metrics -- on which splits, at which thinning -- you
+would ever be able to look at. Storing the states instead means the sampler
+runs at sampler speed, and any metric can be computed, re-computed and
+re-thinned afterwards from the same file.
 
 What comes out, per configuration, as one .h5, one group per chain/run:
 
   per iteration (MCMC)      n_nodes, n_leaves, accepted
   per step (SMC)            ess, resampled, n_nodes/n_leaves mean and max
-  per recorded iteration    accuracy, balanced_accuracy, macro precision /
-                            recall / F1, log loss, Brier and the confusion
-                            matrix, on both the training and the test split
+  per iteration/step        iter_time and cumulative_time, in seconds, for
+                            plotting a metric against wallclock cost rather
+                            than against iteration count. The clock excludes
+                            the state recording itself, so it measures the
+                            sampler and not the diagnostics.
+  per stored record         the tree at that iteration (MCMC), or every
+                            particle of that step plus its log weight (SMC)
   per move considered       move type, node, rows under it, the rows of the
                             subsample it was screened on, the surrogate ratio
                             that screen used, and what became of it
@@ -36,12 +58,14 @@ the per-block subsample size, so cost and yield can be read per move instead.
 
 Costs and how they are kept down:
 
-  * The metrics dominate everything else on a large dataset -- they route every
-    row of both splits through the tree. --metric-every thins them; the
-    iteration-level columns are still recorded every iteration.
-  * Within that, a metric is recomputed only when the chain is on a different
-    state object. A rejection leaves the state untouched, as does a "stay",
-    so the previous value stands.
+  * Only *distinct* states are stored, and identity settles which those are: a
+    rejected move hands back the object the chain already held, and resampling
+    puts one particle object in many slots. What a record costs is one integer
+    per particle. See states.py -- the compression is exact, not a thinning.
+  * --store-every thins the records themselves, for a run long enough that even
+    the integers matter. The iteration-level columns are still recorded every
+    iteration. --no-states turns state recording off entirely, leaving a run
+    that can be timed but not evaluated.
   * The move log is off unless asked for (--no-moves turns it off) and costs a
     few list appends per move when on. It does not touch the RNG, so a run with
     it on is the same run.
@@ -50,17 +74,18 @@ MCMC chains are independent and run in parallel across processes.
 """
 import argparse
 import os
+import time
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
-from scipy.special import logsumexp
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
 from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVariableSMC
 from discretesampling.domain import incremental_decision_tree as idt
 from discretesampling.domain.incremental_decision_tree import diagnostics as dg
+from discretesampling.domain.incremental_decision_tree.states import StateRecorder
 from results_io import resolve_run_id, save_experiment_hdf5, write_run_config
 
 
@@ -80,7 +105,8 @@ DEFAULT_CFG = dict(
     iters=5_000,
     steps=20,
     particles=200,
-    metric_every=10,
+    store_every=1,
+    record_states=True,
     record_moves=True,
     ss_prop=0.1,
     min_data=20,
@@ -140,44 +166,71 @@ def build(cfg, X_train, y_train):
 
 class Recorder:
     """
-    Collects per-iteration columns, and the predictive metrics on a thinned
+    Collects the per-iteration columns, and the states themselves on a thinned
     subset of iterations.
 
-    The metric cache is keyed on the identity of the state object, not on the
-    accept flag: a rejected step and an accepted "stay" both hand back the very
-    same object, and only the first of those is visible as a rejection.
+    No metric is evaluated here, or anywhere else in this file: what is kept is
+    the tree, and evaluate_results.py turns stored trees into metrics
+    afterwards. See the module docstring for why.
     """
 
-    def __init__(self, splits, num_classes, every):
-        self.splits = splits            # [(prefix, X, y), ...]
-        self.num_classes = num_classes
+    def __init__(self, problem, every, record_states=True):
         self.every = every
         self.cols = defaultdict(list)
-        self._last_key = object()
-        self._last = None
+        self.states = (StateRecorder(problem.num_classes, problem.alpha)
+                       if record_states else None)
+        self._mark = time.perf_counter()
+        self._elapsed = 0.0
+
+    def start(self):
+        """Start the clock, so the timings measure sampling rather than the
+        problem set-up that preceded it."""
+        self._mark = time.perf_counter()
+        self._elapsed = 0.0
+
+    def tick(self):
+        """
+        This iteration's own duration, and the run's cumulative time, both in
+        seconds and both recorded every iteration.
+
+        The clock runs from the end of the last iteration's recording to the
+        start of this one, so it measures the sampler alone: what this recorder
+        spends is not charged to the algorithm. Storing a state is far cheaper
+        than the metric evaluation it replaced, but it is still work the
+        sampler did not ask for, and on a run where a chain rarely moves the
+        recording would otherwise show up as a per-proposal cost difference
+        that has nothing to do with the proposals.
+        """
+        now = time.perf_counter()
+        iter_time = now - self._mark
+        self._elapsed += iter_time
+        self.cols['iter_time'].append(iter_time)
+        self.cols['cumulative_time'].append(self._elapsed)
 
     def add(self, **kv):
         for k, v in kv.items():
             self.cols[k].append(v)
 
-    def metrics(self, i, states, key, weights=None):
-        """Record the predictive metrics for `states`, if this iteration is one
-        of the thinned ones. `key` identifies the state set for the cache."""
-        if i % self.every:
-            return
-        if key is not self._last_key:
-            out = {}
-            for prefix, X, y in self.splits:
-                out.update(idt.evaluate(states, X, y, weights=weights,
-                                        num_classes=self.num_classes,
-                                        prefix=prefix))
-            self._last, self._last_key = out, key
-        self.cols['metric_iter'].append(i)
-        for k, v in self._last.items():
-            self.cols[k].append(v)
+    def store(self, i, states, log_weights=None):
+        """
+        Store this iteration's ensemble -- the single current tree for MCMC,
+        the whole particle set plus its log weights for SMC -- if this
+        iteration is one of the thinned ones.
+        """
+        try:
+            if self.states is None or i % self.every:
+                return
+            self.states.record(states, iteration=i, log_weights=log_weights)
+        finally:
+            # Restart the clock: whatever was just spent recording belongs to
+            # the diagnostics, not to the next sampler iteration.
+            self._mark = time.perf_counter()
 
     def arrays(self):
-        return {k: np.asarray(v) for k, v in self.cols.items()}
+        out = {k: np.asarray(v) for k, v in self.cols.items()}
+        if self.states is not None:
+            out.update(self.states.arrays())
+        return out
 
 
 def counters_of(proposal, target, prefix=""):
@@ -192,20 +245,23 @@ def counters_of(proposal, target, prefix=""):
 # --------------------------------------------------------------------------- #
 
 def run_mcmc(cfg):
-    X_train, X_test, y_train, y_test = load_data(cfg['dataset'])
+    # Only the training split reaches the sampler now: the test split is what
+    # the metrics are read on, and those happen in evaluate_results.py.
+    X_train, _, y_train, _ = load_data(cfg['dataset'])
     problem, target, proposal = build(cfg, X_train, y_train)
     mcmc = DiscreteVariableMCMC(idt.IncrementalTree, target,
                                 idt.IncrementalTreeInitialProposal(problem),
                                 proposal=proposal)
 
-    rec = Recorder([("train_", X_train, y_train), ("test_", X_test, y_test)],
-                   problem.num_classes, cfg['metric_every'])
+    rec = Recorder(problem, cfg['store_every'], cfg['record_states'])
 
     def record(i, current, accepted):
+        rec.tick()
         rec.add(n_nodes=len(current.tree), n_leaves=len(current.leaf_idx),
                 accepted=accepted)
-        rec.metrics(i, [current], current)
+        rec.store(i, (current,))
 
+    rec.start()
     mcmc.sample(cfg['iters'], seed=cfg['seed'], verbose=False, callback=record)
 
     out = rec.arrays()
@@ -218,16 +274,16 @@ def run_mcmc(cfg):
 
 
 def run_smc(cfg):
-    X_train, X_test, y_train, y_test = load_data(cfg['dataset'])
+    X_train, _, y_train, _ = load_data(cfg['dataset'])
     problem, target, proposal = build(cfg, X_train, y_train)
     smc = DiscreteVariableSMC(idt.IncrementalTree, target,
                               idt.IncrementalTreeInitialProposal(problem),
                               proposal=proposal, Lkernel=proposal.lkernel())
 
-    rec = Recorder([("train_", X_train, y_train), ("test_", X_test, y_test)],
-                   problem.num_classes, cfg['metric_every'])
+    rec = Recorder(problem, cfg['store_every'], cfg['record_states'])
 
     def record(t, particles, logWeights, neff, resampled):
+        rec.tick()
         sizes = np.fromiter((len(p.tree) for p in particles), np.int64,
                             len(particles))
         leaves = np.fromiter((len(p.leaf_idx) for p in particles), np.int64,
@@ -239,24 +295,25 @@ def run_smc(cfg):
                 # be sliced back out per step: the proposal is shared by every
                 # particle, so its call index runs over particle-steps.
                 calls_at_step=proposal.n_calls)
-        # The ensemble estimator is the weighted one; an unweighted read of the
-        # particles is not what SMC is targeting. The weights are unnormalised
-        # here, so normalise before exponentiating.
-        w = np.exp(logWeights - logsumexp(logWeights))
-        rec.metrics(t, particles, particles, weights=w)
+        # Every particle, plus the weight it carries. The SMC estimator is the
+        # weighted one -- an unweighted read of the particles is not what SMC
+        # targets -- so the weights are stored with the states rather than
+        # thrown away; they are unnormalised here and StateSeries.weights
+        # normalises on the way out.
+        rec.store(t, particles, log_weights=logWeights)
 
-    particles = smc.sample(cfg['steps'], cfg['particles'], seed=cfg['seed'],
-                           verbose=False, callback=record)
+    rec.start()
+    smc.sample(cfg['steps'], cfg['particles'], seed=cfg['seed'],
+               verbose=False, callback=record)
 
     out = rec.arrays()
     out.update(counters_of(proposal, target))
     out['ess_history'] = np.asarray(smc.ess_history)
     out['resampled_history'] = np.asarray(smc.resampled_history)
+    # The weights after the final normalise, which the last callback ran too
+    # early to see: the state stored for the last step carries the weights as
+    # they were before it.
     out['final_logWeights'] = smc.logWeights
-    final = idt.evaluate(particles, X_test, y_test,
-                         weights=np.exp(smc.logWeights),
-                         num_classes=problem.num_classes, prefix="final_test_")
-    out.update({k: v for k, v in final.items()})
     if cfg['record_moves']:
         out.update(proposal.move_log.arrays())
     return out
@@ -300,15 +357,13 @@ def report(cfg, results):
           % (mean_of('target_full_evals'), mean_of('target_subset_evals'),
              mean_of('target_memo_hits')))
 
-    for split in ("train_", "test_"):
-        if split + "accuracy" not in results[0]:
-            continue
-        acc = np.vstack([r[split + 'accuracy'] for r in results])
-        f1 = np.vstack([r[split + 'macro_f1'] for r in results])
-        ll = np.vstack([r[split + 'log_loss'] for r in results])
-        print("%-20s final accuracy %.4f  macro F1 %.4f  log loss %.4f"
-              % (split.rstrip('_'), acc[:, -1].mean(), f1[:, -1].mean(),
-                 ll[:, -1].mean()))
+    if 'state_index' in results[0]:
+        # Recorded against stored: how much the identity dedup actually saved,
+        # which is the number to look at before reaching for --store-every.
+        recorded = float(np.mean([r['state_index'].size for r in results]))
+        stored = float(np.mean([len(r['state_tree_lengths']) for r in results]))
+        print("states               %d stored of %d recorded  (%.1fx)"
+              % (stored, recorded, recorded / max(stored, 1)))
 
     if cfg['record_moves'] and 'move' in results[0]:
         log = dg.MoveLog()
@@ -335,6 +390,12 @@ def report(cfg, results):
 _SWEEP_KEYS = ("samplers", "proposals", "chains", "jobs")
 
 
+def _hms(seconds):
+    """Seconds as h:mm:ss."""
+    seconds = int(max(seconds, 0))
+    return f"{seconds // 3600}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
+
+
 def run_sweep(cfg, results_dir, name=None, jobs=None):
     """
     Run one experiment's samplers x proposals x chains cross product and write
@@ -357,11 +418,34 @@ def run_sweep(cfg, results_dir, name=None, jobs=None):
                for s in cfg['samplers'] for q in cfg['proposals']
                for seed in range(cfg['chains'])]
 
-    if jobs > 1 and len(configs) > 1:
+    # Results are held by their position in `configs`, not by the order they
+    # finish in, so Run_0 is always seed 0 however the pool schedules them.
+    total = len(configs)
+    results = [None] * total
+    started = time.perf_counter()
+
+    def note(done, index):
+        """One self-contained line per finished config, so a long run says
+        where it has got to instead of going silent for hours."""
+        elapsed = time.perf_counter() - started
+        eta = elapsed / done * (total - done)
+        c = configs[index]
+        tag = f"{c['sampler']}-{c['proposal']}"
+        print(f"[{done:>4}/{total}] {tag:<11s} seed {c['seed']:<3} "
+              f"{results[index]['cumulative_time'][-1]:7.1f}s sampling   "
+              f"elapsed {_hms(elapsed)}  eta {_hms(eta)}", flush=True)
+
+    if jobs > 1 and total > 1:
         with ProcessPoolExecutor(max_workers=jobs) as pool:
-            results = list(pool.map(run, configs, chunksize=1))
+            futures = {pool.submit(run, c): i for i, c in enumerate(configs)}
+            for done, future in enumerate(as_completed(futures), start=1):
+                index = futures[future]
+                results[index] = future.result()
+                note(done, index)
     else:
-        results = [run(c) for c in configs]
+        for index, c in enumerate(configs):
+            results[index] = run(c)
+            note(index + 1, index)
 
     grouped = defaultdict(list)
     for c, res in zip(configs, results):
@@ -393,8 +477,13 @@ def main():
     p.add_argument("--iters", type=int, default=DEFAULT_CFG['iters'], help="MCMC iterations")
     p.add_argument("--steps", type=int, default=DEFAULT_CFG['steps'], help="SMC steps")
     p.add_argument("--particles", type=int, default=DEFAULT_CFG['particles'])
-    p.add_argument("--metric-every", type=int, default=DEFAULT_CFG['metric_every'],
-                   help="record the predictive metrics every k iterations")
+    p.add_argument("--store-every", type=int, default=DEFAULT_CFG['store_every'],
+                   help="store the sampler's state every k iterations/steps "
+                        "(1, every one, is what makes the per-iteration curves "
+                        "dense; only distinct states cost anything)")
+    p.add_argument("--no-states", action="store_true",
+                   help="skip state recording entirely -- the run can then be "
+                        "timed but not evaluated")
     p.add_argument("--no-moves", action="store_true", help="skip the per-move log")
     p.add_argument("--ss-prop", type=float, default=DEFAULT_CFG['ss_prop'])
     p.add_argument("--min-data", type=int, default=DEFAULT_CFG['min_data'])
@@ -411,7 +500,8 @@ def main():
     cfg = dict(DEFAULT_CFG,
                dataset=args.dataset, samplers=args.samplers, proposals=args.proposals,
                chains=args.chains, iters=args.iters, steps=args.steps,
-               particles=args.particles, metric_every=args.metric_every,
+               particles=args.particles, store_every=args.store_every,
+               record_states=not args.no_states,
                record_moves=not args.no_moves, ss_prop=args.ss_prop,
                min_data=args.min_data, lam=args.lam,
                min_samples_leaf=args.min_samples_leaf, max_tree_size=args.max_tree_size,
@@ -425,7 +515,8 @@ def main():
     run_sweep(cfg, results_dir)
 
     print(f"\nResults in: {results_dir}"
-          f"\n  python examples/plot_diagnostics.py --run-id {run_id} --name {args.dataset}")
+          f"\n  python examples/incremental_decision_tree/evaluate_results.py --run-id {run_id}"
+          f"\n  python examples/incremental_decision_tree/plot_diagnostics.py --run-id {run_id} --name {args.dataset}")
 
 
 if __name__ == "__main__":

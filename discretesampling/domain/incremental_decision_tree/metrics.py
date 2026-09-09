@@ -1,6 +1,48 @@
 import numpy as np
 
 
+def _alpha_of(state):
+    """
+    The Dirichlet-Multinomial concentration behind a state.
+
+    A live IncBDTree reaches it through the problem it was built from. A state
+    read back off disk (states.TreeStoreView) has no problem to consult -- the
+    training data is not part of what was stored -- so it carries alpha itself.
+    """
+    problem = getattr(state, 'problem', None)
+    return problem.alpha if problem is not None else state.alpha
+
+
+def route_rows(rows, X):
+    """
+    The leaf id each row of X reaches, for a tree given as its
+    [id, left, right, feat, thr, depth] rows alone.
+
+    IncBDTree.route is this same walk over a live tree; this is the version a
+    stored state can run, holding only the rows. Routed a node at a time rather
+    than a row at a time: every row visits the same nodes either way, but the
+    comparison at each node is one numpy operation over the rows that reached
+    it instead of a Python loop over rows.
+    """
+    X = np.asarray(X)
+    rows = np.asarray(rows, dtype=np.float64).reshape(-1, 6)
+    node_map = {int(r[0]): r for r in rows}
+    out = np.empty(len(X), dtype=np.int64)
+    pending = [(0, np.arange(len(X)))]
+    while pending:
+        nid, idx = pending.pop()
+        if idx.size == 0:
+            continue
+        row = node_map.get(nid)
+        if row is None:                     # a leaf: these rows stop here
+            out[idx] = nid
+            continue
+        go_left = X[idx, int(row[3])] < row[4]
+        pending.append((int(row[1]), idx[go_left]))
+        pending.append((int(row[2]), idx[~go_left]))
+    return out
+
+
 def leaf_class_probs(state):
     """
     Class probabilities for each leaf, as a 2D array of shape (n_leaves, K).
@@ -9,13 +51,20 @@ def leaf_class_probs(state):
     The probabilities are computed from the counts in the state,
     with a Dirichlet prior given by the problem's alpha parameter.
     """
-    problem = state.problem
-    ids = np.fromiter(state.counts.keys(), dtype=np.int64, count=len(state.counts))
-    block = np.stack([state.counts[leaf] for leaf in ids]).astype(np.float64)
-    block += problem.alpha
+    counts = state.counts
+    ids = getattr(counts, 'ids', None)
+    if ids is not None:
+        # A stored state keeps its leaf ids sorted alongside the counts block,
+        # so neither the per-leaf lookup nor the sort below is needed.
+        block = np.asarray(counts.block, dtype=np.float64)
+    else:
+        ids = np.fromiter(counts.keys(), dtype=np.int64, count=len(counts))
+        block = np.stack([counts[leaf] for leaf in ids]).astype(np.float64)
+        order = np.argsort(ids)
+        ids, block = ids[order], block[order]
+    block = block + _alpha_of(state)
     block /= block.sum(axis=1, keepdims=True)
-    order = np.argsort(ids)
-    return ids[order], block[order]
+    return ids, block
 
 
 def predict_proba(state, X):

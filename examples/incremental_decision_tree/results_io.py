@@ -12,13 +12,18 @@ One results directory per sweep, named explicitly or by timestamp:
         ...
 
 Inside one .h5, one group per chain (MCMC) or per independent run (SMC):
-Run_0, Run_1, .... A run's scalars (acceptance rate, evaluation counters, a
-final confusion matrix's mean, ...) are stored as group attributes; its
-per-iteration / per-move columns (n_nodes, the move log, ...) are stored as
-compressed datasets. load_experiment_hdf5 hands both back merged into the same
-{column: array} dict sampler_diagnostics.py's run() produces, so nothing
-downstream (plot_diagnostics.py included) needs to know results came off disk
+Run_0, Run_1, .... A run's scalars (acceptance rate, evaluation counters, ...)
+are stored as group attributes; its per-iteration / per-move columns (n_nodes,
+the move log, ...) and the flat state arrays are stored as compressed datasets.
+load_experiment_hdf5 hands both back merged into the same {column: array} dict
+sampler_diagnostics.py's run() produces, so nothing downstream
+(plot_diagnostics.py, evaluate_results.py) needs to know results came off disk
 rather than out of a fresh run.
+
+The `state_*` columns are the trees the run visited -- one entry per distinct
+state, plus a per-record index into them. `states_of(run)` turns them back into
+a StateSeries; see the domain's states.py for the layout and for why only
+distinct states are held.
 
 This is the same shape as the cluster harness's Results/<run_id>/<experiment>.h5
 layout, cut down to what a diagnostics run on one machine needs: no chunked
@@ -35,7 +40,55 @@ from datetime import datetime
 import h5py
 import numpy as np
 
+from discretesampling.domain.incremental_decision_tree.states import series_from_arrays
+
 RUN_PREFIX = "Run_"
+
+# The fixed sweep dimensions a results directory is named over. Everything that
+# goes looking for an experiment's files checks this cross product rather than
+# globbing: two experiment names can share a prefix (a dataset "wine" and a
+# second experiment named "wine_deep", say), and "wine_deep_mcmc_HINTS.h5" is
+# indistinguishable from a "wine" experiment using a sampler called "deep_mcmc"
+# from the filename's shape alone.
+SAMPLERS = ("mcmc", "smc")
+PROPOSALS = ("MH", "DA", "HINTS")
+
+
+def experiment_filename(name, sampler, proposal):
+    return f"{name}_{sampler}_{proposal}.h5"
+
+
+def find_experiment_files(results_dir, name):
+    """{(sampler, proposal): path} for the experiment called `name`."""
+    out = {}
+    for sampler in SAMPLERS:
+        for proposal in PROPOSALS:
+            path = os.path.join(results_dir,
+                                experiment_filename(name, sampler, proposal))
+            if os.path.exists(path):
+                out[(sampler, proposal)] = path
+    return out
+
+
+def experiment_datasets(config, default_dataset):
+    """
+    {experiment name: the dataset it was run on}, from a results directory's
+    config.json -- which is what an evaluation needs to know to reload the
+    right rows, and what a "no such experiment" message needs to list.
+
+    run_experiments.py writes the whole 'experiments' list it was given; a bare
+    sampler_diagnostics.py sweep writes the single config it ran, whose name is
+    its dataset. {} for a directory that predates config.json, or one
+    hand-populated with .h5 files.
+    """
+    if "experiments" in config:
+        out = {}
+        for entry in config["experiments"]:
+            dataset = entry.get("dataset", default_dataset)
+            out[entry.get("name") or dataset] = dataset
+        return out
+    dataset = config.get("dataset")
+    return {dataset: dataset} if dataset else {}
 
 
 def resolve_run_id(run_id=None):
@@ -100,6 +153,19 @@ def load_experiment_hdf5(path):
             run.update({key: grp[key][()] for key in grp.keys()})
             out.append(run)
     return out
+
+
+def states_of(run):
+    """
+    The states one run visited, as a StateSeries -- None if it was sampled
+    with --no-states and so has none.
+
+    `run` is one entry of load_experiment_hdf5's list, or one of the dicts
+    sampler_diagnostics.run() returns directly; the state arrays are the same
+    either way, so an evaluation can be run against a fresh result without a
+    round trip through disk.
+    """
+    return series_from_arrays(run)
 
 
 def write_run_config(results_dir, config):
