@@ -880,6 +880,30 @@ def test_classification_metrics_agree_with_sklearn(problem, target):
     assert got['t_brier'] == pytest.approx(np.mean(np.sum((proba - onehot) ** 2, axis=1)))
 
 
+def test_state_metrics_agree_with_row_by_row(problem):
+    """Scoring per-leaf tallies gives the same numbers as scoring each row."""
+    x, _ = walk(idt.IncrementalTreeProposal(), problem, seed=4, steps=300)
+    rs = np.random.default_rng(7)
+    # Rows the tree was not fitted to, labelled independently of it.
+    X = problem.X + 0.3 * rs.normal(size=problem.X.shape)
+    y = rs.integers(problem.num_classes, size=len(X))
+    got = idt.state_metrics(x, X, y, prefix="t_")
+    want = idt.classification_metrics(y, idt.predict_proba(x, X),
+                                      problem.num_classes, prefix="t_")
+    for key, value in want.items():
+        assert np.allclose(got[key], value), key
+
+
+def test_evaluate_is_the_weighted_mean_of_each_trees_metrics(problem):
+    trees = [walk(idt.IncrementalTreeProposal(), problem, seed=s, steps=200)[0]
+             for s in range(3)]
+    w = np.array([0.2, 0.5, 0.3])
+    got = idt.evaluate(trees, problem.X, problem.y, weights=w)
+    each = [idt.state_metrics(t, problem.X, problem.y) for t in trees]
+    for key, value in got.items():
+        assert np.allclose(value, sum(wi * m[key] for wi, m in zip(w, each))), key
+
+
 def test_metrics_survive_a_class_that_is_never_predicted():
     """
     A short chain can sit on a stump, which predicts one class for everything.

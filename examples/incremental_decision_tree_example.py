@@ -95,12 +95,12 @@ for name in names:
                                  proposal=proposal, Lkernel=proposal.lkernel())
     try:
         treeSMCSamples = idtSMC.sample(10, 1000)
-        # The estimator SMC targets is the weighted ensemble; reading the
-        # particles unweighted answers a different question, and after a step
-        # that did not resample the two can be far apart.
+        # idt.evaluate weights each particle's own metrics by its normalised
+        # SMC weight; reading the particles unweighted answers a different
+        # question, and after a step that did not resample the two can be far
+        # apart.
         weights = np.exp(idtSMC.logWeights)
-        smc = idt.evaluate(treeSMCSamples, X_test, y_test, weights=weights,
-                           num_classes=problem.num_classes)
+        smc = idt.evaluate(treeSMCSamples, X_test, y_test, weights=weights)
         print("SMC-%s accuracy:         %.2f%%" % (name, smc['accuracy'] * 100))
         print("SMC-%s macro F1:         %.4f" % (name, smc['macro_f1']))
         print("SMC-%s log loss:         %.4f" % (name, smc['log_loss']))

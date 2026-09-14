@@ -91,18 +91,21 @@ knobs that matter are `iters`/`steps`, `particles`, and whether HINTS is in
 """
 
 EXPERIMENTS = [
-    dict(name="covtype_mcmc", dataset="covtype", samplers=["mcmc"],
-         chains=5, iters=500, store_every=1),
+    dict(name="covtype_mcmc", dataset="covtype", samplers=["mcmc"], proposals=["MH"],
+         chains=50, iters=1000, store_every=1,max_tree_size=100),
 
-    dict(name="covtype_smc", dataset="covtype", samplers=["smc"],
-         chains=1, particles=10, steps=250, store_every=1),
-
-    dict(name="covtype_smc_50p", dataset="covtype", samplers=["smc"],
-         chains=1, particles=5, steps=500, store_every=1),
-
-    # Quick smoke tests -- wine runs in seconds, for checking the pipeline
-    # end to end before committing to a covtype run.
-    # dict(dataset="wine", chains=4, iters=2_000, steps=20, particles=200),
-    # dict(dataset="digits", name="digits_quick", chains=2, iters=5_000,
-    #      steps=20, particles=200),
+    dict(name="covtype_smc", dataset="covtype", samplers=["smc"], proposals=["MH"],
+         chains=20, particles=50, steps=1000, store_every=1, max_tree_size=100),
 ]
+
+
+ss_props = [0.1, 0.25, 0.5]
+
+for ss_prop in ss_props:
+    EXPERIMENTS += [dict(name=f"covtype_ss{ss_prop*100:.0f}_smc", dataset="covtype", samplers=["smc"],
+                         proposals=["DA", "HINTS"], chains=20, particles=50, steps=1000,
+                         store_every=1, max_tree_size=100, ss_prop=ss_prop)]
+
+    EXPERIMENTS += [dict(name=f"covtype_ss{ss_prop*100:.0f}_mcmc", dataset="covtype", samplers=["mcmc"],
+                         proposals=["DA", "HINTS"], chains=50, iters=1000,
+                         store_every=1, max_tree_size=100, ss_prop=ss_prop)]

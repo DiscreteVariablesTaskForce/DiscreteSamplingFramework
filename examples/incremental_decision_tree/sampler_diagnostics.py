@@ -112,7 +112,7 @@ DEFAULT_CFG = dict(
     min_data=20,
     lam=15.0,
     min_samples_leaf=3,
-    max_tree_size=10,
+    max_tree_size=None,
     jobs=min(8, (os.cpu_count() or 2) - 1),
 )
 

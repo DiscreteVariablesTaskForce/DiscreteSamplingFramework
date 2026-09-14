@@ -85,6 +85,25 @@ def test_stored_tree_matches_live(problem):
                        idt.predict_proba(tree, problem.X))
 
 
+def test_fitted_metrics_match_routing_the_fitted_data(problem):
+    """
+    Train metrics are read off the stored leaf counts instead of routing the
+    training rows, which is only sound if the two agree on the fitted data.
+    """
+    tree = grown(problem, [(0, 0, 0.0), (1, 1, -0.25), (2, 2, 0.5)])
+    rec = StateRecorder(problem.num_classes, problem.alpha)
+    rec.record([tree])
+    stored = rec.series().state(0)
+
+    assert np.array_equal(idt.leaf_tallies(stored, problem.X, problem.y),
+                          stored.counts.block)
+    for state in (tree, stored):
+        routed = idt.state_metrics(state, problem.X, problem.y)
+        fitted = idt.fitted_metrics(state)
+        for key, value in routed.items():
+            assert np.allclose(fitted[key], value), key
+
+
 @pytest.mark.parametrize("proposal_name", ["MH", "DA", "HINTS"])
 def test_mcmc_stored_metrics_match_inline(problem, proposal_name):
     """Every metric off the stored chain equals the one the live tree gave."""
@@ -97,8 +116,7 @@ def test_mcmc_stored_metrics_match_inline(problem, proposal_name):
 
     def callback(i, current, accepted):
         rec.record([current], iteration=i)
-        inline.append(idt.evaluate([current], problem.X, problem.y,
-                                   num_classes=problem.num_classes))
+        inline.append(idt.evaluate([current], problem.X, problem.y))
 
     mcmc.sample(200, seed=4, verbose=False, callback=callback)
 
@@ -107,7 +125,7 @@ def test_mcmc_stored_metrics_match_inline(problem, proposal_name):
     for i, expected in enumerate(inline):
         slots, weights = series.ensemble(i)
         got = idt.evaluate([series.state(s) for s in slots], problem.X, problem.y,
-                           weights=weights, num_classes=series.num_classes)
+                           weights=weights)
         for key, value in expected.items():
             assert np.allclose(got[key], value), f"{proposal_name} iter {i}: {key}"
 
@@ -129,8 +147,7 @@ def test_smc_stored_metrics_match_inline(problem, proposal_name):
     def callback(t, particles, logWeights, neff, resampled):
         rec.record(particles, iteration=t, log_weights=logWeights)
         w = np.exp(logWeights - logsumexp(logWeights))
-        inline.append(idt.evaluate(particles, problem.X, problem.y, weights=w,
-                                   num_classes=problem.num_classes))
+        inline.append(idt.evaluate(particles, problem.X, problem.y, weights=w))
 
     smc.sample(10, 20, seed=2, verbose=False, callback=callback)
 
@@ -139,7 +156,7 @@ def test_smc_stored_metrics_match_inline(problem, proposal_name):
     for i, expected in enumerate(inline):
         slots, weights = series.ensemble(i)
         got = idt.evaluate([series.state(s) for s in slots], problem.X, problem.y,
-                           weights=weights, num_classes=series.num_classes)
+                           weights=weights)
         for key, value in expected.items():
             assert np.allclose(got[key], value), f"{proposal_name} step {i}: {key}"
 

@@ -10,5 +10,6 @@ from .metrics import route_rows, leaf_class_probs # noqa
 from .states import StateRecorder, StateSeries, TreeStoreView, series_from_arrays # noqa
 from .metrics import confusion_matrix, precision_recall_f1, balanced_accuracy # noqa
 from .metrics import log_loss, brier_score, classification_metrics, evaluate # noqa
+from .metrics import leaf_tallies, state_metrics, fitted_metrics, weighted_mean # noqa
 from .diagnostics import MoveLog, MOVES, OUTCOMES, MOVE_CODE # noqa
 from .diagnostics import STAY, BARRED as BARRED_OUTCOME, SCREENED_OUT, INADMISSIBLE, PROPOSED, APPLIED # noqa

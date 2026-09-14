@@ -43,6 +43,20 @@ def route_rows(rows, X):
     return out
 
 
+def _sorted_leaf_counts(state):
+    """(leaf ids, (n_leaves, K) float64 class counts), sorted by leaf id."""
+    counts = state.counts
+    ids = getattr(counts, 'ids', None)
+    if ids is not None:
+        # A stored state keeps its leaf ids sorted alongside the counts block,
+        # so neither the per-leaf lookup nor the sort below is needed.
+        return ids, np.asarray(counts.block, dtype=np.float64)
+    ids = np.fromiter(counts.keys(), dtype=np.int64, count=len(counts))
+    block = np.stack([counts[leaf] for leaf in ids]).astype(np.float64)
+    order = np.argsort(ids)
+    return ids[order], block[order]
+
+
 def leaf_class_probs(state):
     """
     Class probabilities for each leaf, as a 2D array of shape (n_leaves, K).
@@ -51,17 +65,7 @@ def leaf_class_probs(state):
     The probabilities are computed from the counts in the state,
     with a Dirichlet prior given by the problem's alpha parameter.
     """
-    counts = state.counts
-    ids = getattr(counts, 'ids', None)
-    if ids is not None:
-        # A stored state keeps its leaf ids sorted alongside the counts block,
-        # so neither the per-leaf lookup nor the sort below is needed.
-        block = np.asarray(counts.block, dtype=np.float64)
-    else:
-        ids = np.fromiter(counts.keys(), dtype=np.int64, count=len(counts))
-        block = np.stack([counts[leaf] for leaf in ids]).astype(np.float64)
-        order = np.argsort(ids)
-        ids, block = ids[order], block[order]
+    ids, block = _sorted_leaf_counts(state)
     block = block + _alpha_of(state)
     block /= block.sum(axis=1, keepdims=True)
     return ids, block
@@ -177,7 +181,10 @@ def balanced_accuracy(cm):
     return float(recall[present].mean())
 
 
-def log_loss(y_true, proba, eps=1e-15):
+_PROB_FLOOR = 1e-15
+
+
+def log_loss(y_true, proba, eps=_PROB_FLOOR):
     """
     Mean negative log probability of the true class. Unlike accuracy this reads
     the whole predictive distribution, so it separates a sampler that is right
@@ -213,6 +220,13 @@ def classification_metrics(y_true, proba, num_classes=None, prefix=""):
     if num_classes is None:
         num_classes = proba.shape[1]
     cm = confusion_matrix(y_true, y_pred, num_classes)
+    return _metrics_from(cm, log_loss(y_true, proba), brier_score(y_true, proba),
+                         prefix)
+
+
+def _metrics_from(cm, log_loss_value, brier_value, prefix):
+    """The flat metrics dict, given the confusion matrix and the two metrics
+    that read the probabilities rather than only the predicted labels."""
     precision, recall, f1 = precision_recall_f1(cm)
     support = cm.sum(axis=1) > 0
     return {
@@ -221,17 +235,106 @@ def classification_metrics(y_true, proba, num_classes=None, prefix=""):
         prefix + 'macro_precision': float(precision[support].mean()) if support.any() else float('nan'),
         prefix + 'macro_recall': float(recall[support].mean()) if support.any() else float('nan'),
         prefix + 'macro_f1': float(f1[support].mean()) if support.any() else float('nan'),
-        prefix + 'log_loss': log_loss(y_true, proba),
-        prefix + 'brier': brier_score(y_true, proba),
+        prefix + 'log_loss': float(log_loss_value),
+        prefix + 'brier': float(brier_value),
         prefix + 'confusion': cm,
     }
 
 
-def evaluate(states, X, y, weights=None, num_classes=None, prefix=""):
+# ------------------- per-tree metrics, and their weighted mean ------------------- #
+#
+# Every row reaching a leaf gets that leaf's predictive distribution, so a
+# tree's metrics on a set of rows depend only on how many rows of each class
+# reach each leaf. Scoring those (n_leaves, K) tallies is exact and skips the
+# (n_rows, K) probability matrix; on the rows a tree was fitted to, the tallies
+# are its stored leaf counts, and nothing needs routing at all.
+
+def _leaf_metrics(probs, tallies, prefix):
     """
-    classification_metrics for an ensemble of tree states -- one MCMC state, or
-    a weighted SMC particle set. `weights` are the particle weights on the
-    linear scale; leave them out only for an equally weighted set.
+    classification_metrics from `probs`, each leaf's (n_leaves, K) predictive
+    distribution, and `tallies`, the (n_leaves, K) count of rows of each true
+    class that reached it.
     """
-    proba = ensemble_predict_proba(states, X, weights)
-    return classification_metrics(y, proba, num_classes, prefix)
+    tallies = np.asarray(tallies, dtype=np.int64)
+    K = probs.shape[1]
+    cm = tallies.T @ np.eye(K, dtype=np.int64)[np.argmax(probs, axis=1)]
+    n = max(int(tallies.sum()), 1)
+    log_p = np.log(np.clip(probs, _PROB_FLOOR, 1.0))
+    sq = np.sum(probs * probs, axis=1, keepdims=True)
+    return _metrics_from(cm,
+                         -np.sum(tallies * log_p) / n,
+                         np.sum(tallies * (sq - 2.0 * probs + 1.0)) / n,
+                         prefix)
+
+
+def leaf_tallies(state, X, y):
+    """
+    (n_leaves, K) counts of the rows of (X, y) reaching each leaf, by true
+    class, in the leaf-id order of leaf_class_probs. On the data the tree was
+    fitted to, these are its leaf counts.
+    """
+    ids, counts = _sorted_leaf_counts(state)
+    L, K = counts.shape
+    pos = np.searchsorted(ids, state.route(X))
+    y = np.asarray(y, dtype=np.int64)
+    return np.bincount(pos * K + y, minlength=L * K).reshape(L, K)
+
+
+def state_metrics(state, X, y, prefix=""):
+    """classification_metrics for one tree on (X, y)."""
+    _, probs = leaf_class_probs(state)
+    return _leaf_metrics(probs, leaf_tallies(state, X, y), prefix)
+
+
+def fitted_metrics(state, prefix=""):
+    """
+    classification_metrics for one tree on the data it was fitted to, read off
+    its leaf counts without routing anything: state_metrics(state, X_fit,
+    y_fit) up to float rounding, at O(n_leaves x K) rather than O(n_rows x depth).
+    """
+    _, probs = leaf_class_probs(state)
+    _, counts = _sorted_leaf_counts(state)
+    return _leaf_metrics(probs, counts, prefix)
+
+
+def weighted_mean(metrics, weights):
+    """
+    Key-by-key weighted mean of per-tree metric dicts, for linear-scale weights
+    summing to one. Scalars come back as floats, and the confusion matrix as
+    the expected (K, K) confusion matrix.
+    """
+    w = np.asarray(weights, dtype=np.float64)
+    out = {}
+    for key in metrics[0]:
+        mean = np.tensordot(w, np.asarray([m[key] for m in metrics],
+                                          dtype=np.float64), axes=1)
+        out[key] = float(mean) if mean.ndim == 0 else mean
+    return out
+
+
+def evaluate(states, X, y, weights=None, prefix=""):
+    """
+    The weighted mean of each state's own metrics -- one MCMC state, or a
+    weighted SMC particle set. `weights` are on the linear scale and are
+    normalised here; leave them out for an equally weighted set.
+
+    This is E_pi[metric], the posterior expectation of each metric, not a
+    metric read off the pi-averaged predictive distribution
+    (ensemble_predict_proba) -- the two differ in general, since e.g. the
+    argmax of an average isn't the average of the argmaxes. A single MCMC
+    state at weight 1 is the trivial case: that state's own metrics.
+    """
+    states = list(states)
+    if not states:
+        raise ValueError("no states to evaluate")
+    if weights is None:
+        w = np.full(len(states), 1.0 / len(states))
+    else:
+        w = np.asarray(weights, dtype=np.float64)
+        total = w.sum()
+        if total <= 0:
+            raise ValueError("weights sum to zero")
+        w = w / total
+    keep = np.flatnonzero(w > 0)
+    return weighted_mean([state_metrics(states[i], X, y, prefix) for i in keep],
+                         w[keep])

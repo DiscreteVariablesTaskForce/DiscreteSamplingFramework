@@ -20,12 +20,17 @@ the run is sampled once and can be evaluated as often and as many ways as you
 like -- on the test split now and the training split later, densely over the
 first thousand iterations and coarsely over the rest -- off the same file.
 
-It is also much cheaper than the inline version was, for two reasons that are
-both exact rather than approximations:
+It is also much cheaper than the inline version was, for reasons that are all
+exact rather than approximations:
 
-  * A record is evaluated once per *distinct ensemble*. An MCMC chain that
-    rejects sits on one state for many iterations and a resampled SMC step
-    holds one tree in many slots; both collapse before anything is routed.
+  * Each distinct tree is evaluated once per run. A record's metrics are the
+    weighted mean of its trees' own metrics, and a tree's metrics don't depend
+    on its weight, so an MCMC chain sitting on a rejected state, a resampled
+    SMC step holding one tree in many slots, and an SMC particle surviving
+    from step to step all cost nothing after the first time.
+  * The train split is never routed. A tree's stored leaf counts are exactly
+    the training rows in each leaf, and every row in a leaf gets the same
+    prediction, so each train metric is a sum over leaves.
   * Only the splits asked for are evaluated, and only every --stride-th record.
 
 The .npz holds one (n_runs, n_points) array per metric -- the runs are the
@@ -41,6 +46,7 @@ from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
+from tqdm.auto import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -74,64 +80,122 @@ _DATA = {}
 
 
 def splits_for(dataset, wanted):
-    """[(prefix, X, y), ...] for the named splits of a dataset."""
+    """[(name, X, y), ...] for the named splits of a dataset."""
     if dataset not in _DATA:
         X_train, X_test, y_train, y_test = load_data(dataset)
-        _DATA[dataset] = {"train": ("train_", X_train, y_train),
-                          "test": ("test_", X_test, y_test)}
-    return [_DATA[dataset][name] for name in wanted]
+        _DATA[dataset] = {"train": (X_train, y_train), "test": (X_test, y_test)}
+    return [(name,) + _DATA[dataset][name] for name in wanted]
 
 
-def evaluate_series(series, splits, stride=1):
+def tree_metrics(state, splits):
     """
-    {metric: list over evaluated records} for one run's stored states.
-
-    Records that hold an ensemble already evaluated are read off the cache
-    rather than routed again. For MCMC that is every rejected iteration -- the
-    chain is on the state it was on -- and it also covers a chain returning to
-    a tree it left. For SMC it needs the weights to repeat too, which they
-    rarely do, so there the saving is the within-step dedup ensemble() does.
+    One tree's metrics on each requested split. Train is read off the tree's
+    stored leaf counts, which are exactly the training rows in each leaf
+    (check_fitted_to makes sure of that), so only test is ever routed.
     """
-    cache = {}
-    cols = defaultdict(list)
-    picks = range(0, len(series), stride)
-    for i in picks:
+    out = {}
+    for name, X, y in splits:
+        if name == "train":
+            out.update(idt.fitted_metrics(state, prefix="train_"))
+        else:
+            out.update(idt.state_metrics(state, X, y, prefix=f"{name}_"))
+    return out
+
+
+def check_fitted_to(path, series, X, y):
+    """
+    Refuse to evaluate a run unless its trees were fitted to exactly the train
+    split load_data returns now. If the split has changed since sampling, train
+    metrics read off the leaf counts are wrong, and so are test metrics: the
+    test rows may no longer be held out, or the features may have moved.
+    Routing the train split through the run's largest tree and re-tallying
+    settles it.
+    """
+    state = series.state(int(np.argmax(series.node_counts)))
+    if not np.array_equal(idt.leaf_tallies(state, X, y), state.counts.block):
+        raise SystemExit(
+            f"{path}: the stored trees' leaf counts don't match the train split "
+            f"load_data gives now, so the data has changed since this run was "
+            f"sampled and neither split would be evaluated on the right rows. "
+            f"Restore the split the run was sampled on.")
+
+
+def picked_ensembles(series, stride):
+    """
+    (slots, weights) for every stride-th record, without the slots that carry
+    no weight: they add nothing to the mean, so aren't worth evaluating.
+    """
+    out = []
+    for i in range(0, len(series), stride):
         slots, weights = series.ensemble(i)
-        key = (slots.tobytes(), weights.tobytes())
-        out = cache.get(key)
-        if out is None:
-            states = [series.state(s) for s in slots]
-            out = {}
-            for prefix, X, y in splits:
-                out.update(idt.evaluate(states, X, y, weights=weights,
-                                        num_classes=series.num_classes,
-                                        prefix=prefix))
-            cache[key] = out
-        for k, v in out.items():
+        keep = weights > 0
+        out.append((slots[keep], weights[keep]))
+    return out
+
+
+def evaluate_series(series, ensembles, splits, pbar=None):
+    """
+    {metric: list over records} for one run, given the (slots, weights) of the
+    records to evaluate, from picked_ensembles.
+
+    A record's metrics are the weighted mean of its trees' own metrics, and a
+    tree's metrics don't depend on the weight it carries, so each distinct
+    stored tree is evaluated once and reused by every record holding it: an
+    MCMC chain sitting on a rejected state and an SMC particle surviving from
+    step to step cost nothing after the first time. `pbar`, if given, ticks
+    once per tree evaluated, which is where the time goes.
+    """
+    per_tree = {}
+    cols = defaultdict(list)
+    for slots, weights in ensembles:
+        for s in slots:
+            if s not in per_tree:
+                per_tree[s] = tree_metrics(series.state(s), splits)
+                if pbar is not None:
+                    pbar.update(1)
+        mean = idt.weighted_mean([per_tree[s] for s in slots], weights)
+        for k, v in mean.items():
             cols[k].append(v)
-    iterations = series.record_iterations()[list(picks)]
-    return dict(cols), iterations, len(cache)
+    return dict(cols), len(per_tree)
 
 
-def evaluate_file(path, dataset, wanted_splits, stride):
+def evaluate_file(path, dataset, wanted_splits, stride, position=0):
     """
     Every run in one experiment's .h5, as {metric: (n_runs, n_points) array}
     plus the iteration behind each point.
+
+    `position` slots this file's progress bar into its own terminal row, so
+    several files evaluated in parallel (--jobs > 1) don't overwrite each
+    other's line.
     """
     splits = splits_for(dataset, wanted_splits)
     runs = load_experiment_hdf5(path)
 
-    per_run, iterations, evaluated = [], None, 0
+    series_of_run = []
     for run in runs:
         series = states_of(run)
         if series is None:
             raise SystemExit(
                 f"{path} holds no states: it was sampled with --no-states, and "
                 f"there is nothing to evaluate. Re-run the sampling without it.")
-        cols, iters, n_evaluated = evaluate_series(series, splits, stride)
+        series_of_run.append(series)
+
+    if series_of_run:
+        [(_, X_fit, y_fit)] = splits_for(dataset, ("train",))
+        check_fitted_to(path, series_of_run[0], X_fit, y_fit)
+
+    ensembles = [picked_ensembles(series, stride) for series in series_of_run]
+    total = sum(len({int(s) for slots, _ in picked for s in slots})
+                for picked in ensembles)
+    pbar = tqdm(total=total, desc=os.path.basename(path), unit="tree",
+                position=position, leave=False)
+
+    per_run, evaluated = [], 0
+    for series, picked in zip(series_of_run, ensembles):
+        cols, n_evaluated = evaluate_series(series, picked, splits, pbar)
         per_run.append(cols)
         evaluated += n_evaluated
-        iterations = iters if iterations is None else iterations
+    pbar.close()
 
     # Runs of one experiment share iters/steps and store_every, so they line up;
     # a run cut short (a crash mid-sweep) is truncated to the common length
@@ -141,7 +205,7 @@ def evaluate_file(path, dataset, wanted_splits, stride):
     if len(lengths) > 1:
         print(f"    [warning] runs hold {sorted(lengths)} evaluated records; "
               f"truncating to {n_points}")
-    iterations = iterations[:n_points]
+    iterations = series_of_run[0].record_iterations()[::stride][:n_points]
 
     keys = sorted(set().union(*(c.keys() for c in per_run))) if per_run else []
     matrices = {k: np.stack([np.asarray(c[k][:n_points]) for c in per_run])
@@ -151,10 +215,10 @@ def evaluate_file(path, dataset, wanted_splits, stride):
 
 def evaluate_one(task):
     """One (experiment file -> .npz) job, as a worker sees it."""
-    path, out_path, dataset, wanted_splits, stride = task
+    path, out_path, dataset, wanted_splits, stride, position = task
     started = time.perf_counter()
     matrices, iterations, evaluated = evaluate_file(
-        path, dataset, wanted_splits, stride)
+        path, dataset, wanted_splits, stride, position)
     np.savez_compressed(out_path, iterations=iterations, stride=stride,
                         n_runs=len(next(iter(matrices.values()))) if matrices else 0,
                         **matrices)
@@ -192,7 +256,7 @@ def plan(results_dir, names, wanted_splits, stride, overwrite):
 
 def summarise(out_path, matrices, evaluated, seconds):
     """One line per finished experiment, ending on what it actually found."""
-    line = (f"[{os.path.basename(out_path)}] {evaluated} distinct ensembles "
+    line = (f"[{os.path.basename(out_path)}] {evaluated} distinct trees "
             f"evaluated in {seconds:.1f}s")
     for split in SPLITS:
         key = f"{split}_accuracy"
@@ -214,8 +278,9 @@ def main():
                    help="experiments to evaluate (default: every one the run "
                         "directory's config.json lists)")
     p.add_argument("--splits", nargs="+", choices=SPLITS, default=list(SPLITS),
-                   help="which splits to evaluate on; dropping 'train' roughly "
-                        "halves the cost")
+                   help="which splits to evaluate on; train is read off the "
+                        "trees' stored leaf counts and costs next to nothing, "
+                        "test is routed through every tree")
     p.add_argument("--stride", type=int, default=1,
                    help="evaluate every k-th stored record")
     p.add_argument("--jobs", type=int, default=DEFAULT_CFG["jobs"],
@@ -244,13 +309,19 @@ def main():
           f"stride {args.stride}")
     started = time.perf_counter()
     if args.jobs > 1 and len(jobs) > 1:
-        with ProcessPoolExecutor(max_workers=min(args.jobs, len(jobs))) as pool:
-            futures = [pool.submit(evaluate_one, job) for job in jobs]
+        # Positions round-robin over the worker slots so concurrent files'
+        # progress bars land on their own terminal row instead of clobbering
+        # each other; it's an approximation of which task lands on which
+        # worker, which is fine for a progress bar.
+        max_workers = min(args.jobs, len(jobs))
+        tasks = [job + (i % max_workers,) for i, job in enumerate(jobs)]
+        with ProcessPoolExecutor(max_workers=max_workers) as pool:
+            futures = [pool.submit(evaluate_one, task) for task in tasks]
             for future in as_completed(futures):
                 summarise(*future.result())
     else:
         for job in jobs:
-            summarise(*evaluate_one(job))
+            summarise(*evaluate_one(job + (0,)))
 
     print(f"\nEvaluated {len(jobs)} experiment(s) in "
           f"{time.perf_counter() - started:.1f}s. Metrics in: {results_dir}"

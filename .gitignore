@@ -3,4 +3,7 @@ __pycache__/
 *.pyc
 *.png
 *.h5
+*.npz
 *.json
+*.prof
+*.callgrind
