@@ -81,6 +81,16 @@ def subtree_node_data(state, ctx, node):
     return np.concatenate(arrs) if arrs else np.array([], dtype=int)
 
 
+def subtree_leaves(state, ctx, node):
+    """
+    The leaves under `node`, in the order subtree_node_data concatenates their
+    rows.
+    """
+    if node in ctx.leaf_idx:
+        return [node]
+    return [leaf for leaf in state._descendant_leaves(node) if leaf in ctx.leaf_idx]
+
+
 def subtree_node_data_len(state, ctx, node):
     """
     How many rows are under `node`, without materialising them.
@@ -152,37 +162,71 @@ def subtree_admissible(state, subtree_root):
                for leaf in state._descendant_leaves(subtree_root))
 
 
-def change_admissible(state, node, feat, thr, idx):
+def change_partition(state, node, feat, thr, idx):
     """
-    Check whether a change move leaves every leaf under `node` still meets
-    min_samples_leaf. This is the admissibility check for a change move only,
-    because grow and prune are already screened by select_move.
+    The rows `idx` under `node` re-routed as a change of its split to
+    (feat, thr) would route them: {leaf: rows}, in the order IncBDTree.change
+    builds its leaves -- or None as soon as a leaf would hold fewer than
+    min_samples_leaf rows. Routing them is the whole cost of applying the
+    change, so a change that passes is applied from this instead of routed
+    a second time.
     """
     m = state.nodes
     X = state.problem.X
     min_leaf = state.problem.min_samples_leaf
+    partition = {}
     queue = deque([(node, idx, True)])
     while queue:
         curr, curr_idx, is_changed = queue.popleft()
         row = m.get(curr)
         if row is None:
             if len(curr_idx) < min_leaf:
-                return False
+                return None
+            partition[curr] = curr_idx
             continue
         curr_feat = int(feat) if is_changed else int(row[3])
         curr_thr = float(thr) if is_changed else float(row[4])
         left = X[curr_idx, curr_feat] < curr_thr
         queue.append((int(row[1]), curr_idx[left], False))
         queue.append((int(row[2]), curr_idx[~left], False))
-    return True
+    return partition
 
 
-def valid_threshold(problem, feat, thr, idx):
+def change_admissible(state, node, feat, thr, idx):
     """
-    Check whether a threshold produces child leaves that meet min_samples_leaf.
+    Check whether a change move leaves every leaf under `node` still meets
+    min_samples_leaf. This is the admissibility check for a change move only,
+    because grow and prune are already screened by select_move.
     """
-    left = np.count_nonzero(problem.X[idx, feat] < thr)
-    return left >= problem.min_samples_leaf and (len(idx) - left) >= problem.min_samples_leaf
+    return change_partition(state, node, feat, thr, idx) is not None
+
+
+def valid_split(problem, go_left):
+    """
+    Check whether a split sending the rows marked in `go_left` left produces
+    child leaves that meet min_samples_leaf.
+    """
+    left = np.count_nonzero(go_left)
+    return left >= problem.min_samples_leaf and (len(go_left) - left) >= problem.min_samples_leaf
+
+
+_SPLIT_PROBE = 256
+
+
+def check_grow_split(problem, idx, feat, thr):
+    """
+    (valid, go_left) for splitting the rows `idx` on (feat, thr): whether
+    both children meet min_samples_leaf, and the split's mask when the full
+    rows had to be split to tell. The first rows are tried alone first --
+    once they already put enough rows on each side the split is valid,
+    whatever the rest do, and the mask is left for grow to compute only if
+    the move is actually applied.
+    """
+    head = problem.X[idx[:_SPLIT_PROBE], feat] < thr
+    if len(idx) > _SPLIT_PROBE and valid_split(problem, head):
+        return True, None
+    go_left = head if len(idx) <= _SPLIT_PROBE else problem.X[idx, feat] < thr
+    return valid_split(problem, go_left), go_left
 
 
 def evaluate_subtree_move(state, ctx, move, node, idx, rng):
@@ -208,7 +252,10 @@ def evaluate_subtree_move(state, ctx, move, node, idx, rng):
     if move == "grow":
         feat = problem.random_feature(rng)
         thr, lp_thr = problem.random_threshold(feat, rng)
-        if not valid_threshold(problem, feat, thr, idx):
+        # The mask, when computed, is carried on the move so applying it does
+        # not split the same rows again.
+        valid, go_left = check_grow_split(problem, idx, feat, thr)
+        if not valid:
             return large_neg, {'node': node, 'feat': feat, 'thr': thr, 'stump': stump}
 
         q_f = mp_f[move] / (1.0 if stump else float(num_leaves))
@@ -258,7 +305,10 @@ def evaluate_subtree_move(state, ctx, move, node, idx, rng):
         prop_correction = (problem.lp_thr_proposal(old_feat, float(state.nodes[node][4]))
                            - lp_thr)
 
-    return prop_correction, {'node': node, 'feat': feat, 'thr': thr, 'stump': stump}
+    prop_move = {'node': node, 'feat': feat, 'thr': thr, 'stump': stump}
+    if move == "grow" and go_left is not None:
+        prop_move['go_left'] = go_left
+    return prop_correction, prop_move
 
 
 def apply_subtree_proposal(state, ctx, move, prop_move):
@@ -271,7 +321,7 @@ def apply_subtree_proposal(state, ctx, move, prop_move):
     node = prop_move['node']
 
     if move == "grow":
-        state.grow(node, prop_move['feat'], prop_move['thr'])
+        state.grow(node, prop_move['feat'], prop_move['thr'], prop_move.get('go_left'))
         L, R = state._child_nodes(node)
         ctx.nodes.append(node)
         ctx.terminal_nodes.append(node)
@@ -304,7 +354,7 @@ def apply_subtree_proposal(state, ctx, move, prop_move):
                 ctx.terminal_nodes.append(parent)
 
     else:  # change: only the routing below `node` moves
-        state.change(node, prop_move['feat'], prop_move['thr'])
+        state.change(node, prop_move['feat'], prop_move['thr'], prop_move.get('partition'))
         for leaf in state._descendant_leaves(node):
             ctx.leaf_idx[leaf] = state.leaf_idx[leaf]
 

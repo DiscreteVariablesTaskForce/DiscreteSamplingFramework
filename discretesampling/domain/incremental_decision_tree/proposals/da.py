@@ -3,7 +3,7 @@ import math
 from discretesampling.base.random import RNG
 from discretesampling.domain.incremental_decision_tree.problem import BARRED
 from discretesampling.domain.incremental_decision_tree.moves import (
-    draw_subtree, evaluate_subtree_move, select_move, subtree_node_data,
+    draw_subtree, evaluate_subtree_move, select_move, subtree_leaves,
     subtree_size)
 from discretesampling.domain.incremental_decision_tree.subsampling import (
     block_count, sample_partition_block)
@@ -47,16 +47,18 @@ class DAProposal(IncrementalTreeProposalBase):
             self._note(move, node, 0)
             return self._stay(x)
 
-        node_data = subtree_node_data(x, ctx, node)
-        self._note(move, node, len(node_data))
+        leaves = subtree_leaves(x, ctx, node)
+        leaf_rows = [ctx.leaf_idx[leaf] for leaf in leaves]
+        n_rows = sum(len(a) for a in leaf_rows)
+        self._note(move, node, n_rows)
         prop_correction, prop_move = evaluate_subtree_move(
-            x, ctx, move, node, node_data, rng)
+            x, ctx, move, node, leaf_rows[0] if move == "grow" else None, rng)
         if prop_correction <= BARRED:
             # Dead already: the screen has nothing to screen.
             return self._stay(x, 'n_barred')
 
         m = subtree_size(ctx)
-        if (len(node_data) < self.min_data
+        if (n_rows < self.min_data
                 and block_count(m, self.ss_prop, self.min_data) > 1):
             # Too few rows reach this node for a block of it to say anything.
             # Skip the screen, exactly as MCMC_DA's da_flag does, and let the
@@ -68,11 +70,11 @@ class DAProposal(IncrementalTreeProposalBase):
 
         # One block, simulated rather than built: only its overlap with this
         # node's rows is ever needed, and that is O(overlap) to draw.
-        subset = sample_partition_block(m, node_data, rng,
-                                        self.ss_prop, self.min_data)
+        subset, leaf_pos = sample_partition_block(m, leaf_rows, rng,
+                                                  self.ss_prop, self.min_data)
         v_sub, v_sub_prime, _ = self.target.eval_subset(
-            x, move, node, prop_move, subset, len(node_data))
-        self._note(move, node, len(node_data), len(subset), v_sub_prime - v_sub)
+            x, move, node, prop_move, subset, leaf_pos, leaves, n_rows)
+        self._note(move, node, n_rows, len(subset), v_sub_prime - v_sub)
 
         log_accept = min(0.0, v_sub_prime - v_sub + prop_correction)
         if not rng.random() < math.exp(log_accept):

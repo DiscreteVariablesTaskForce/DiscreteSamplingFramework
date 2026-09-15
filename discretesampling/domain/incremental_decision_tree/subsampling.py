@@ -12,6 +12,16 @@ def block_count(m, ss_prop, min_data):
     return max(1, m // subset_size)
 
 
+def grouped_rows(leaf_rows):
+    """
+    The rows of several leaves as one array, and for each row the position in
+    `leaf_rows` of the leaf it came from -- the form
+    IncrementalTreeTarget.eval_subset takes a subset in.
+    """
+    rows = np.concatenate(leaf_rows) if len(leaf_rows) != 1 else leaf_rows[0]
+    return rows, np.repeat(np.arange(len(leaf_rows)), [len(a) for a in leaf_rows])
+
+
 def assign_blocks(state, ctx, subtree_root, rng, ss_prop, min_data):
     """
     Assign the rows under `subtree_root` to blocks, for a HINTS proposal.
@@ -35,31 +45,49 @@ def assign_blocks(state, ctx, subtree_root, rng, ss_prop, min_data):
     return num_blocks, buf, m
 
 
-def block_subset(node_data, block_of, j):
+def block_rows(ctx, leaves, block_of, j, labels):
     """
-    Return the rows of `node_data` that are assigned to block `j`, using the
-    `block_of` buffer produced by assign_blocks. If block_of is None, return
-    node_data unchanged.
+    Block j's rows under the node whose leaves are `leaves`, as
+    (subset, leaf_pos) -- see grouped_rows -- using the `block_of` buffer
+    produced by assign_blocks; every row under the node if block_of is None.
+
+    `labels` is a dict held for one sweep. Each leaf's block labels are read
+    out of block_of once and reused for every later block, until a move
+    replaces that leaf's rows.
     """
-    if block_of is None or not node_data.size:
-        return node_data
-    return node_data[block_of[node_data] == j]
+    leaf_rows = [ctx.leaf_idx[leaf] for leaf in leaves]
+    if block_of is None:
+        return grouped_rows(leaf_rows)
+    picked = []
+    for leaf, rows in zip(leaves, leaf_rows):
+        cached = labels.get(leaf)
+        if cached is None or cached[0] is not rows:
+            cached = labels[leaf] = (rows, block_of[rows])
+        picked.append(rows[cached[1] == j])
+    return grouped_rows(picked)
 
 
-def sample_partition_block(m, node_data, rng, ss_prop, min_data):
+def sample_partition_block(m, leaf_rows, rng, ss_prop, min_data):
     """
-    Randomly sample a subset of `node_data` to be the rows of block `j` under a
-    HINTS proposal. The number of blocks is determined by the number of rows `m'
-    under the subtree, the subsample proportion `ss_prop`, and the minimum block
-    size `min_data`. The subset is drawn uniformly without replacement.
+    Randomly sample the rows of one block of a HINTS partition of the rows
+    under a node, given as the row arrays of the leaves under it. The number of
+    blocks is determined by the number of rows `m` under the subtree, the
+    subsample proportion `ss_prop`, and the minimum block size `min_data`. The
+    subset is drawn uniformly without replacement, and returned as
+    (subset, leaf_pos) -- see grouped_rows.
     """
-    n = len(node_data)
+    lengths = [len(a) for a in leaf_rows]
+    n = sum(lengths)
     if n == 0 or m <= 0:
-        return np.array([], dtype=int)
+        return np.array([], dtype=int), np.array([], dtype=int)
     num_blocks = block_count(m, ss_prop, min_data)
     if num_blocks == 1:
-        return node_data
+        return grouped_rows(leaf_rows)
     h = int(rng.nprng.binomial(n, 1.0 / num_blocks))
     if h == 0:
-        return np.array([], dtype=int)
-    return rng.nprng.choice(node_data, size=h, replace=False, shuffle=False)
+        return np.array([], dtype=int), np.array([], dtype=int)
+    # Positions rather than rows: the same rows are drawn, and each position
+    # also says which leaf its row came from.
+    idx = rng.nprng.choice(n, size=h, replace=False, shuffle=False)
+    rows = np.concatenate(leaf_rows) if len(leaf_rows) != 1 else leaf_rows[0]
+    return rows[idx], np.searchsorted(np.cumsum(lengths), idx, side='right')

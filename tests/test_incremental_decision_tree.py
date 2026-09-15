@@ -9,8 +9,11 @@ from discretesampling.base.util import pad, restore
 from discretesampling.domain import incremental_decision_tree as idt
 from discretesampling.domain.incremental_decision_tree import diagnostics as dg
 from discretesampling.domain.incremental_decision_tree.moves import (
-    apply_subtree_proposal, change_admissible, draw_subtree, evaluate_subtree_move,
-    make_context, select_move, subtree_admissible, subtree_node_data)
+    apply_subtree_proposal, change_admissible, change_partition, check_grow_split,
+    draw_subtree, evaluate_subtree_move, make_context, select_move,
+    subtree_admissible, subtree_leaves, subtree_node_data, valid_split)
+from discretesampling.domain.incremental_decision_tree.subsampling import (
+    assign_blocks, block_rows, grouped_rows)
 
 
 # --------------------------------------------------------------------------- #
@@ -59,6 +62,13 @@ def walk(proposal, problem, seed=0, steps=250, record=False, probe=None):
                 probes.append(probe(proposal, x, x_prime))
         x = x_prime
     return (x, moves, probes) if probe is not None else (x, moves)
+
+
+def largest_tree_visited(problem, seed, steps=400):
+    """The biggest tree an MH proposal walk passes through -- its last state
+    can be a stump again, with nothing to change or prune."""
+    _, moves = walk(idt.IncrementalTreeProposal(), problem, seed=seed, steps=steps)
+    return max((after for _, after in moves), key=lambda tree: len(tree.tree))
 
 
 # --------------------------------------------------------------------------- #
@@ -143,6 +153,131 @@ def test_change_admissible_agrees_with_applying_the_change(problem):
         if subtree_admissible(x2, root) and len(x2.tree) < 6:
             x = x2
     assert checked > 20
+
+
+def test_a_change_installed_from_its_partition_is_the_change_routed(problem):
+    """HINTS applies a change from the partition its admissibility check built."""
+    rng = RNG(21)
+    x = largest_tree_visited(problem, seed=5)
+    checked = 0
+    for _ in range(600):
+        _, ctx = draw_subtree(x, rng)
+        move, node = select_move(x, ctx, rng)
+        if move != "change":
+            continue
+        idx = subtree_node_data(x, ctx, node)
+        _, prop_move = evaluate_subtree_move(x, ctx, move, node, idx, rng)
+        partition = change_partition(x, node, prop_move['feat'], prop_move['thr'], idx)
+        if partition is None:
+            continue
+        routed, installed = x.deep_copy(), x.deep_copy()
+        routed.change(node, prop_move['feat'], prop_move['thr'])
+        installed.change(node, prop_move['feat'], prop_move['thr'], partition)
+        # Leaf order and row order both matter: later draws index into them.
+        assert list(installed.leaf_idx) == list(routed.leaf_idx)
+        for leaf in routed.leaf_idx:
+            assert np.array_equal(installed.leaf_idx[leaf], routed.leaf_idx[leaf])
+            assert np.array_equal(installed.counts[leaf], routed.counts[leaf])
+        checked += 1
+    assert checked > 20
+
+
+def test_grow_split_check_agrees_with_splitting_every_row():
+    """
+    The first rows settle a grow's split only when they already make it valid,
+    so the verdict never differs from splitting every row.
+    """
+    problem = make_problem(n=3000, d=3, seed=4, min_samples_leaf=40)
+    rows = problem.all_rows()
+    rs = np.random.default_rng(0)
+    outcomes = set()
+    for _ in range(400):
+        feat = int(rs.integers(problem.n_features))
+        thr = rs.uniform(*problem.vals[feat])
+        idx = rows if rs.random() < 0.5 else rs.choice(
+            rows, size=int(rs.integers(50, 3000)), replace=False)
+        valid, go_left = check_grow_split(problem, idx, feat, thr)
+        full = problem.X[idx, feat] < thr
+        assert valid == valid_split(problem, full)
+        if go_left is not None:
+            assert np.array_equal(go_left, full)
+        outcomes.add((valid, go_left is None))
+    assert outcomes >= {(True, True), (True, False), (False, False)}
+
+
+def test_block_rows_are_the_blocks_rows_under_the_node_as_leaves_change(problem):
+    """Cached block labels must be dropped for exactly the leaves a move replaces."""
+    rng = RNG(13)
+    x = largest_tree_visited(problem, seed=6).deep_copy()
+    ctx = make_context(x, 0)
+    num_blocks, block_of, _ = assign_blocks(x, ctx, 0, rng, 0.2, 5)
+    assert num_blocks > 1
+    labels, applied = {}, 0
+    for _ in range(80):
+        move, node = select_move(x, ctx, rng)
+        if move == "stay":
+            continue
+        leaves = subtree_leaves(x, ctx, node)
+        node_rows = subtree_node_data(x, ctx, node)
+        for j in range(num_blocks):
+            subset, leaf_pos = block_rows(ctx, leaves, block_of, j, labels)
+            assert np.array_equal(np.sort(subset),
+                                  np.sort(node_rows[block_of[node_rows] == j]))
+            for k, leaf in enumerate(leaves):
+                assert np.isin(subset[leaf_pos == k], ctx.leaf_idx[leaf]).all()
+        pc, prop_move = evaluate_subtree_move(
+            x, ctx, move, node, ctx.leaf_idx[node] if move == "grow" else None, rng)
+        if pc > idt.BARRED:
+            apply_subtree_proposal(x, ctx, move, prop_move)
+            applied += 1
+    assert applied > 10
+
+
+def test_surrogate_scores_the_subset_as_routing_it_would():
+    """
+    eval_move reads the current tree's side of a move off the leaf each subset
+    row sits in, and a change routes only the rows its new split sends across.
+    Both have to give exactly the subtree density that routing every subset
+    row through the tree before and after the move gives.
+    """
+    problem = make_problem(n=800, d=5, seed=1, min_samples_leaf=5, max_tree_size=24)
+    target = idt.IncrementalTreeTarget(problem)
+    x = largest_tree_visited(problem, seed=2, steps=800)
+    rng, rs = RNG(8), np.random.default_rng(8)
+    K = problem.num_classes
+
+    def subtree_density(tree, node, rows, scale, split_nodes):
+        reached = tree.route(problem.X[rows])
+        lhood = sum(target.log_dm(np.bincount(problem.y[rows[reached == leaf]], minlength=K) * scale)
+                    for leaf in tree._descendant_leaves(node))
+        return (lhood + target.sum_split_priors(tree, split_nodes)
+                + target.log_prior(len(tree.tree), len(tree.leaf_idx)))
+
+    checked = dict.fromkeys(("grow", "prune", "change"), 0)
+    for _ in range(1500):
+        root, ctx = draw_subtree(x, rng)
+        move, node = select_move(x, ctx, rng)
+        if move == "stay":
+            continue
+        leaves = subtree_leaves(x, ctx, node)
+        rows, leaf_pos = grouped_rows([ctx.leaf_idx[leaf] for leaf in leaves])
+        pc, prop_move = evaluate_subtree_move(
+            x, ctx, move, node, ctx.leaf_idx[node] if move == "grow" else None, rng)
+        keep = rs.random(len(rows)) < 0.3
+        if pc <= idt.BARRED or not keep.any():
+            continue
+        subset, scale = rows[keep], len(rows) / keep.sum()
+        v, v_prime = target.eval_move(x, move, node, prop_move, subset, leaf_pos[keep],
+                                      leaves, scale)
+
+        x2 = x.deep_copy()
+        apply_subtree_proposal(x2, make_context(x2, root), move, prop_move)
+        assert v == pytest.approx(subtree_density(
+            x, node, subset, scale, [] if move == "grow" else [node]), abs=1e-8)
+        assert v_prime == pytest.approx(subtree_density(
+            x2, node, subset, scale, [] if move == "prune" else [node]), abs=1e-8)
+        checked[move] += 1
+    assert min(checked.values()) > 20
 
 
 def test_encode_decode_round_trip(problem):

@@ -230,10 +230,12 @@ class IncBDTree:
 
     # -------------------- moves -------------------- #
 
-    def grow(self, leaf_id, feat, thr):
+    def grow(self, leaf_id, feat, thr, go_left=None):
         """
         Grow a leaf into a decision node, splitting on the given feature and threshold.
         The leaf's rows are re-routed to the new children, and the counts are updated.
+        `go_left`, the split's mask over the leaf's rows, is used instead of
+        recomputing it when the caller already has it.
         """
         if leaf_id not in self.leaf_idx:
             raise ValueError("Chosen node is not a leaf.")
@@ -248,7 +250,7 @@ class IncBDTree:
 
         # Only the rows in this one leaf move.
         idx = np.asarray(self.leaf_idx.pop(leaf_id), dtype=int)
-        mask = self.problem.X[idx, feat] < thr
+        mask = self.problem.X[idx, feat] < thr if go_left is None else go_left
         y, K = self.problem.y, self.problem.num_classes
         for nid, sub_idx in ((left_id, idx[mask]), (right_id, idx[~mask])):
             self.leaf_idx[nid] = sub_idx
@@ -280,11 +282,13 @@ class IncBDTree:
         self._invalidate()
         return self
 
-    def change(self, node_id, new_feat, new_thr):
+    def change(self, node_id, new_feat, new_thr, partition=None):
         """
         Change the feature and threshold of a decision node,
         and re-route all the data points that descend from it,
         updating the counts of all affected leaves.
+        `partition`, {leaf: rows} as moves.change_partition computed it for
+        this same change, is installed instead of routing the rows again.
         """
         row = self.nodes.get(node_id)
         if row is None:
@@ -292,26 +296,31 @@ class IncBDTree:
         row[3], row[4] = new_feat, new_thr
 
         desc = self._descendant_leaves(node_id)
-        idx_all = (np.concatenate([np.asarray(self.leaf_idx.get(leaf, []), dtype=int)
-                                   for leaf in desc])
-                   if desc else np.empty(0, dtype=int))
+        if partition is None:
+            idx_all = (np.concatenate([np.asarray(self.leaf_idx.get(leaf, []), dtype=int)
+                                       for leaf in desc])
+                       if desc else np.empty(0, dtype=int))
+            m = self.nodes
+            X = self.problem.X
+            partition = {}
+            queue = deque([(node_id, idx_all)])
+            while queue:
+                curr, curr_idx = queue.popleft()
+                if curr in m:
+                    _, L, R, feat, thr, _ = m[curr]
+                    mask = X[curr_idx, int(feat)] < thr
+                    queue.append((int(L), curr_idx[mask]))
+                    queue.append((int(R), curr_idx[~mask]))
+                else:
+                    partition[curr] = curr_idx
         for leaf in desc:
             self.leaf_idx.pop(leaf, None)
             self.counts.pop(leaf, None)
 
-        m = self.nodes
-        X, y, K = self.problem.X, self.problem.y, self.problem.num_classes
-        queue = deque([(node_id, idx_all)])
-        while queue:
-            curr, curr_idx = queue.popleft()
-            if curr in m:
-                _, L, R, feat, thr, _ = m[curr]
-                mask = X[curr_idx, int(feat)] < thr
-                queue.append((int(L), curr_idx[mask]))
-                queue.append((int(R), curr_idx[~mask]))
-            else:
-                self.leaf_idx[curr] = curr_idx
-                self.counts[curr] = np.bincount(y[curr_idx], minlength=K)
+        y, K = self.problem.y, self.problem.num_classes
+        for leaf, rows in partition.items():
+            self.leaf_idx[leaf] = rows
+            self.counts[leaf] = np.bincount(y[rows], minlength=K)
         return self
 
     # -------------------- copying -------------------- #

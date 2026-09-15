@@ -1,12 +1,14 @@
 import math
 
+import numpy as np
+
 from discretesampling.base.random import RNG
 from discretesampling.domain.incremental_decision_tree.problem import BARRED
 from discretesampling.domain.incremental_decision_tree.moves import (
-    apply_subtree_proposal, change_admissible, draw_subtree,
-    evaluate_subtree_move, select_move, subtree_admissible, subtree_node_data)
+    apply_subtree_proposal, change_partition, draw_subtree,
+    evaluate_subtree_move, select_move, subtree_admissible, subtree_leaves)
 from discretesampling.domain.incremental_decision_tree.subsampling import (
-    assign_blocks, block_subset)
+    assign_blocks, block_rows)
 from discretesampling.domain.incremental_decision_tree.proposals.base import (
     IncrementalTreeProposalBase)
 from discretesampling.domain.incremental_decision_tree.diagnostics import (
@@ -81,6 +83,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
         """
         state_new = x
         forward = reverse = 0.0
+        labels = {}
 
         for j in range(num_blocks):
             move, node = select_move(state_new, ctx, rng)
@@ -88,42 +91,48 @@ class HINTSProposal(IncrementalTreeProposalBase):
                 self._log(move, node, 0, STAY)
                 continue
 
-            # Full node data, not the block. The min_samples_leaf test inside
-            # evaluate_subtree_move is a property of the proposed tree, and
-            # screening it on a fraction of the rows would let HINTS accept
-            # trees the other methods reject -- at which point the three are no
-            # longer sampling the same target.
-            node_data = subtree_node_data(state_new, ctx, node)
+            leaves = subtree_leaves(state_new, ctx, node)
+            n_rows = sum(len(ctx.leaf_idx[leaf]) for leaf in leaves)
+            # The leaf's full rows for a grow, not the block. The
+            # min_samples_leaf test inside evaluate_subtree_move is a property
+            # of the proposed tree, and screening it on a fraction of the rows
+            # would let HINTS accept trees the other methods reject -- at which
+            # point the three are no longer sampling the same target.
             prop_correction, prop_move = evaluate_subtree_move(
-                state_new, ctx, move, node, node_data, rng)
+                state_new, ctx, move, node,
+                ctx.leaf_idx[node] if move == "grow" else None, rng)
             if prop_correction <= BARRED:
                 self.n_barred += 1
-                self._log(move, node, len(node_data), BARRED_OUT)
+                self._log(move, node, n_rows, BARRED_OUT)
                 continue
 
-            subset = block_subset(node_data, block_of, j)
+            subset, leaf_pos = block_rows(ctx, leaves, block_of, j, labels)
             v_sub, v_sub_prime, _ = self.target.eval_subset(
-                state_new, move, node, prop_move, subset, len(node_data))
+                state_new, move, node, prop_move, subset, leaf_pos, leaves, n_rows)
             n_sub, dsurr = len(subset), v_sub_prime - v_sub
 
             log_accept = min(0.0, v_sub_prime - v_sub + prop_correction)
             if not rng.random() < math.exp(log_accept):
                 self.n_screened_out += 1
-                self._log(move, node, len(node_data), SCREENED_OUT, n_sub, dsurr)
+                self._log(move, node, n_rows, SCREENED_OUT, n_sub, dsurr)
                 continue
 
             # Every state the sweep passes through has to be admissible, not
             # just the one it ends on. From a state with a starved leaf, a
             # prune can merge that leaf away -- and the grow that would undo it
-            # is barred by valid_threshold, so the move has forward probability
+            # is barred by valid_split, so the move has forward probability
             # and no reverse path at all. The correction assumes each inner
             # step is reversible with respect to its own surrogate, so one such
             # move biases the whole sweep. Only a change can starve a leaf.
-            if move == "change" and not change_admissible(
-                    state_new, node, prop_move['feat'], prop_move['thr'], node_data):
-                self.n_inadmissible += 1
-                self._log(move, node, len(node_data), INADMISSIBLE, n_sub, dsurr)
-                continue
+            if move == "change":
+                partition = change_partition(
+                    state_new, node, prop_move['feat'], prop_move['thr'],
+                    np.concatenate([ctx.leaf_idx[leaf] for leaf in leaves]))
+                if partition is None:
+                    self.n_inadmissible += 1
+                    self._log(move, node, n_rows, INADMISSIBLE, n_sub, dsurr)
+                    continue
+                prop_move['partition'] = partition
 
             if state_new is x:
                 state_new = x.deep_copy()
@@ -144,7 +153,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
             forward += v_sub_prime
             reverse += v_sub
             self.n_inner_moves += 1
-            self._log(move, node, len(node_data), APPLIED, n_sub, dsurr)
+            self._log(move, node, n_rows, APPLIED, n_sub, dsurr)
 
         return state_new, forward, reverse
 

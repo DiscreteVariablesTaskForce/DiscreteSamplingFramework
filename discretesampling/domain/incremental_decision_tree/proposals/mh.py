@@ -1,7 +1,7 @@
 from discretesampling.base.random import RNG
 from discretesampling.domain.incremental_decision_tree.problem import BARRED
 from discretesampling.domain.incremental_decision_tree.moves import (
-    draw_subtree, evaluate_subtree_move, select_move, subtree_node_data)
+    draw_subtree, evaluate_subtree_move, select_move, subtree_node_data_len)
 from discretesampling.domain.incremental_decision_tree.proposals.base import (
     IncrementalTreeProposalBase)
 
@@ -23,10 +23,10 @@ class IncrementalTreeProposal(IncrementalTreeProposalBase):
             self._note(move, node, 0)
             return self._stay(x)
 
-        node_data = subtree_node_data(x, ctx, node)
-        self._note(move, node, len(node_data))
+        n_rows = subtree_node_data_len(x, ctx, node)
+        self._note(move, node, n_rows)
         prop_correction, prop_move = evaluate_subtree_move(
-            x, ctx, move, node, node_data, rng)
+            x, ctx, move, node, ctx.leaf_idx[node] if move == "grow" else None, rng)
         if prop_correction <= BARRED:
             # An invalid split, or a reverse path barred at max_tree_size.
             return self._stay(x, 'n_barred')
