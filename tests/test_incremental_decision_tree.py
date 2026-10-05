@@ -13,7 +13,9 @@ from discretesampling.domain.incremental_decision_tree.moves import (
     draw_subtree, evaluate_subtree_move, make_context, select_move,
     subtree_admissible, subtree_leaves, subtree_node_data, valid_split)
 from discretesampling.domain.incremental_decision_tree.subsampling import (
-    assign_blocks, block_rows, grouped_rows)
+    RowBlocks, grouped_rows)
+from discretesampling.domain.incremental_decision_tree.proposals.hints import (
+    BlockRows, NestedBlocks)
 
 
 # --------------------------------------------------------------------------- #
@@ -156,7 +158,7 @@ def test_change_admissible_agrees_with_applying_the_change(problem):
 
 
 def test_a_change_installed_from_its_partition_is_the_change_routed(problem):
-    """HINTS applies a change from the partition its admissibility check built."""
+    """FlatHINTS applies a change from the partition its admissibility check built."""
     rng = RNG(21)
     x = largest_tree_visited(problem, seed=5)
     checked = 0
@@ -205,32 +207,73 @@ def test_grow_split_check_agrees_with_splitting_every_row():
     assert outcomes >= {(True, True), (True, False), (False, False)}
 
 
-def test_block_rows_are_the_blocks_rows_under_the_node_as_leaves_change(problem):
-    """Cached block labels must be dropped for exactly the leaves a move replaces."""
+def test_row_blocks_partition_the_rows_under_a_node_as_leaves_change(problem):
+    """
+    Each block is exactly the rows under the node whose label is its own, so
+    the blocks partition those rows -- for fresh splits of any size, and
+    however the leaves have changed since the split was drawn.
+    """
     rng = RNG(13)
     x = largest_tree_visited(problem, seed=6).deep_copy()
     ctx = make_context(x, 0)
-    num_blocks, block_of, _ = assign_blocks(x, ctx, 0, rng, 0.2, 5)
-    assert num_blocks > 1
-    labels, applied = {}, 0
+    blocks = RowBlocks(problem.n_rows)
+    applied = 0
     for _ in range(80):
         move, node = select_move(x, ctx, rng)
         if move == "stay":
             continue
+        num_blocks = int(rng.nprng.integers(2, 8))
+        blocks.draw(np.concatenate(list(ctx.leaf_idx.values())), num_blocks, rng)
+
         leaves = subtree_leaves(x, ctx, node)
         node_rows = subtree_node_data(x, ctx, node)
+        which = blocks.labels[node_rows]
+        assert np.all((which >= 0) & (which < num_blocks))
+
+        leaf_rows = [ctx.leaf_idx[leaf] for leaf in leaves]
+        seen = []
         for j in range(num_blocks):
-            subset, leaf_pos = block_rows(ctx, leaves, block_of, j, labels)
-            assert np.array_equal(np.sort(subset),
-                                  np.sort(node_rows[block_of[node_rows] == j]))
-            for k, leaf in enumerate(leaves):
-                assert np.isin(subset[leaf_pos == k], ctx.leaf_idx[leaf]).all()
+            subset, leaf_pos = blocks.block_rows(leaf_rows, j)
+            assert np.array_equal(np.sort(subset), np.sort(node_rows[which == j]))
+            for k, rows in enumerate(leaf_rows):
+                assert np.isin(subset[leaf_pos == k], rows).all()
+            seen.append(subset)
+        # none shared, none dropped
+        assert np.array_equal(np.sort(np.concatenate(seen)), np.sort(node_rows))
         pc, prop_move = evaluate_subtree_move(
             x, ctx, move, node, ctx.leaf_idx[node] if move == "grow" else None, rng)
         if pc > idt.BARRED:
             apply_subtree_proposal(x, ctx, move, prop_move)
             applied += 1
     assert applied > 10
+
+
+def test_flat_hints_draws_a_new_split_every_sweep(problem, target):
+    """
+    FlatHINTS splits the rows under the subtree root afresh for every sweep
+    that has more than one block, and draws nothing for a sweep that has one.
+    """
+    proposal = idt.FlatHINTSProposal(target, ss_prop=0.2, min_data=15)
+    draws = []
+    draw = proposal.blocks.draw
+
+    def watched(rows, num_blocks, rng):
+        draws.append(num_blocks)
+        return draw(rows, num_blocks, rng)
+
+    proposal.blocks.draw = watched
+    rng = RNG(5)
+    x = idt.IncrementalTree.stump(problem)
+    multi = 0
+    for _ in range(200):
+        before, blocks_before = len(draws), proposal.n_blocks_total
+        x = proposal.sample(x, rng)
+        num_blocks = proposal.n_blocks_total - blocks_before
+        assert len(draws) - before == (1 if num_blocks > 1 else 0)
+        if num_blocks > 1:
+            assert draws[-1] == num_blocks
+            multi += 1
+    assert multi > 100
 
 
 def test_surrogate_scores_the_subset_as_routing_it_would():
@@ -308,24 +351,41 @@ def test_local_move_ratio_equals_the_global_target_ratio(problem, target):
     """
     The single most load-bearing identity in the domain.
 
-    At ss_prop = 1.0 the delayed-acceptance screen is an exact Metropolis test
-    against the full target, so its recorded correction must cancel the target
-    ratio the SMC reweight computes, leaving nothing but the subtree-root term.
-    That can only hold if eval_move's local before/after densities agree
-    exactly with the whole-tree target -- i.e. if every leaf, prior and split
-    density that the move does not touch really does cancel.
+    On every row under the move node, the screen's surrogate is the target
+    itself, so its before/after densities must differ by exactly the
+    whole-tree target ratio. That can only hold if eval_subset's local
+    densities agree exactly with the whole-tree target -- i.e. if every leaf,
+    prior and split density that the move does not touch really does cancel.
+    (DA no longer screens on the full data -- with one block it takes a plain
+    MH step -- so the identity is checked on eval_subset directly.)
     """
-    def weight_update_and_root_term(proposal, x, x_prime):
-        return (target.eval(x_prime) - target.eval(x)
-                + proposal.eval(x_prime, x) - proposal.eval(x, x_prime),
-                x_prime._smc_diag['root_term'])
-
-    proposal = idt.DAProposal(target, ss_prop=1.0, min_data=1)
-    _, moves, probes = walk(proposal, problem, seed=3, steps=400, record=True,
-                            probe=weight_update_and_root_term)
-    assert len(moves) > 20
-    for delta_w, root_term in probes:
-        assert delta_w == pytest.approx(root_term, abs=1e-9)
+    rng = RNG(3)
+    x = idt.IncrementalTree.stump(problem)
+    checked = dict.fromkeys(("grow", "prune", "change"), 0)
+    for _ in range(1500):
+        root, ctx = draw_subtree(x, rng)
+        move, node = select_move(x, ctx, rng)
+        if move == "stay":
+            continue
+        leaves = subtree_leaves(x, ctx, node)
+        leaf_rows = [ctx.leaf_idx[leaf] for leaf in leaves]
+        pc, prop_move = evaluate_subtree_move(
+            x, ctx, move, node, leaf_rows[0] if move == "grow" else None, rng)
+        if pc <= idt.BARRED:
+            continue
+        rows, leaf_pos = grouped_rows(leaf_rows)
+        v, v_prime, ok = target.eval_subset(x, move, node, prop_move, rows,
+                                            leaf_pos, leaves, len(rows))
+        assert ok
+        x2 = x.deep_copy()
+        apply_subtree_proposal(x2, make_context(x2, root), move, prop_move)
+        if not subtree_admissible(x2, root):
+            continue
+        assert v_prime - v == pytest.approx(target.eval(x2) - target.eval(x), abs=1e-9)
+        checked[move] += 1
+        if len(x2.tree) < 10:
+            x = x2
+    assert min(checked.values()) > 20
 
 
 def test_grow_and_its_reverse_prune_price_the_same_transition(problem):
@@ -369,24 +429,25 @@ def test_grow_and_its_reverse_prune_price_the_same_transition(problem):
     assert pairs > 30
 
 
-def test_hints_with_one_block_is_delayed_acceptance(problem, target):
+def test_delayed_acceptance_with_one_block_is_metropolis_hastings(problem, target):
     """
-    At ss_prop = 1.0 both reduce to a single block over the whole subtree, and
-    they draw from the RNG in the same order, so the particle streams must be
-    identical -- not merely similar.
+    At ss_prop = 1.0 there is a single block over the whole subtree, so there
+    is no subsample to screen on and DA skips its screen. It then draws from the
+    RNG in the same order as the plain MH proposal, so the particle streams must
+    be identical -- not merely similar.
     """
     da, _ = walk(idt.DAProposal(target, ss_prop=1.0, min_data=1), problem,
                  seed=7, steps=300)
-    hints, _ = walk(idt.HINTSProposal(target, ss_prop=1.0, min_data=1), problem,
-                    seed=7, steps=300)
-    assert da == hints
+    mh, _ = walk(idt.IncrementalTreeProposal(), problem, seed=7, steps=300)
+    assert da == mh
 
 
 @pytest.mark.parametrize("make", [
     lambda t: idt.IncrementalTreeProposal(),
     lambda t: idt.DAProposal(t, ss_prop=0.25, min_data=20),
+    lambda t: idt.FlatHINTSProposal(t, ss_prop=0.25, min_data=20),
     lambda t: idt.HINTSProposal(t, ss_prop=0.25, min_data=20),
-])
+], ids=["MH", "DA", "FlatHINTS", "HINTS"])
 def test_a_stay_is_the_same_object_and_costs_nothing(problem, target, make):
     proposal = make(target)
     rng = RNG(11)
@@ -407,8 +468,9 @@ def test_a_stay_is_the_same_object_and_costs_nothing(problem, target, make):
 @pytest.mark.parametrize("make", [
     lambda t: idt.IncrementalTreeProposal(),
     lambda t: idt.DAProposal(t, ss_prop=0.25, min_data=20),
+    lambda t: idt.FlatHINTSProposal(t, ss_prop=0.25, min_data=20),
     lambda t: idt.HINTSProposal(t, ss_prop=0.25, min_data=20),
-])
+], ids=["MH", "DA", "FlatHINTS", "HINTS"])
 def test_sampling_never_mutates_the_particle_it_was_given(problem, target, make):
     """
     After a resample the serial executor hands the same object to several
@@ -459,7 +521,7 @@ def test_eval_refuses_a_transition_it_never_proposed(problem, target):
     for eval on every pair of particles, and a path-dependent correction has no
     value to offer for a pair that was never proposed.
     """
-    proposal = idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+    proposal = idt.FlatHINTSProposal(target, ss_prop=0.25, min_data=20)
     a, _ = walk(idt.IncrementalTreeProposal(), problem, seed=1, steps=50)
     b, _ = walk(idt.IncrementalTreeProposal(), problem, seed=2, steps=50)
     with pytest.raises(ValueError, match="path-dependent"):
@@ -482,6 +544,7 @@ def test_out_of_support_trees_are_never_returned(problem, target):
     """Every particle a proposal hands back must carry finite target mass."""
     for make in (lambda: idt.IncrementalTreeProposal(),
                  lambda: idt.DAProposal(target, ss_prop=0.25, min_data=20),
+                 lambda: idt.FlatHINTSProposal(target, ss_prop=0.25, min_data=20),
                  lambda: idt.HINTSProposal(target, ss_prop=0.25, min_data=20)):
         _, moves = walk(make(), problem, seed=13, steps=300)
         for _, x in moves:
@@ -489,7 +552,220 @@ def test_out_of_support_trees_are_never_returned(problem, target):
             assert target.eval(x) > idt.BARRED
 
 
-def test_hints_keeps_every_intermediate_state_admissible(problem, target):
+def test_hints_blocks_nest_and_partition_their_parent(problem, target):
+    """
+    The hierarchy's whole premise: a data node's children split its rows between
+    them, none shared and none dropped, at every level and whatever the leaves
+    look like. Blocks that only nearly nest would leave the path correction
+    comparing a node against rows some child never had.
+    """
+    blocks = NestedBlocks(problem.n_rows, problem.y)
+    x = largest_tree_visited(problem, seed=6)
+    leaves = x._descendant_leaves(0)
+    rows = [x.leaf_idx[leaf] for leaf in leaves]
+    units = 27                                  # three levels of three
+    blocks.draw(np.concatenate(rows), units, RNG(2))
+
+    def in_range(r, lo, width):
+        """Which of `r` lie in the node (lo, width), worked out from the labels
+        themselves rather than from the sorted route split() takes."""
+        lab = blocks.labels[r]
+        return r[(lab >= lo) & (lab < lo + width)]
+
+    rng = RNG(9)
+    frontier = [(0, units)]
+    checked = 0
+    for _ in range(3):
+        parents, frontier = frontier, []
+        for lo, width in parents:
+            children = blocks.ranges(lo, width, 3)
+            order = blocks.order(3, rng)
+            assert sorted(order.tolist()) == [0, 1, 2]
+            assert sum(w for _, w in children) == width
+
+            for r in rows:
+                mine = in_range(r, lo, width)
+                batched = blocks.split(mine, lo, width, 3, problem.num_classes)
+                seen = []
+                for (clo, cwidth), (idx, counts) in zip(children, batched):
+                    assert np.array_equal(np.sort(idx), np.sort(in_range(r, clo, cwidth)))
+                    assert np.array_equal(
+                        counts, np.bincount(problem.y[idx],
+                                            minlength=problem.num_classes))
+                    assert not counts.flags.writeable
+                    seen.append(idx)
+                # none shared, none dropped: the children are exactly the parent
+                assert np.array_equal(np.sort(np.concatenate(seen)), np.sort(mine))
+                checked += 1
+            frontier.extend(children)
+    # every leaf, at the root and at both levels of three below it
+    assert checked == len(rows) * (1 + 3 + 9)
+
+
+def test_hints_draw_splits_the_rows_uniformly_at_random(problem, target):
+    """
+    A draw gives every row under the subtree root one uniformly random unit
+    block: every label is a valid block, each block holds about 1/U of the
+    rows, and two draws give two different splits.
+    """
+    n = 12000
+    blocks = NestedBlocks(n, np.zeros(n, dtype=np.int64))
+    rows = np.arange(n)
+    for units in (2, 4, 7, 16):
+        blocks.draw(rows, units, RNG(units))
+        labels = blocks.labels[rows]
+        assert labels.min() >= 0 and labels.max() < units
+        sizes = np.bincount(labels, minlength=units)
+        expected = n / units
+        # binomial sizes: well within five standard deviations of n / U
+        assert np.all(np.abs(sizes - expected) < 5 * np.sqrt(expected))
+        assert blocks.n_units == units
+
+    blocks = NestedBlocks(problem.n_rows, problem.y)
+    rows = problem.all_rows()[::3].copy()
+    blocks.draw(rows, 4, RNG(1))
+    first = blocks.labels[rows].copy()
+    blocks.draw(rows, 4, RNG(2))
+    assert not np.array_equal(blocks.labels[rows], first)
+
+
+def test_hints_equal_blocks_cut_the_rows_into_equal_shares(problem, target):
+    """
+    equal=True shuffles and cuts: every row gets a valid block, the blocks'
+    sizes differ by at most one, and two draws give two different splits.
+    """
+    n = 12001
+    blocks = NestedBlocks(n, np.zeros(n, dtype=np.int64), equal=True)
+    rows = np.arange(n)[::-1].copy()
+    for units in (2, 4, 7, 16):
+        blocks.draw(rows, units, RNG(units))
+        sizes = np.bincount(blocks.labels[rows], minlength=units)
+        assert len(sizes) == units
+        assert sizes.max() - sizes.min() <= 1
+        assert blocks.n_units == units
+    first = blocks.labels[rows].copy()
+    blocks.draw(rows, 16, RNG(99))
+    assert not np.array_equal(blocks.labels[rows], first)
+
+
+@pytest.mark.parametrize("equal_blocks", [False, True])
+def test_hints_block_states_hold_exactly_their_rows(problem, target, equal_blocks):
+    """
+    A block state is never routed: its untouched leaves are placeholders read
+    off the particle and the count table, its rewritten ones are split from
+    their parent's. Whichever way a leaf got there, at every data node it has
+    to hold exactly the rows the node's tree would route there from the node's
+    block -- and the counts of those rows. And no placeholder may outlive its
+    sweep: the particle handed back holds plain arrays.
+    """
+    proposal = idt.HINTSProposal(target, ss_prop=0.2, min_data=15,
+                                 equal_blocks=equal_blocks)
+    labels = proposal.blocks.labels
+    node = proposal._node
+    seen = {"nodes": 0, "unbuilt": 0}
+
+    def checked(state, ctx, full, rng, lo, width, depth):
+        fresh = idt.IncrementalTree.from_rows(problem, state.tree)
+        for leaf in state._descendant_leaves(ctx.root):
+            held = state.leaf_idx.held(leaf)
+            if type(held) is BlockRows and held._rows is None:
+                seen["unbuilt"] += 1
+            want = fresh.leaf_idx[leaf]
+            want = want[(labels[want] >= lo) & (labels[want] < lo + width)]
+            assert np.array_equal(np.sort(state.leaf_idx[leaf]), np.sort(want))
+            assert np.array_equal(state.counts[leaf],
+                                  np.bincount(problem.y[want],
+                                              minlength=problem.num_classes))
+        seen["nodes"] += 1
+        return node(state, ctx, full, rng, lo, width, depth)
+
+    proposal._node = checked
+    _, moves = walk(proposal, problem, seed=21, steps=300)
+    assert len(moves) > 20
+    assert seen["nodes"] > 200 and seen["unbuilt"] > 100
+    for _, x in moves:
+        assert type(x.leaf_idx) is dict
+
+
+def test_hints_draws_a_new_split_every_sweep(problem, target):
+    """
+    HINTS splits the data afresh for every sweep. Every sweep that uses the
+    hierarchy draws exactly one new split, of exactly the rows under that
+    sweep's subtree root.
+    """
+    proposal = idt.HINTSProposal(target, ss_prop=0.2, min_data=15)
+    draws = []
+    draw = proposal.blocks.draw
+
+    def watched(rows, n_units, rng):
+        draws.append((np.sort(rows), n_units))
+        return draw(rows, n_units, rng)
+
+    proposal.blocks.draw = watched
+    rng = RNG(5)
+    x = idt.IncrementalTree.stump(problem)
+    hierarchical = 0
+    for _ in range(200):
+        # the rows under each decision node of the tree this sweep starts from
+        # (and every row, for the root of a stump, which is not a decision node)
+        under = [np.sort(problem.all_rows())] + [
+            np.sort(np.concatenate([x.leaf_idx[leaf]
+                                    for leaf in x._descendant_leaves(node)]))
+            for node in x.nodes]
+        before = len(draws)
+        x = proposal.sample(x, rng)
+        if proposal._levels == 0:
+            assert len(draws) == before
+            continue
+        hierarchical += 1
+        assert len(draws) == before + 1
+        rows, n_units = draws[-1]
+        assert n_units == proposal._branching ** proposal._levels
+        assert any(np.array_equal(rows, u) for u in under)
+    assert hierarchical > 100
+
+
+def test_hints_surrogate_at_full_data_is_the_target(problem, target):
+    """
+    The surrogate's departure from the target vanishes at f = 1: the
+    tempering is a factor of f, and the counts are scaled by 1 / f. So the
+    top of the hierarchy scores a tree exactly as the target does -- which is
+    what makes the levels below it free to use whatever surrogate they like.
+    """
+    proposal = idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+    _, moves = walk(idt.IncrementalTreeProposal(), problem, seed=8, steps=200)
+    assert len(moves) > 20
+    for _, x in moves:
+        assert proposal._log_pi(x, 0, 1.0) == pytest.approx(target.eval(x), abs=1e-9)
+
+
+
+
+def test_hints_drops_levels_rather_than_starve_them(problem, target):
+    """
+    A level that cannot be split into at least two blocks decides nothing and
+    still costs a pass over its rows, so it is the levels that go, not the
+    blocks.
+    """
+    proposal = idt.HINTSProposal(target, ss_prop=0.1, min_data=20, levels=3)
+    assert proposal._shape(1) == (0, 0)
+    assert proposal._shape(3)[0] == 1
+    assert proposal._shape(8) == (3, 2)
+    for total in (2, 5, 27, 64, 1000):
+        levels, branching = proposal._shape(total)
+        assert levels == 0 or branching ** levels <= total
+
+
+@pytest.mark.parametrize("bad", [dict(branching=1), dict(branching=0),
+                                 dict(levels=-1)])
+def test_hints_refuses_settings_it_would_otherwise_quietly_change(target, bad):
+    """branching=1 used to be clamped to 2, so a run reported a hierarchy it
+    never built."""
+    with pytest.raises(ValueError):
+        idt.HINTSProposal(target, **bad)
+
+
+def test_flat_hints_keeps_every_intermediate_state_admissible(problem, target):
     """
     A regression guard for the one bug in this domain that no identity test
     can see: a sweep that passes through a state with a starved leaf. From
@@ -498,23 +774,172 @@ def test_hints_keeps_every_intermediate_state_admissible(problem, target):
     which biases the sampled distribution by a couple of percent and nothing
     else.
     """
-    proposal = idt.HINTSProposal(target, ss_prop=0.2, min_data=15)
+    proposal = idt.FlatHINTSProposal(target, ss_prop=0.2, min_data=15)
     proposal.validate_intermediate = True
     _, moves = walk(proposal, problem, seed=21, steps=400)
     assert len(moves) > 20
+
+
+
+@pytest.mark.parametrize("levels, branching", [(1, None), (2, None), (3, 2)])
+def test_hints_keeps_every_intermediate_state_admissible(problem, target,
+                                                         levels, branching):
+    """
+    HINTS holds min_samples_leaf on the full rows at every level, through a
+    full map it carries beside block states that only hold their block. After
+    every applied primitive move the map has to name exactly the tree's leaves
+    and none of them may be starved.
+    """
+    proposal = idt.HINTSProposal(target, ss_prop=0.05, min_data=5,
+                                 levels=levels, branching=branching)
+    proposal.validate_intermediate = True
+    _, moves = walk(proposal, problem, seed=21, steps=300)
+    assert len(moves) > 20
+    if levels > 1:
+        assert proposal.n_level_accepts > 0 and proposal.n_level_rejects > 0
+
+
+def test_hints_full_rows_are_the_rows_the_tree_routes(problem, target):
+    """
+    The full map is never routed from scratch: it is the particle's leaves,
+    brought forward by each move's own split. At every primitive block it has
+    to hold, leaf for leaf, what routing every row through the block's current
+    tree gives.
+    """
+    proposal = idt.HINTSProposal(target, ss_prop=0.2, min_data=15)
+    primitive = proposal._primitive
+    seen = {"blocks": 0}
+
+    def checked(state, ctx, full, rng, f):
+        fresh = idt.IncrementalTree.from_rows(problem, state.tree)
+        assert set(full) == set(state._descendant_leaves(ctx.root))
+        for leaf, rows in full.items():
+            assert np.array_equal(np.sort(rows), np.sort(fresh.leaf_idx[leaf]))
+        seen["blocks"] += 1
+        return primitive(state, ctx, full, rng, f)
+
+    proposal._primitive = checked
+    _, moves = walk(proposal, problem, seed=17, steps=300)
+    assert len(moves) > 20 and seen["blocks"] > 200
+
+
+def test_hints_scales_each_block_by_its_actual_share(problem, target):
+    """
+    A block's f is the fraction of the subtree's rows that actually fell into
+    it -- not the nominal 1 / U, which i.i.d. labels only hit on average.
+    """
+    proposal = idt.HINTSProposal(target, ss_prop=0.2, min_data=15)
+    primitive = proposal._primitive
+    seen = {"blocks": 0, "off_nominal": 0}
+
+    def checked(state, ctx, full, rng, f):
+        everything = sum(len(rows) for rows in full.values())
+        mine = sum(len(state.leaf_idx[leaf])
+                   for leaf in state._descendant_leaves(ctx.root))
+        assert f == pytest.approx(mine / everything, abs=1e-12)
+        if proposal._levels:
+            nominal = 1 / proposal._branching ** proposal._levels
+            seen["off_nominal"] += abs(f - nominal) > 1e-9
+        seen["blocks"] += 1
+        return primitive(state, ctx, full, rng, f)
+
+    proposal._primitive = checked
+    walk(proposal, problem, seed=4, steps=200)
+    assert seen["blocks"] > 200 and seen["off_nominal"] > 100
+
+
+def test_hints_rejects_moves_its_block_cannot_see(problem, target):
+    """
+    A primitive move whose block holds no row under the move node has nothing
+    to be judged on, so it is screened out rather than decided by the prior.
+    Blocks this small leave plenty of nodes with no rows in them.
+    """
+    proposal = idt.HINTSProposal(target, ss_prop=0.02, min_data=2, levels=2)
+    proposal.record_moves = True
+    walk(proposal, problem, seed=3, steps=300)
+    log = proposal.move_log.arrays()
+    blind = ((log['subset'] == 0) & (log['move'] != dg.MOVE_CODE["stay"])
+             & (log['outcome'] != dg.BARRED))
+    assert blind.sum() > 20
+    assert np.all(log['outcome'][blind] == dg.SCREENED_OUT)
+
+
+def test_hints_primitive_step_prices_the_surrogate_it_reports(problem, target):
+    """
+    A block accepts its move against one expression and hands its parent
+    another -- a delta computed for the move, against a density computed over
+    the whole subtree. The path correction is only a correction if those are
+    the same function: the parent subtracts what the child charged, and a
+    child that charged for something else leaves the difference in the
+    acceptance ratio, where it biases the sweep silently.
+    """
+    proposal = idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+    proposal.record_moves = True
+    x = largest_tree_visited(problem, seed=5)
+    leaves = x._descendant_leaves(0)
+    rows = [x.leaf_idx[leaf] for leaf in leaves]
+    full = {leaf: x.leaf_idx[leaf] for leaf in leaves}
+    units = 60
+
+    rng = RNG(4)
+    checked = 0
+    # Strict leaf sizes and blind blocks reject most tries.
+    for _ in range(600):
+        proposal.blocks.draw(np.concatenate(rows), units, rng)
+        proposal.blocks.tabulate(rows, problem.num_classes)
+        width = units // int(rng.nprng.integers(2, 6))
+        lo = width * int(rng.nprng.integers(0, units // width))
+        labels = proposal.blocks.labels
+        pieces = []
+        for r in rows:
+            idx = r[(labels[r] >= lo) & (labels[r] < lo + width)]
+            pieces.append((idx, np.bincount(problem.y[idx],
+                                            minlength=problem.num_classes)))
+        state = proposal._restricted(x, leaves, pieces)
+        ctx = make_context(state, 0)
+        f = proposal.blocks.share(lo, lo + width)
+        assert f == pytest.approx(sum(len(p[0]) for p in pieces) / problem.n_rows)
+        before = proposal._log_pi(state, 0, f)
+        mark = len(proposal.move_log.arrays()['dsurr'])
+        applied = proposal._primitive(state, ctx, full, rng, f)
+        if not applied:
+            continue
+        after = proposal._log_pi(state, 0, f)
+        log = proposal.move_log.arrays()
+        charged = log['dsurr'][mark:][log['outcome'][mark:] == dg.APPLIED]
+        assert len(applied) == 1 and len(charged) == 1
+        assert after - before == pytest.approx(charged.sum(), abs=1e-8)
+        checked += 1
+    assert checked > 40
+
+
+def test_hints_replays_a_sweep_onto_correctly_routed_rows(problem, target):
+    """The particle a sweep hands back is the tree its moves build on every row."""
+    proposal = idt.HINTSProposal(target, ss_prop=0.2, min_data=15)
+    _, moves = walk(proposal, problem, seed=17, steps=400)
+    assert len(moves) > 20
+    for _, x in moves:
+        assert type(x.leaf_idx) is dict
+        fresh = idt.IncrementalTree.from_rows(problem, x.tree)
+        assert set(fresh.leaf_idx) == set(x.leaf_idx)
+        for leaf in fresh.leaf_idx:
+            assert np.array_equal(np.sort(fresh.leaf_idx[leaf]),
+                                  np.sort(x.leaf_idx[leaf]))
+            assert np.array_equal(fresh.counts[leaf], x.counts[leaf])
 
 
 # --------------------------------------------------------------------------- #
 # tier 1: the samplers
 # --------------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("name", ["mh", "da", "hints"])
+@pytest.mark.parametrize("name", ["mh", "da", "flat_hints", "hints"])
 def test_smc_returns_a_usable_sample(problem, target, name):
     """
     The SMC sampler must return a set of particles that are all admissible and have finite target mass.
     """
     proposals = {"mh": lambda: idt.IncrementalTreeProposal(),
                  "da": lambda: idt.DAProposal(target, ss_prop=0.25, min_data=20),
+                 "flat_hints": lambda: idt.FlatHINTSProposal(target, ss_prop=0.25, min_data=20),
                  "hints": lambda: idt.HINTSProposal(target, ss_prop=0.25, min_data=20)}
     proposal = proposals[name]()
     smc = DiscreteVariableSMC(idt.IncrementalTree, target,
@@ -615,8 +1040,13 @@ def test_subsampled_kernels_sample_the_same_posterior():
 
     reference = pmf(lambda: idt.IncrementalTreeProposal())
     for name, make in [("DA", lambda: idt.DAProposal(target, ss_prop=0.25, min_data=20)),
-                       ("HINTS", lambda: idt.HINTSProposal(target, ss_prop=0.25,
-                                                           min_data=20))]:
+                       ("FlatHINTS", lambda: idt.FlatHINTSProposal(target, ss_prop=0.25,
+                                                                   min_data=20)),
+                       # 300 rows into 10 blocks: two levels of 3, so the
+                       # intermediate accept runs with min_samples_leaf binding
+                       # -- held on the full rows at every level.
+                       ("HINTS", lambda: idt.HINTSProposal(target, ss_prop=0.1,
+                                                           min_data=15))]:
         got = pmf(make)
         for k in range(3):
             diff = got[:, k].mean() - reference[:, k].mean()
@@ -688,7 +1118,7 @@ def test_exact_log_dm_reference_matches_the_target():
                        [target.log_dm(c) for c in counts])
 
 
-@pytest.mark.parametrize("name", ["MH", "DA", "HINTS"])
+@pytest.mark.parametrize("name", ["MH", "DA", "FlatHINTS", "HINTS"])
 def test_kernels_match_the_exact_posterior(name):
     """
     Every kernel must reproduce the exact posterior over model size, not merely
@@ -716,6 +1146,10 @@ def test_kernels_match_the_exact_posterior(name):
     make = {
         "MH": lambda: idt.IncrementalTreeProposal(),
         "DA": lambda: idt.DAProposal(target, ss_prop=0.25, min_data=20),
+        "FlatHINTS": lambda: idt.FlatHINTSProposal(target, ss_prop=0.25, min_data=20),
+        # levels are reduced to what 60 rows can feed, so this runs at L=1;
+        # the two-level hierarchy is graded against the same reference in
+        # test_hints_hierarchy_matches_the_exact_posterior.
         "HINTS": lambda: idt.HINTSProposal(target, ss_prop=0.25, min_data=20),
     }[name]
 
@@ -737,6 +1171,47 @@ def test_kernels_match_the_exact_posterior(name):
     assert abs(diff) < 4.0 * se + 0.003, (
         f"{name} disagrees with the exact posterior on P(0 nodes): "
         f"{estimates.mean():.4f} vs {exact:.4f} "
+        f"({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+@pytest.mark.parametrize("equal_blocks", [False, True])
+def test_hints_hierarchy_matches_the_exact_posterior(equal_blocks):
+    """
+    The same exact reference as test_kernels_match_the_exact_posterior, against
+    a hierarchy that really is one.
+
+    60 rows only feed one level at the settings used there, so that run grades
+    HINTS as a flat sweep and says nothing about the part that is new: the
+    intermediate accept step, and the path correction that has to cancel it. A
+    level whose surrogate and reported density disagreed, or one that kept a
+    move its parent had rejected, shows up here and nowhere else.
+    """
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0, min_samples_leaf=0,
+                           max_tree_size=1)
+    problem.y = np.random.default_rng(0).integers(
+        0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem)
+    exact = exact_p_stump(problem, target)
+    assert idt.HINTSProposal(target, ss_prop=0.1, min_data=4)._shape(10) == (2, 3)
+
+    estimates = []
+    for seed in range(8):
+        chain = DiscreteVariableMCMC(
+            idt.IncrementalTree, target, init,
+            proposal=idt.HINTSProposal(target, ss_prop=0.1, min_data=4, levels=2,
+                                       equal_blocks=equal_blocks)
+        ).sample(40_000, seed=seed, verbose=False, keep_samples=True)[5_000:]
+        estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
+
+    estimates = np.array(estimates)
+    se = estimates.std(ddof=1) / np.sqrt(len(estimates))
+    diff = estimates.mean() - exact
+    assert abs(diff) < 4.0 * se + 0.003, (
+        f"the HINTS hierarchy disagrees with the exact posterior on "
+        f"P(0 nodes): {estimates.mean():.4f} vs {exact:.4f} "
         f"({diff / max(se, 1e-12):+.1f} sigma)")
 
 
@@ -819,10 +1294,12 @@ def _make_proposal(name, target):
         return idt.IncrementalTreeProposal()
     if name == "DA":
         return idt.DAProposal(target, ss_prop=0.25, min_data=20)
-    return idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+    if name == "HINTS":
+        return idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+    return idt.FlatHINTSProposal(target, ss_prop=0.25, min_data=20)
 
 
-@pytest.mark.parametrize("name", ["MH", "DA", "HINTS"])
+@pytest.mark.parametrize("name", ["MH", "DA", "FlatHINTS", "HINTS"])
 def test_recording_moves_does_not_change_the_chain(problem, target, name):
     """
     The whole point of the log is to compare samplers, so it must not perturb
@@ -835,7 +1312,7 @@ def test_recording_moves_does_not_change_the_chain(problem, target, name):
     assert _chain(problem, target, proposal)[1] == off
 
 
-@pytest.mark.parametrize("name", ["MH", "DA", "HINTS"])
+@pytest.mark.parametrize("name", ["MH", "DA", "FlatHINTS", "HINTS"])
 def test_every_call_closes_out_exactly_one_call_row(problem, target, name):
     """
     A call that recorded no outcome would silently drop moves from the counts;
@@ -885,8 +1362,8 @@ def test_one_move_per_call_and_its_fate_is_the_calls(problem, target, name):
     assert counters['inner_moves'] >= counters['moved']
 
 
-def test_hints_move_counts_total_the_sweep_counters(problem, target):
-    proposal = idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+def test_flat_hints_move_counts_total_the_sweep_counters(problem, target):
+    proposal = idt.FlatHINTSProposal(target, ss_prop=0.25, min_data=20)
     proposal.record_moves = True
     _chain(problem, target, proposal, iters=400)
     log = proposal.move_log.arrays()
@@ -938,13 +1415,13 @@ def test_screened_moves_carry_the_subsample_they_were_judged_on(problem, target)
     assert (mh.move_log.arrays()['subset'] == 0).all()
 
 
-def test_hints_records_one_row_per_block_of_the_sweep(problem, target):
+def test_flat_hints_records_one_row_per_block_of_the_sweep(problem, target):
     """
     The per-subsample level the sweep works at: each block draws its own move
     and screens it on its own rows, and each is a row of the log tagged with
     the call it belongs to.
     """
-    proposal = idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+    proposal = idt.FlatHINTSProposal(target, ss_prop=0.25, min_data=20)
     proposal.record_moves = True
     _chain(problem, target, proposal, iters=300)
     log = proposal.move_log.arrays()
@@ -962,7 +1439,7 @@ def test_hints_records_one_row_per_block_of_the_sweep(problem, target):
 
 
 def test_smc_records_ess_and_returns_usable_weights(problem, target):
-    proposal = idt.HINTSProposal(target, ss_prop=0.25, min_data=20)
+    proposal = idt.FlatHINTSProposal(target, ss_prop=0.25, min_data=20)
     smc = DiscreteVariableSMC(idt.IncrementalTree, target,
                               idt.IncrementalTreeInitialProposal(problem),
                               proposal=proposal, Lkernel=proposal.lkernel())

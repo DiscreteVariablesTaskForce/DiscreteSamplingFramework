@@ -41,7 +41,7 @@ def build_proposal(problem, name):
         return target, idt.IncrementalTreeProposal()
     if name == "DA":
         return target, idt.DAProposal(target, ss_prop=0.3, min_data=20)
-    return target, idt.HINTSProposal(target, ss_prop=0.3, min_data=20)
+    return target, idt.FlatHINTSProposal(target, ss_prop=0.3, min_data=20)
 
 
 def grown(problem, splits):
@@ -104,7 +104,7 @@ def test_fitted_metrics_match_routing_the_fitted_data(problem):
             assert np.allclose(fitted[key], value), key
 
 
-@pytest.mark.parametrize("proposal_name", ["MH", "DA", "HINTS"])
+@pytest.mark.parametrize("proposal_name", ["MH", "DA", "FlatHINTS"])
 def test_mcmc_stored_metrics_match_inline(problem, proposal_name):
     """Every metric off the stored chain equals the one the live tree gave."""
     target, proposal = build_proposal(problem, proposal_name)
@@ -130,7 +130,7 @@ def test_mcmc_stored_metrics_match_inline(problem, proposal_name):
             assert np.allclose(got[key], value), f"{proposal_name} iter {i}: {key}"
 
 
-@pytest.mark.parametrize("proposal_name", ["MH", "DA", "HINTS"])
+@pytest.mark.parametrize("proposal_name", ["MH", "DA", "FlatHINTS"])
 def test_smc_stored_metrics_match_inline(problem, proposal_name):
     """
     The weighted ensemble estimator too: the weights are stored unnormalised

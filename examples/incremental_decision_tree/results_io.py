@@ -50,8 +50,14 @@ RUN_PREFIX = "Run_"
 # second experiment named "wine_deep", say), and "wine_deep_mcmc_HINTS.h5" is
 # indistinguishable from a "wine" experiment using a sampler called "deep_mcmc"
 # from the filename's shape alone.
+#
+# These are the one list of each: sampler_diagnostics.py takes the proposals it
+# will accept from here, and plot_diagnostics.py the pairs it looks for. A
+# second copy elsewhere is how a proposal ends up sampled but never evaluated --
+# the .h5 files are written, nothing goes looking for them, and the run just
+# comes out missing a method with no error anywhere.
 SAMPLERS = ("mcmc", "smc")
-PROPOSALS = ("MH", "DA", "HINTS")
+PROPOSALS = ("MH", "DA", "FlatHINTS", "HINTS")
 
 
 def experiment_filename(name, sampler, proposal):

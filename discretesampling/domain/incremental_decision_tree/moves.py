@@ -32,14 +32,26 @@ class SubtreeContext:
                 f"{len(self.leaves)} leaves>")
 
 
+def _leaf_idx_of(state, leaves):
+    """
+    state.leaf_idx restricted to `leaves`. A HINTS block state's mapping
+    builds a leaf's rows only when they are read, and sub() keeps it that way;
+    reading every leaf here would build them all.
+    """
+    leaf_idx = state.leaf_idx
+    sub = getattr(leaf_idx, 'sub', None)
+    if sub is not None:
+        return sub(leaves)
+    return {leaf: leaf_idx[leaf] for leaf in leaves if leaf in leaf_idx}
+
+
 def make_context(state, root):
     """
     One walk of the subtree under `root`, collecting everything a move needs.
     """
     if not state.tree:
         leaves = [root]
-        leaf_idx = {leaf: state.leaf_idx[leaf] for leaf in leaves if leaf in state.leaf_idx}
-        return SubtreeContext(root, [], [], leaves, leaf_idx)
+        return SubtreeContext(root, [], [], leaves, _leaf_idx_of(state, leaves))
     m = state.nodes
     stack, nodes, terminal_nodes, leaves = [root], [], [], []
     while stack:
@@ -52,8 +64,8 @@ def make_context(state, root):
             stack.extend([L, R])
         else:
             leaves.append(n)
-    leaf_idx = {leaf: state.leaf_idx[leaf] for leaf in leaves if leaf in state.leaf_idx}
-    return SubtreeContext(root, nodes, terminal_nodes, leaves, leaf_idx)
+    return SubtreeContext(root, nodes, terminal_nodes, leaves,
+                          _leaf_idx_of(state, leaves))
 
 
 def draw_subtree(state, rng):

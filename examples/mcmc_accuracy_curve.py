@@ -48,6 +48,8 @@ def build(domain, X_train, y_train, lam, min_samples_leaf, max_tree_size, propos
             proposal = idt.IncrementalTreeProposal()
         elif proposal == "DA":
             proposal = idt.DAProposal(target=target, ss_prop=ss_prop, min_data=min_data)
+        elif proposal == "FlatHINTS":
+            proposal = idt.FlatHINTSProposal(target=target, ss_prop=ss_prop, min_data=min_data)
         elif proposal == "HINTS":
             proposal = idt.HINTSProposal(target=target, ss_prop=ss_prop, min_data=min_data)
         mcmc = DiscreteVariableMCMC(
@@ -97,7 +99,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--domain", choices=["incremental", "classic"],
                    default="incremental")
-    p.add_argument("--proposal", choices=["MH", "DA", "HINTS"], default="HINTS")
+    p.add_argument("--proposal", choices=["MH", "DA", "FlatHINTS", "HINTS"], default="FlatHINTS")
     p.add_argument("--ss-prop", type=float, default=0.1)
     p.add_argument("--min-data", type=int, default=200)
     p.add_argument("--chains", type=int, default=10)

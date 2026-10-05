@@ -334,7 +334,9 @@ class IncBDTree:
         new = self.__class__.__new__(self.__class__)
         new.problem = self.problem
         new.tree = [row.copy() for row in self.tree]
-        new.leaf_idx = dict(self.leaf_idx)
+        # .copy(), not dict(): a HINTS block state's mapping copies its
+        # unbuilt rows as they are, and stays that kind of mapping.
+        new.leaf_idx = self.leaf_idx.copy()
         new.counts = dict(self.counts)
         new._next_id = self._next_id
         new._parent_map = self._parent_map.copy()

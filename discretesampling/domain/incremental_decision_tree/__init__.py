@@ -4,7 +4,7 @@ from .incremental_tree import IncrementalTree  # noqa
 from .target import IncrementalTreeTarget  # noqa
 from .initial_proposal import IncrementalTreeInitialProposal  # noqa
 from .moves import SubtreeContext, make_context, draw_subtree, select_move  # noqa
-from .proposals import IncrementalTreeProposal, DAProposal, HINTSProposal, IncrementalTreeLKernel, IncrementalTreeProposalBase # noqa
+from .proposals import IncrementalTreeProposal, DAProposal, FlatHINTSProposal, HINTSProposal, IncrementalTreeLKernel, IncrementalTreeProposalBase # noqa
 from .metrics import predict, predict_proba, ensemble_predict_proba, accuracy, tree_sizes # noqa
 from .metrics import route_rows, leaf_class_probs # noqa
 from .states import StateRecorder, StateSeries, TreeStoreView, series_from_arrays # noqa

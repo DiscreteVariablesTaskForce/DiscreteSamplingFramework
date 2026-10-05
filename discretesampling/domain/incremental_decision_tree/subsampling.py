@@ -22,49 +22,31 @@ def grouped_rows(leaf_rows):
     return rows, np.repeat(np.arange(len(leaf_rows)), [len(a) for a in leaf_rows])
 
 
-def assign_blocks(state, ctx, subtree_root, rng, ss_prop, min_data):
+class RowBlocks:
     """
-    Assign the rows under `subtree_root` to blocks, for a HINTS proposal.
-    Returns (num_blocks, buf, m), where:
-    - num_blocks is the number of blocks to partition the rows into,
-    - buf is a 1D array of length n_rows, filled with -1 except for the rows under
-      `subtree_root`, which are labeled with their block number,
-    - m is the number of rows under `subtree_root`.
-    """
-    leaf_arrays = [ctx.leaf_idx[leaf]
-                   for leaf in state._descendant_leaves(subtree_root)
-                   if leaf in ctx.leaf_idx]
-    m = sum(len(a) for a in leaf_arrays)
-    num_blocks = block_count(m, ss_prop, min_data)
-    if num_blocks == 1:
-        return 1, None, m
-    buf = state.problem.block_buffer()
-    draw = rng.nprng.integers
-    for a in leaf_arrays:
-        buf[a] = draw(0, num_blocks, size=len(a), dtype=np.int16)
-    return num_blocks, buf, m
+    One sweep's random split of the rows under the subtree root into blocks,
+    for a FlatHINTS sweep, drawn afresh at the start of every sweep.
 
-
-def block_rows(ctx, leaves, block_of, j, labels):
+    draw() gives each row under the subtree root an independent, uniformly
+    random block label in 0, ..., B - 1, so every block is a uniform random
+    subset of those rows and the blocks are of roughly equal size. Nothing
+    outlives the sweep it was drawn for.
     """
-    Block j's rows under the node whose leaves are `leaves`, as
-    (subset, leaf_pos) -- see grouped_rows -- using the `block_of` buffer
-    produced by assign_blocks; every row under the node if block_of is None.
 
-    `labels` is a dict held for one sweep. Each leaf's block labels are read
-    out of block_of once and reused for every later block, until a move
-    replaces that leaf's rows.
-    """
-    leaf_rows = [ctx.leaf_idx[leaf] for leaf in leaves]
-    if block_of is None:
-        return grouped_rows(leaf_rows)
-    picked = []
-    for leaf, rows in zip(leaves, leaf_rows):
-        cached = labels.get(leaf)
-        if cached is None or cached[0] is not rows:
-            cached = labels[leaf] = (rows, block_of[rows])
-        picked.append(rows[cached[1] == j])
-    return grouped_rows(picked)
+    def __init__(self, n_rows):
+        self.labels = np.zeros(n_rows, dtype=np.intp)
+
+    def draw(self, rows, num_blocks, rng):
+        """Split `rows` uniformly at random into `num_blocks` blocks."""
+        self.labels[rows] = rng.nprng.integers(0, num_blocks, size=len(rows))
+
+    def block_rows(self, leaf_rows, j):
+        """
+        The rows of block `j` in each of `leaf_rows`, as (subset, leaf_pos):
+        see grouped_rows. Every row of `leaf_rows` must be one the current
+        split was drawn over.
+        """
+        return grouped_rows([rows[self.labels[rows] == j] for rows in leaf_rows])
 
 
 def sample_partition_block(m, leaf_rows, rng, ss_prop, min_data):

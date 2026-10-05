@@ -60,12 +60,10 @@ import numpy as np
 
 from discretesampling.domain.incremental_decision_tree import diagnostics as dg
 from evaluate_results import BOOKKEEPING, metrics_filename
-from results_io import (experiment_datasets, find_experiment_files,
-                        latest_run_id, load_experiment_hdf5, read_run_config)
+from results_io import (PROPOSALS, SAMPLERS, experiment_datasets,
+                        find_experiment_files, latest_run_id,
+                        load_experiment_hdf5, read_run_config)
 from sampler_diagnostics import DEFAULT_CFG
-
-_SAMPLERS = ("mcmc", "smc")
-_PROPOSALS = ("MH", "DA", "HINTS")
 
 
 def known_names(cfg):
@@ -93,8 +91,8 @@ def find_metrics(results_dir, name):
     run that has not been evaluated yet.
     """
     out = {}
-    for sampler in _SAMPLERS:
-        for proposal in _PROPOSALS:
+    for sampler in SAMPLERS:
+        for proposal in PROPOSALS:
             path = os.path.join(results_dir,
                                 metrics_filename(name, sampler, proposal))
             if os.path.exists(path):
@@ -139,8 +137,9 @@ def find_runs_with_metrics(results_dir, name):
     return runs_by_key
 
 
-PROPOSAL_ORDER = ["MH", "DA", "HINTS"]
-PROPOSAL_COLOR = dict(zip(PROPOSAL_ORDER, ["#4c72b0", "#dd8452", "#55a868"]))
+PROPOSAL_ORDER = ["MH", "DA", "FlatHINTS", "HINTS"]
+PROPOSAL_COLOR = dict(zip(PROPOSAL_ORDER, ["#4c72b0", "#dd8452", "#55a868",
+                                           "#c44e52"]))
 
 
 def _ordered(keys):
@@ -560,7 +559,7 @@ def main():
         plot_moves(runs_by_key,
                    os.path.join(out_dir, f"{name}_moves.png"), plt)
 
-        # _ordered groups by sampler and then MH -> DA -> HINTS, so with
+        # _ordered groups by sampler and then MH -> DA -> FlatHINTS -> HINTS, so with
         # cols=3 each sampler gets a row and a proposal keeps its column.
         panels = [(f"{sampler.upper()}-{proposal}", sampler,
                    runs_by_key[(sampler, proposal)])

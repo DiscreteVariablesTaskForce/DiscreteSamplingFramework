@@ -13,7 +13,7 @@ import sampler_diagnostics as sd  # noqa: E402
 p = argparse.ArgumentParser()
 p.add_argument("--dataset", default="covtype")
 p.add_argument("--samplers", nargs="+", default=["mcmc", "smc"])
-p.add_argument("--proposals", nargs="+", default=["MH", "DA", "HINTS"])
+p.add_argument("--proposals", nargs="+", default=["MH", "DA", "FlatHINTS", "HINTS"])
 p.add_argument("--iters", type=int, default=1000)
 p.add_argument("--steps", type=int, default=100)
 p.add_argument("--particles", type=int, default=50)

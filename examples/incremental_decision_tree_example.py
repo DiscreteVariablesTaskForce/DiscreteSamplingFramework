@@ -59,7 +59,7 @@ problem = idt.IncrementalTreeProblem(X_train, y_train, lam=lam,
 target = MatchedPriorTarget(problem)
 initialProposal = idt.IncrementalTreeInitialProposal(problem)
 
-# names = ["MH", "DA", "HINTS"]
+# names = ["MH", "DA", "FlatHINTS"]
 names = ["MH"]
 
 
@@ -68,7 +68,11 @@ def make_proposal(name):
         return idt.IncrementalTreeProposal()
     if name == "DA":
         return idt.DAProposal(target, ss_prop=ss_prop, min_data=min_data)
-    return idt.HINTSProposal(target, ss_prop=ss_prop, min_data=min_data)
+    if name == "FlatHINTS":
+        return idt.FlatHINTSProposal(target, ss_prop=ss_prop, min_data=min_data)
+    if name == "HINTS":
+        return idt.HINTSProposal(target, ss_prop=ss_prop, min_data=min_data)
+    raise ValueError(f"unknown proposal {name!r}")
 
 
 for name in names:

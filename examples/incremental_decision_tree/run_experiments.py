@@ -34,7 +34,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from results_io import resolve_run_id, write_run_config  # noqa: E402
-from sampler_diagnostics import DEFAULT_CFG, run_sweep  # noqa: E402
+from sampler_diagnostics import DEFAULT_CFG, run_sweep, validate_cfg  # noqa: E402
 
 DEFAULT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "experiments.py")
 
@@ -103,6 +103,13 @@ def main():
         experiments = [experiments[args.index]]
 
     check_for_collisions(experiments)
+    # All of them, before any runs: a bad entry found after hours of the ones
+    # ahead of it is the expensive way to find it.
+    for i, entry in enumerate(experiments):
+        try:
+            validate_cfg(dict(DEFAULT_CFG, **entry))
+        except ValueError as err:
+            raise SystemExit(f"experiment {i} ({experiment_name(entry)}): {err}") from None
 
     run_id = resolve_run_id(args.run_id)
     results_dir = os.path.join(args.results_root, run_id)

@@ -8,7 +8,7 @@ and the proposal mechanisms can be put side by side on the same run.
     python examples/incremental_decision_tree/sampler_diagnostics.py --dataset wine
     python examples/incremental_decision_tree/sampler_diagnostics.py --dataset wine --run-id wine_baseline
     python examples/incremental_decision_tree/sampler_diagnostics.py --dataset covtype --iters 20000 \
-        --proposals MH DA HINTS
+        --proposals MH DA FlatHINTS
 
 Results land in Results/<run-id>/ (--run-id defaults to a timestamp, so two
 sweeps never collide; name it explicitly to find a sweep again later, e.g.
@@ -86,7 +86,8 @@ from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVaria
 from discretesampling.domain import incremental_decision_tree as idt
 from discretesampling.domain.incremental_decision_tree import diagnostics as dg
 from discretesampling.domain.incremental_decision_tree.states import StateRecorder
-from results_io import resolve_run_id, save_experiment_hdf5, write_run_config
+from results_io import (PROPOSALS, resolve_run_id, save_experiment_hdf5,
+                        write_run_config)
 
 
 # --------------------------------------------------------------------------- #
@@ -95,12 +96,21 @@ from results_io import resolve_run_id, save_experiment_hdf5, write_run_config
 
 DATASETS = ("wine", "digits", "covtype")
 
+# Proposal arguments an experiment may set, by the proposal that takes them.
+# They are deliberately absent from DEFAULT_CFG: an experiment that names one
+# gets it, and one that does not gets whatever the proposal's own signature
+# says, rather than a second opinion kept here.
+PROPOSAL_KNOBS = {
+    "HINTS": ("levels", "branching", "equal_blocks"),
+}
+ALL_KNOBS = frozenset(k for knobs in PROPOSAL_KNOBS.values() for k in knobs)
+
 # One experiment is this dict, with whatever it overrides. run_experiments.py
 # lists several of these; main() builds one straight from its CLI arguments.
 DEFAULT_CFG = dict(
     dataset="wine",
     samplers=["mcmc", "smc"],
-    proposals=["MH", "DA", "HINTS"],
+    proposals=["MH", "DA", "FlatHINTS"],
     chains=4,
     iters=5_000,
     steps=20,
@@ -153,9 +163,21 @@ def build(cfg, X_train, y_train):
     elif name == "DA":
         proposal = idt.DAProposal(target, ss_prop=cfg['ss_prop'],
                                   min_data=cfg['min_data'])
-    else:
+    elif name == "HINTS":
+        # Passed through only when an experiment actually sets one, so the
+        # proposal's own defaults stay the single place they are written down.
+        # Restating them here is how a run silently ends up on a setting nobody
+        # chose: a copy of a default here outlives a change to the real one.
+        knobs = {k: cfg[k] for k in PROPOSAL_KNOBS[name] if k in cfg}
         proposal = idt.HINTSProposal(target, ss_prop=cfg['ss_prop'],
-                                     min_data=cfg['min_data'])
+                                     min_data=cfg['min_data'], **knobs)
+    elif name == "FlatHINTS":
+        proposal = idt.FlatHINTSProposal(target, ss_prop=cfg['ss_prop'],
+                                         min_data=cfg['min_data'])
+    else:
+        # Never a fallback: an unrecognised name used to land here and run as
+        # FlatHINTS, so a run labelled one thing silently sampled with another.
+        raise ValueError(f"unknown proposal {name!r}: expected one of {PROPOSALS}")
     proposal.record_moves = cfg['record_moves']
     return problem, target, proposal
 
@@ -319,7 +341,12 @@ def run_smc(cfg):
     return out
 
 
+SAMPLERS = ("mcmc", "smc")
+
+
 def run(cfg):
+    if cfg['sampler'] not in SAMPLERS:
+        raise ValueError(f"unknown sampler {cfg['sampler']!r}: expected one of {SAMPLERS}")
     return run_mcmc(cfg) if cfg['sampler'] == "mcmc" else run_smc(cfg)
 
 
@@ -390,6 +417,41 @@ def report(cfg, results):
 _SWEEP_KEYS = ("samplers", "proposals", "chains", "jobs")
 
 
+def validate_cfg(cfg):
+    """
+    `cfg` (already overlaid on DEFAULT_CFG) with samplers and proposals as
+    lists, or a ValueError naming what is wrong with it.
+
+    Every check here guards a comparison rather than a crash. Without them a
+    string such as proposals="HINTS" was iterated letter by letter and each
+    letter built FlatHINTS; a misspelt key was dropped; and HINTS knobs given
+    to an experiment without HINTS were ignored -- each one a run whose label
+    says it sampled with something it did not.
+    """
+    cfg = dict(cfg)
+    for key, allowed in (("samplers", SAMPLERS), ("proposals", PROPOSALS)):
+        value = cfg[key]
+        value = [value] if isinstance(value, str) else list(value)
+        bad = [v for v in value if v not in allowed]
+        if bad or not value:
+            raise ValueError(f"{key}={cfg[key]!r}: each entry must be one of {allowed}")
+        cfg[key] = value
+
+    unknown = set(cfg) - set(DEFAULT_CFG) - ALL_KNOBS - {"name"}
+    if unknown:
+        raise ValueError(f"unknown experiment field(s) {sorted(unknown)}; "
+                         f"see DEFAULT_CFG and PROPOSAL_KNOBS for the ones that exist")
+    # Every knob set must be taken by some proposal the experiment runs.
+    taken = {k for p in cfg["proposals"] for k in PROPOSAL_KNOBS.get(p, ())}
+    unused = sorted((set(cfg) & ALL_KNOBS) - taken)
+    if unused:
+        owners = sorted(p for p, knobs in PROPOSAL_KNOBS.items()
+                        if set(unused) & set(knobs))
+        raise ValueError(f"{unused} only apply to {owners}, which this experiment "
+                         f"does not run (proposals={cfg['proposals']})")
+    return cfg
+
+
 def _hms(seconds):
     """Seconds as h:mm:ss."""
     seconds = int(max(seconds, 0))
@@ -409,7 +471,7 @@ def run_sweep(cfg, results_dir, name=None, jobs=None):
     dataset distinct names, or run_sweep would happily overwrite one's .h5
     files with the other's.
     """
-    cfg = dict(DEFAULT_CFG, **cfg)
+    cfg = validate_cfg(dict(DEFAULT_CFG, **cfg))
     jobs = cfg['jobs'] if jobs is None else jobs
     name = name or cfg['dataset']
 
@@ -470,7 +532,7 @@ def main():
     p.add_argument("--dataset", choices=DATASETS, default=DEFAULT_CFG['dataset'])
     p.add_argument("--samplers", nargs="+", choices=["mcmc", "smc"],
                    default=DEFAULT_CFG['samplers'])
-    p.add_argument("--proposals", nargs="+", choices=["MH", "DA", "HINTS"],
+    p.add_argument("--proposals", nargs="+", choices=list(PROPOSALS),
                    default=DEFAULT_CFG['proposals'])
     p.add_argument("--chains", type=int, default=DEFAULT_CFG['chains'],
                    help="independent MCMC chains / SMC runs")

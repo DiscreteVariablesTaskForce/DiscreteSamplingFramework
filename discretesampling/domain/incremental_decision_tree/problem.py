@@ -76,7 +76,6 @@ class IncrementalTreeProblem:
         self.threshold_proposal = threshold_proposal
         self._intervals = {}
 
-        self._block_of = None
         self._all_rows = None
         self._root_counts = None
 
@@ -95,17 +94,6 @@ class IncrementalTreeProblem:
         if self._root_counts is None:
             self._root_counts = np.bincount(self.y, minlength=self.num_classes)
         return self._root_counts
-
-    def block_buffer(self):
-        """
-        Returns a 1D array of length n_rows, filled with -1, for use as a
-        temporary buffer when routing rows through the tree. The same buffer is
-        reused across calls to route(X) to avoid repeated allocations.
-        """
-        buf = self._block_of
-        if buf is None or len(buf) != self.n_rows:
-            buf = self._block_of = np.full(self.n_rows, -1, dtype=np.int16)
-        return buf
 
     def random_threshold(self, feat, rng):
         """

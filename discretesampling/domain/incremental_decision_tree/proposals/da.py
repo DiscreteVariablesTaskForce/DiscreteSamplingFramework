@@ -59,11 +59,15 @@ class DAProposal(IncrementalTreeProposalBase):
 
         m = subtree_size(ctx)
         if (n_rows < self.min_data
-                and block_count(m, self.ss_prop, self.min_data) > 1):
-            # Too few rows reach this node for a block of it to say anything.
-            # Skip the screen, exactly as MCMC_DA's da_flag does, and let the
-            # weight update carry the whole move: with no screen the kernel is
-            # just q, so the correction is the plain proposal ratio.
+                or block_count(m, self.ss_prop, self.min_data) == 1):
+            # No real subsample to screen on. With one block the "block" is
+            # every row, so the screen is the exact test minus the root term:
+            # it saves no full-data work and only rejects more, since
+            # min(1, a) * min(1, r) <= min(1, a * r). With too few rows under
+            # this node, a block of them says nothing. Either way skip the
+            # screen, as MCMC_DA's da_flag does, and let the weight update
+            # carry the whole move: with no screen the kernel is just q, so the
+            # correction is the plain proposal ratio.
             self.n_inner_moves += 1
             return self._finish(x, ctx, move, prop_move, subtree_root,
                                 0.0, prop_correction)
