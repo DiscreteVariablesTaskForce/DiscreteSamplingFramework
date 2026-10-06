@@ -13,8 +13,9 @@ and the proposal mechanisms can be put side by side on the same run.
 Results land in Results/<run-id>/ (--run-id defaults to a timestamp, so two
 sweeps never collide; name it explicitly to find a sweep again later, e.g.
 `python examples/incremental_decision_tree/plot_diagnostics.py --run-id wine_baseline`). Inside that
-directory sits a config.json recording what was asked for, and one .h5 per
-(dataset, sampler, proposal) experiment -- see results_io.py for the layout.
+directory sits a config.json recording what was asked for, and one
+<dataset>_<sampler>_<proposal>_<ss_prop * 100>.h5 per configuration -- see
+results_io.py for the layout.
 
 Sampling and evaluation are separate steps
 ------------------------------------------
@@ -86,7 +87,8 @@ from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVaria
 from discretesampling.domain import incremental_decision_tree as idt
 from discretesampling.domain.incremental_decision_tree import diagnostics as dg
 from discretesampling.domain.incremental_decision_tree.states import StateRecorder
-from results_io import (PROPOSALS, resolve_run_id, save_experiment_hdf5,
+from results_io import (PROPOSALS, experiment_filename, experiment_key,
+                        experiment_name, resolve_run_id, save_experiment_hdf5,
                         write_run_config)
 
 
@@ -102,6 +104,7 @@ DATASETS = ("wine", "digits", "covtype")
 # says, rather than a second opinion kept here.
 PROPOSAL_KNOBS = {
     "HINTS": ("levels", "branching", "equal_blocks"),
+    "FlatHINTS": ("equal_blocks",),
 }
 ALL_KNOBS = frozenset(k for knobs in PROPOSAL_KNOBS.values() for k in knobs)
 
@@ -172,8 +175,9 @@ def build(cfg, X_train, y_train):
         proposal = idt.HINTSProposal(target, ss_prop=cfg['ss_prop'],
                                      min_data=cfg['min_data'], **knobs)
     elif name == "FlatHINTS":
+        knobs = {k: cfg[k] for k in PROPOSAL_KNOBS[name] if k in cfg}
         proposal = idt.FlatHINTSProposal(target, ss_prop=cfg['ss_prop'],
-                                         min_data=cfg['min_data'])
+                                         min_data=cfg['min_data'], **knobs)
     else:
         # Never a fallback: an unrecognised name used to land here and run as
         # FlatHINTS, so a run labelled one thing silently sampled with another.
@@ -437,7 +441,7 @@ def validate_cfg(cfg):
             raise ValueError(f"{key}={cfg[key]!r}: each entry must be one of {allowed}")
         cfg[key] = value
 
-    unknown = set(cfg) - set(DEFAULT_CFG) - ALL_KNOBS - {"name"}
+    unknown = set(cfg) - set(DEFAULT_CFG) - ALL_KNOBS
     if unknown:
         raise ValueError(f"unknown experiment field(s) {sorted(unknown)}; "
                          f"see DEFAULT_CFG and PROPOSAL_KNOBS for the ones that exist")
@@ -458,22 +462,20 @@ def _hms(seconds):
     return f"{seconds // 3600}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
 
 
-def run_sweep(cfg, results_dir, name=None, jobs=None):
+def run_sweep(cfg, results_dir, jobs=None):
     """
     Run one experiment's samplers x proposals x chains cross product and write
-    <name>_<sampler>_<proposal>.h5 into results_dir for each (sampler,
-    proposal) pair. This is main()'s body, factored out so a driver script can
-    run a list of experiments into one results directory -- see
-    run_experiments.py and experiments.py.
+    <dataset>_<sampler>_<proposal>_<ss_prop * 100>.h5 into results_dir for
+    each (sampler, proposal) pair. This is main()'s body, factored out so a
+    driver script can run a list of experiments into one results directory --
+    see run_experiments.py and experiments.py.
 
     `cfg` is overlaid on DEFAULT_CFG, so any key it does not set keeps its
-    default. `name` defaults to cfg['dataset']; give experiments that share a
-    dataset distinct names, or run_sweep would happily overwrite one's .h5
-    files with the other's.
+    default. Two configs that differ only in something the filename does not
+    carry write the same files, and the second overwrites the first.
     """
     cfg = validate_cfg(dict(DEFAULT_CFG, **cfg))
     jobs = cfg['jobs'] if jobs is None else jobs
-    name = name or cfg['dataset']
 
     base = {k: v for k, v in cfg.items() if k not in _SWEEP_KEYS}
     configs = [dict(base, sampler=s, proposal=q, seed=seed)
@@ -516,7 +518,8 @@ def run_sweep(cfg, results_dir, name=None, jobs=None):
     written = []
     for (sampler, proposal), pairs in grouped.items():
         cfgs, runs = zip(*pairs)
-        path = os.path.join(results_dir, f"{name}_{sampler}_{proposal}.h5")
+        path = os.path.join(results_dir, experiment_filename(
+            cfg['dataset'], sampler, proposal, cfg['ss_prop']))
         # One .h5 per configuration, one group per run, so runs of unequal
         # length (different numbers of accepted moves) stay separable.
         save_experiment_hdf5(path, list(runs))
@@ -578,7 +581,7 @@ def main():
 
     print(f"\nResults in: {results_dir}"
           f"\n  python examples/incremental_decision_tree/evaluate_results.py --run-id {run_id}"
-          f"\n  python examples/incremental_decision_tree/plot_diagnostics.py --run-id {run_id} --name {args.dataset}")
+          f"\n  python examples/incremental_decision_tree/plot_diagnostics.py --run-id {run_id} --name {experiment_name(*experiment_key(cfg))}")
 
 
 if __name__ == "__main__":

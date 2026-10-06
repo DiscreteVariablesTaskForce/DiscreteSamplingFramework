@@ -22,23 +22,48 @@ def grouped_rows(leaf_rows):
     return rows, np.repeat(np.arange(len(leaf_rows)), [len(a) for a in leaf_rows])
 
 
+def draw_block_labels(labels, rows, num_blocks, rng, equal=True):
+    """
+    Write a block label in 0, ..., num_blocks - 1 into labels[rows], splitting
+    `rows` uniformly at random into `num_blocks` blocks.
+
+    With equal=True the rows are shuffled and cut into blocks whose sizes
+    differ by at most one, and the blocks are then given their labels in a
+    random order. The cut alone always puts the larger blocks at the same
+    labels, so a split and the same split with its labels reversed would not
+    be equally likely, and a sweep that visits the blocks in label order needs
+    them to be for its path correction. Relabelling makes every order of the
+    labels equally likely. With equal=False every row gets an independent,
+    uniformly random label instead, so block sizes are binomial; cheaper per
+    draw, but a block can come out well short of its share.
+    """
+    if equal:
+        shuffled = rng.nprng.permutation(rows)
+        cut = np.arange(len(rows)) * num_blocks // max(len(rows), 1)
+        labels[shuffled] = rng.nprng.permutation(num_blocks)[cut]
+    else:
+        labels[rows] = rng.nprng.integers(0, num_blocks, size=len(rows))
+
+
 class RowBlocks:
     """
     One sweep's random split of the rows under the subtree root into blocks,
     for a FlatHINTS sweep, drawn afresh at the start of every sweep.
 
-    draw() gives each row under the subtree root an independent, uniformly
-    random block label in 0, ..., B - 1, so every block is a uniform random
-    subset of those rows and the blocks are of roughly equal size. Nothing
-    outlives the sweep it was drawn for.
+    draw() splits the rows under the subtree root uniformly at random into B
+    blocks with draw_block_labels: by default into blocks of equal size whose
+    labels are in random order, or with equal=False by an independent,
+    uniformly random label per row. Either way every block is a uniform random
+    subset of those rows. Nothing outlives the sweep it was drawn for.
     """
 
-    def __init__(self, n_rows):
+    def __init__(self, n_rows, equal=True):
         self.labels = np.zeros(n_rows, dtype=np.intp)
+        self.equal = bool(equal)
 
     def draw(self, rows, num_blocks, rng):
         """Split `rows` uniformly at random into `num_blocks` blocks."""
-        self.labels[rows] = rng.nprng.integers(0, num_blocks, size=len(rows))
+        draw_block_labels(self.labels, rows, num_blocks, rng, self.equal)
 
     def block_rows(self, leaf_rows, j):
         """

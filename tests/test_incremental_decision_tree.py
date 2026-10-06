@@ -604,12 +604,12 @@ def test_hints_blocks_nest_and_partition_their_parent(problem, target):
 
 def test_hints_draw_splits_the_rows_uniformly_at_random(problem, target):
     """
-    A draw gives every row under the subtree root one uniformly random unit
-    block: every label is a valid block, each block holds about 1/U of the
-    rows, and two draws give two different splits.
+    With equal=False a draw gives every row under the subtree root one
+    uniformly random unit block: every label is a valid block, each block
+    holds about 1/U of the rows, and two draws give two different splits.
     """
     n = 12000
-    blocks = NestedBlocks(n, np.zeros(n, dtype=np.int64))
+    blocks = NestedBlocks(n, np.zeros(n, dtype=np.int64), equal=False)
     rows = np.arange(n)
     for units in (2, 4, 7, 16):
         blocks.draw(rows, units, RNG(units))
@@ -621,7 +621,7 @@ def test_hints_draw_splits_the_rows_uniformly_at_random(problem, target):
         assert np.all(np.abs(sizes - expected) < 5 * np.sqrt(expected))
         assert blocks.n_units == units
 
-    blocks = NestedBlocks(problem.n_rows, problem.y)
+    blocks = NestedBlocks(problem.n_rows, problem.y, equal=False)
     rows = problem.all_rows()[::3].copy()
     blocks.draw(rows, 4, RNG(1))
     first = blocks.labels[rows].copy()
@@ -646,6 +646,33 @@ def test_hints_equal_blocks_cut_the_rows_into_equal_shares(problem, target):
     first = blocks.labels[rows].copy()
     blocks.draw(rows, 16, RNG(99))
     assert not np.array_equal(blocks.labels[rows], first)
+
+
+@pytest.mark.parametrize("make", [
+    lambda n: RowBlocks(n),
+    lambda n: NestedBlocks(n, np.zeros(n, dtype=np.int64)),
+], ids=["FlatHINTS", "HINTS"])
+def test_equal_blocks_are_the_default_and_their_labels_are_exchangeable(make):
+    """
+    Both proposals cut the rows into equal blocks by default. When the rows do
+    not divide evenly, the cut alone would always put the larger blocks at the
+    same labels, so a split and its label-reversed twin would not be equally
+    likely -- and FlatHINTS, which visits the blocks in label order, relies on
+    them being so. The labels are shuffled after the cut, so every label has to
+    hold the larger block about as often as any other.
+    """
+    n, units, draws = 10, 4, 4000          # sizes 3, 3, 2, 2 in some order
+    blocks = make(n)
+    rows = np.arange(n)
+    rng = RNG(5)
+    larger = np.zeros(units)
+    for _ in range(draws):
+        blocks.draw(rows, units, rng)
+        sizes = np.bincount(blocks.labels[rows], minlength=units)
+        assert sorted(sizes) == [2, 2, 3, 3]
+        larger += sizes == 3
+    # Each label holds a larger block half the time; binomial sd is ~32.
+    assert np.all(np.abs(larger - draws / 2) < 5 * np.sqrt(draws / 4))
 
 
 @pytest.mark.parametrize("equal_blocks", [False, True])
@@ -1384,6 +1411,41 @@ def test_flat_hints_move_counts_total_the_sweep_counters(problem, target):
     call_barred = int((log['call_outcome'] == dg.BARRED).sum())
     assert table[:, dg.BARRED].sum() + call_barred == counters['barred']
     assert int((log['call_outcome'] == dg.PROPOSED).sum()) == counters['moved']
+
+
+def test_pruning_the_subtree_root_is_barred_at_the_move(problem):
+    """
+    A prune of the subtree root is out of the root-draw's support, so
+    evaluate_subtree_move bars it -- unless it is the last split, whose prune
+    leaves a stump. Every proposal reads the bar off the same call, so a sweep
+    loses that one move, as MH and DA do, rather than the whole sweep.
+    """
+    rng = RNG(3)
+    x = largest_tree_visited(problem, seed=3)
+    assert len(x.tree) > 1
+    for root in x.terminal_nodes:
+        ctx = make_context(x, root)
+        pc, _ = evaluate_subtree_move(x, ctx, "prune", root, None, rng)
+        assert pc <= idt.BARRED
+
+    one = idt.IncrementalTree.stump(problem)
+    one.grow(0, 0, 0.0)
+    pc, _ = evaluate_subtree_move(one, make_context(one, 0), "prune", 0, None, rng)
+    assert pc > idt.BARRED
+
+
+@pytest.mark.parametrize("name", ["FlatHINTS", "HINTS"])
+def test_sweeps_are_never_barred_by_the_root_draw(problem, target, name):
+    """
+    With root prunes barred move by move, no sweep can end without its subtree
+    root, so the sweep-level root check never throws a sweep's moves away.
+    """
+    proposal = _make_proposal(name, target)
+    proposal.record_moves = True
+    _chain(problem, target, proposal, iters=400)
+    log = proposal.move_log.arrays()
+    assert int((log['call_outcome'] == dg.BARRED).sum()) == 0
+    assert int((log['outcome'] == dg.BARRED).sum()) == proposal.counters()['barred']
 
 
 def test_screened_moves_carry_the_subsample_they_were_judged_on(problem, target):

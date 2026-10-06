@@ -2,13 +2,13 @@
 Turn the states a sweep stored into predictive metrics.
 
 sampler_diagnostics.py samples and stores trees; this reads them back and
-evaluates them, writing one metrics_<experiment>.npz beside each .h5:
+evaluates them, writing one <experiment>_metrics.npz beside each <experiment>.h5:
 
     python examples/incremental_decision_tree/sampler_diagnostics.py --dataset wine --run-id wine_baseline
     python examples/incremental_decision_tree/evaluate_results.py --run-id wine_baseline
     python examples/incremental_decision_tree/plot_diagnostics.py --run-id wine_baseline
 
-    python examples/incremental_decision_tree/evaluate_results.py --run-id covtype --name covtype_mcmc \
+    python examples/incremental_decision_tree/evaluate_results.py --run-id covtype --name covtype_12p5 \
         --stride 10 --splits test --jobs 8
 
 Why this is a separate step. One evaluation routes every row of a split through
@@ -43,7 +43,9 @@ import os
 import sys
 import time
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from multiprocessing import Manager
+from queue import Empty
 
 import numpy as np
 from tqdm.auto import tqdm
@@ -51,22 +53,17 @@ from tqdm.auto import tqdm
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from discretesampling.domain import incremental_decision_tree as idt  # noqa: E402
-from results_io import (experiment_datasets, find_experiment_files,  # noqa: E402
-                        latest_run_id, load_experiment_hdf5, read_run_config,
-                        states_of)
+from results_io import (experiment_names, find_experiment_files,  # noqa: E402
+                        latest_run_id, load_experiment_hdf5, metrics_filename,
+                        parse_experiment_name, read_run_config, states_of)
 from sampler_diagnostics import DEFAULT_CFG, load_data  # noqa: E402
 
-METRICS_PREFIX = "metrics_"
 SPLITS = ("train", "test")
 
 # Bookkeeping written alongside the metrics, but not metrics themselves: they
 # describe the columns rather than measuring anything, so `for metric in npz`
 # style reads have to be able to tell them apart.
 BOOKKEEPING = ("iterations", "stride", "n_runs")
-
-
-def metrics_filename(name, sampler, proposal):
-    return f"{METRICS_PREFIX}{name}_{sampler}_{proposal}.npz"
 
 
 # --------------------------------------------------------------------------- #
@@ -159,14 +156,14 @@ def evaluate_series(series, ensembles, splits, pbar=None):
     return dict(cols), len(per_tree)
 
 
-def evaluate_file(path, dataset, wanted_splits, stride, position=0):
+def evaluate_file(path, dataset, wanted_splits, stride, pbar):
     """
     Every run in one experiment's .h5, as {metric: (n_runs, n_points) array}
     plus the iteration behind each point.
 
-    `position` slots this file's progress bar into its own terminal row, so
-    several files evaluated in parallel (--jobs > 1) don't overwrite each
-    other's line.
+    `pbar` is reset to the number of trees to evaluate once that's known and
+    ticks once per tree: a tqdm bar, or a QueueProgress standing in for one
+    the main process draws.
     """
     splits = splits_for(dataset, wanted_splits)
     runs = load_experiment_hdf5(path)
@@ -187,15 +184,13 @@ def evaluate_file(path, dataset, wanted_splits, stride, position=0):
     ensembles = [picked_ensembles(series, stride) for series in series_of_run]
     total = sum(len({int(s) for slots, _ in picked for s in slots})
                 for picked in ensembles)
-    pbar = tqdm(total=total, desc=os.path.basename(path), unit="tree",
-                position=position, leave=False)
+    pbar.reset(total=total)
 
     per_run, evaluated = [], 0
     for series, picked in zip(series_of_run, ensembles):
         cols, n_evaluated = evaluate_series(series, picked, splits, pbar)
         per_run.append(cols)
         evaluated += n_evaluated
-    pbar.close()
 
     # Runs of one experiment share iters/steps and store_every, so they line up;
     # a run cut short (a crash mid-sweep) is truncated to the common length
@@ -203,8 +198,8 @@ def evaluate_file(path, dataset, wanted_splits, stride, position=0):
     lengths = {len(next(iter(c.values()))) for c in per_run if c}
     n_points = min(lengths) if lengths else 0
     if len(lengths) > 1:
-        print(f"    [warning] runs hold {sorted(lengths)} evaluated records; "
-              f"truncating to {n_points}")
+        tqdm.write(f"    [warning] {os.path.basename(path)}: runs hold "
+                   f"{sorted(lengths)} evaluated records; truncating to {n_points}")
     iterations = series_of_run[0].record_iterations()[::stride][:n_points]
 
     keys = sorted(set().union(*(c.keys() for c in per_run))) if per_run else []
@@ -213,16 +208,80 @@ def evaluate_file(path, dataset, wanted_splits, stride, position=0):
     return matrices, iterations, evaluated
 
 
-def evaluate_one(task):
-    """One (experiment file -> .npz) job, as a worker sees it."""
-    path, out_path, dataset, wanted_splits, stride, position = task
+def evaluate_one(task, pbar):
+    """One (experiment file -> .npz) job."""
+    path, out_path, dataset, wanted_splits, stride = task
     started = time.perf_counter()
     matrices, iterations, evaluated = evaluate_file(
-        path, dataset, wanted_splits, stride, position)
+        path, dataset, wanted_splits, stride, pbar)
     np.savez_compressed(out_path, iterations=iterations, stride=stride,
                         n_runs=len(next(iter(matrices.values()))) if matrices else 0,
                         **matrices)
     return out_path, matrices, evaluated, time.perf_counter() - started
+
+
+# --------------------------------------------------------------------------- #
+# progress from worker processes
+# --------------------------------------------------------------------------- #
+
+class QueueProgress:
+    """
+    The slice of a tqdm bar evaluate_file uses, forwarded to the main process
+    over a queue. Workers drawing their own bars fight over the terminal (rows
+    collide, finished bars freeze mid-screen, bars repeat), so only the main
+    process draws, one fixed row per job, and workers just report counts.
+    Ticks are batched, since a queue put per tree would cost more than some
+    trees take to evaluate.
+    """
+
+    def __init__(self, queue, index, every=0.1):
+        self.queue, self.index, self.every = queue, index, every
+        self.pending, self.last = 0, time.perf_counter()
+
+    def reset(self, total):
+        self.queue.put((self.index, "total", total))
+
+    def update(self, n=1):
+        self.pending += n
+        if time.perf_counter() - self.last >= self.every:
+            self.flush()
+
+    def flush(self):
+        if self.pending:
+            self.queue.put((self.index, "update", self.pending))
+        self.pending, self.last = 0, time.perf_counter()
+
+
+def evaluate_in_worker(task, queue, index):
+    """evaluate_one in a worker process, reporting progress to bar `index`."""
+    progress = QueueProgress(queue, index)
+    try:
+        return evaluate_one(task, progress)
+    finally:
+        progress.flush()
+
+
+def drain(queue, bars):
+    """Apply every progress message the workers have sent so far."""
+    while True:
+        try:
+            index, kind, value = queue.get_nowait()
+        except Empty:
+            return
+        if kind == "total":
+            bars[index].reset(total=value)
+        else:
+            bars[index].update(value)
+
+
+def finish(bar):
+    """
+    Stop a finished job's bar clock. Bars are only closed once every job is
+    done, so without this a bar's elapsed time would keep running to the end
+    and its final rate would be diluted by however long the slowest job took.
+    """
+    bar._time = lambda t=bar._time(): t
+    bar.refresh()
 
 
 # --------------------------------------------------------------------------- #
@@ -231,27 +290,34 @@ def evaluate_one(task):
 
 def plan(results_dir, names, wanted_splits, stride, overwrite):
     """The (path, out_path, dataset, splits, stride) jobs for a run directory."""
-    datasets = experiment_datasets(read_run_config(results_dir),
-                                   DEFAULT_CFG["dataset"])
+    known = experiment_names(read_run_config(results_dir), DEFAULT_CFG)
     if names:
-        unknown = [n for n in names if n not in datasets]
-        if unknown and datasets:
+        unknown = [n for n in names if n not in known]
+        if unknown and known:
             raise SystemExit(f"no experiment named {', '.join(unknown)} in "
-                             f"{results_dir} (it has: {', '.join(sorted(datasets))})")
+                             f"{results_dir} (it has: {', '.join(known)})")
     else:
-        names = sorted(datasets)
+        names = known
 
-    jobs = []
+    # Keyed by the file, since the full-data proposals' files belong to every
+    # experiment of their dataset and would otherwise be evaluated once each.
+    jobs = {}
     for name in names:
+        try:
+            dataset, ss_prop = parse_experiment_name(name)
+        except ValueError as err:
+            raise SystemExit(str(err)) from None
         for (sampler, proposal), path in find_experiment_files(results_dir, name).items():
-            out_path = os.path.join(results_dir,
-                                    metrics_filename(name, sampler, proposal))
+            out_path = os.path.join(results_dir, metrics_filename(
+                dataset, sampler, proposal, ss_prop))
+            if out_path in jobs:
+                continue
             if os.path.exists(out_path) and not overwrite:
                 print(f">>> Skipping {os.path.basename(path)}: "
                       f"{os.path.basename(out_path)} exists (--overwrite to redo it)")
                 continue
-            jobs.append((path, out_path, datasets[name], wanted_splits, stride))
-    return jobs
+            jobs[out_path] = (path, out_path, dataset, wanted_splits, stride)
+    return list(jobs.values())
 
 
 def summarise(out_path, matrices, evaluated, seconds):
@@ -264,7 +330,9 @@ def summarise(out_path, matrices, evaluated, seconds):
             final = matrices[key][:, -1]
             line += (f"   {split} accuracy {final.mean():.4f}"
                      f" (+/- {final.std():.4f})")
-    print(line, flush=True)
+    # tqdm.write, not print, so the line lands above the bars instead of
+    # through one of them.
+    tqdm.write(line)
 
 
 def main():
@@ -308,20 +376,38 @@ def main():
     print(f">>> {len(jobs)} experiment(s), splits {'+'.join(args.splits)}, "
           f"stride {args.stride}")
     started = time.perf_counter()
-    if args.jobs > 1 and len(jobs) > 1:
-        # Positions round-robin over the worker slots so concurrent files'
-        # progress bars land on their own terminal row instead of clobbering
-        # each other; it's an approximation of which task lands on which
-        # worker, which is fine for a progress bar.
-        max_workers = min(args.jobs, len(jobs))
-        tasks = [job + (i % max_workers,) for i, job in enumerate(jobs)]
-        with ProcessPoolExecutor(max_workers=max_workers) as pool:
-            futures = [pool.submit(evaluate_one, task) for task in tasks]
-            for future in as_completed(futures):
-                summarise(*future.result())
-    else:
-        for job in jobs:
-            summarise(*evaluate_one(job + (0,)))
+    # One bar per job, all drawn by this process in plan order and kept open
+    # until the end: closing a bar with leave=True mid-run reprints it at the
+    # cursor and shifts the rows of every bar below it.
+    bars = [tqdm(total=None, desc=os.path.basename(job[0]), unit="tree",
+                 position=i, leave=True)
+            for i, job in enumerate(jobs)]
+    try:
+        if args.jobs > 1 and len(jobs) > 1:
+            with Manager() as manager, \
+                    ProcessPoolExecutor(max_workers=min(args.jobs, len(jobs))) as pool:
+                queue = manager.Queue()
+                bar_of = {pool.submit(evaluate_in_worker, job, queue, i): bars[i]
+                          for i, job in enumerate(jobs)}
+                pending = set(bar_of)
+                while pending:
+                    done, pending = wait(pending, timeout=0.1,
+                                         return_when=FIRST_COMPLETED)
+                    # Drained after the wait, so a finished job's last ticks
+                    # (flushed before it returned) are on its bar before its
+                    # summary prints.
+                    drain(queue, bars)
+                    for future in done:
+                        finish(bar_of[future])
+                        summarise(*future.result())
+        else:
+            for job, bar in zip(jobs, bars):
+                result = evaluate_one(job, bar)
+                finish(bar)
+                summarise(*result)
+    finally:
+        for bar in bars:
+            bar.close()
 
     print(f"\nEvaluated {len(jobs)} experiment(s) in "
           f"{time.perf_counter() - started:.1f}s. Metrics in: {results_dir}"

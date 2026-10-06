@@ -9,7 +9,7 @@ from discretesampling.domain.incremental_decision_tree.moves import (
     evaluate_subtree_move, make_context, select_move, subtree_leaves,
     subtree_size)
 from discretesampling.domain.incremental_decision_tree.subsampling import (
-    block_count, grouped_rows)
+    block_count, draw_block_labels, grouped_rows)
 from discretesampling.domain.incremental_decision_tree.proposals.base import (
     IncrementalTreeProposalBase)
 from discretesampling.domain.incremental_decision_tree.diagnostics import (
@@ -38,8 +38,8 @@ class BlockRows:
 
     def __init__(self, parent, lo, hi, pos, labels, rows=None):
         self.parent = parent
-        self.lo = lo
-        self.hi = hi
+        self.lo = lo            # minimum unit label in this leaf's block, inclusive
+        self.hi = hi            # maximum unit label in this leaf's block, exclusive
         self.pos = pos          # the leaf's row in NestedBlocks' count table
         self.labels = labels
         self._rows = rows
@@ -105,11 +105,12 @@ class NestedBlocks:
     One sweep's random split of the rows under the subtree root into nested
     blocks, drawn afresh at the start of every sweep.
 
-    draw() splits the rows of I_rho(T) uniformly at random into U unit blocks,
-    by giving each row an independent, uniformly random unit-block label in
-    0, ..., U - 1, so the blocks are of roughly equal size. With equal=True it
-    shuffles the rows instead and cuts them into U blocks whose sizes differ by
-    at most one; that costs about three times as much per draw. A data node is
+    draw() splits the rows of I_rho(T) uniformly at random into U unit blocks
+    with draw_block_labels: by default it shuffles the rows, cuts them into U
+    blocks whose sizes differ by at most one and labels those blocks 0, ...,
+    U - 1 in a random order. With equal=False it gives each row an independent,
+    uniformly random unit-block label instead, so the blocks are only of
+    roughly equal size, at about a third of the cost per draw. A data node is
     a contiguous range of labels, held as (lo, width): its rows are those whose
     label lies in [lo, lo + width). The top of the hierarchy is (0, U), every
     row under the subtree root, and a node's B children are the B equal
@@ -125,7 +126,7 @@ class NestedBlocks:
     outlives the sweep it was drawn for.
     """
 
-    def __init__(self, n_rows, y, equal=False):
+    def __init__(self, n_rows, y, equal=True):
         self.y = y
         self.equal = bool(equal)
         self.labels = np.zeros(n_rows, dtype=np.intp)
@@ -135,11 +136,7 @@ class NestedBlocks:
 
     def draw(self, rows, n_units, rng):
         """Split `rows` uniformly at random into `n_units` unit blocks."""
-        if self.equal:
-            shuffled = rng.nprng.permutation(rows)
-            self.labels[shuffled] = np.arange(len(rows)) * n_units // len(rows)
-        else:
-            self.labels[rows] = rng.nprng.integers(0, n_units, size=len(rows))
+        draw_block_labels(self.labels, rows, n_units, rng, self.equal)
         self.n_units = n_units
 
     def tabulate(self, leaf_rows, num_classes):
@@ -216,61 +213,6 @@ class HINTSProposal(IncrementalTreeProposalBase):
     version of FlatHINTSProposal, over L levels of nested blocks rather than one
     flat sweep of B blocks.
 
-    Draw a subtree, then run the kernel at the top data node -- the whole
-    dataset. A data node either
-
-      * is primitive (depth L), and makes a single Metropolis-Hastings step
-        against its own surrogate pi_n, seeing only its own block's rows; or
-      * runs each of its B children in turn, in a random order, each starting
-        where the last one stopped, and then accepts the composite move
-        theta_0 -> theta_B with
-
-            log alpha = [log pi_n(theta_B)   - log pi_n(theta_0)]
-                      - sum_b [log pi_c_b(theta_b) - log pi_c_b(theta_b-1)]
-
-        rejecting back to theta_0 otherwise.
-
-    The top level does not run that accept step itself: its children's terms are
-    handed to the sampler as the particle's proposal correction, so the outer
-    Metropolis-Hastings step is the top level's accept, against the true target.
-    That is what makes the whole thing exact whatever the intermediate levels
-    do with their surrogates.
-
-    The surrogate
-    -------------
-    A data node holding a fraction f of the rows under the subtree root scores
-    a tree as
-
-        log pi_n(T) = f * [log p(T) + sum_l log_dm(C_l^(n) / f)]
-
-    -- the scaled surrogate FlatHINTSProposal uses, tempered by f, so each node
-    holds a share of the evidence in proportion to its rows, the prior
-    included. f is the share of the rows that actually fell into the node's
-    block, not the nominal width / U. At f = 1 the expression is the target.
-
-    Blocks with no relevant rows
-    ----------------------------
-    A primitive move whose block holds no row under the move node is screened
-    out, as eval_subset does for FlatHINTSProposal: the block has no information
-    about it. The rows under the move node are the same on both sides of every
-    move, so the rule is symmetric and the step stays reversible. A data node
-    holding no rows at all is skipped outright -- every move under it would be
-    rejected, so it is the identity and adds nothing to the correction.
-
-    Support
-    -------
-    min_samples_leaf is enforced strictly at every level: every state the sweep
-    passes through is admissible on the full data, exactly as in FlatHINTSProposal,
-    so every primitive move has its reverse.
-
-    That needs the full rows of every leaf, which a block state does not hold.
-    So the sweep carries them alongside: `full`, {leaf: rows} for the leaves
-    under the subtree root, on all the rows. The checks are FlatHINTSProposal's own
-    -- select_move's size test, the grow's split test and change_partition --
-    run against `full` instead of the block. A move that passes them records
-    the full map it leaves behind with itself, so a state brought forward by
-    replay picks up the matching map without routing anything again.
-
     Parameters
     ----------
     target    : IncrementalTreeTarget
@@ -289,15 +231,17 @@ class HINTSProposal(IncrementalTreeProposalBase):
         Children per data node. Default: whatever makes the primitive blocks
         come out at about `ss_prop` of the rows.
     equal_blocks : bool, optional
-        Cut the rows into unit blocks of equal size (a shuffle) rather than by
-        i.i.d. labels. Costs about 3x as much per draw. Default False.
+        Cut the rows into unit blocks of equal size, labelled in a random order
+        (True), or give every row an independent, uniformly random unit-block
+        label (False), which costs about a third as much per draw but gives
+        blocks of binomial size. Default True.
 
     The rows under the subtree root are split into blocks afresh at the start
     of every sweep (NestedBlocks), as HINTS prescribes.
     """
 
     def __init__(self, target, ss_prop=0.1, min_data=None, levels=2,
-                 branching=None, equal_blocks=False):
+                 branching=None, equal_blocks=True):
         super().__init__()
         self.target = target
         self.problem = target.problem

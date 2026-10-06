@@ -13,9 +13,10 @@ Every experiment in the list writes into the same Results/<run-id>/ directory
 -- one run-id for the whole sweep, not one per experiment -- so
 `evaluate_results.py --run-id <that>` evaluates all of them in one go and
 `plot_diagnostics.py --run-id <that> --name <one of them>` reads any of them
-back afterwards. Two experiments that would write the same .h5 files (the same
-dataset and no distinct 'name') are refused before anything runs, rather than
-one silently overwriting the other partway through a long sweep.
+back afterwards. Each (sampler, proposal) of an entry is written to
+<dataset>_<sampler>_<proposal>_<ss_prop * 100>.h5, and two experiments that
+would write the same file are refused before anything runs, rather than one
+silently overwriting the other partway through a long sweep.
 
 This step only samples and stores trees. No predictive metric is computed
 until evaluate_results.py is run over what it wrote; see sampler_diagnostics.py
@@ -33,7 +34,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from results_io import resolve_run_id, write_run_config  # noqa: E402
+from results_io import (experiment_filename, experiment_names,  # noqa: E402
+                        resolve_run_id, write_run_config)
 from sampler_diagnostics import DEFAULT_CFG, run_sweep, validate_cfg  # noqa: E402
 
 DEFAULT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "experiments.py")
@@ -51,23 +53,27 @@ def load_experiments(path):
         raise SystemExit(f"{path} defines no EXPERIMENTS list") from None
 
 
-def experiment_name(entry):
-    return entry.get("name") or entry.get("dataset", DEFAULT_CFG["dataset"])
+def experiment_files(entry):
+    """The .h5 files one entry writes, one per (sampler, proposal)."""
+    cfg = validate_cfg(dict(DEFAULT_CFG, **entry))
+    return [experiment_filename(cfg["dataset"], s, p, cfg["ss_prop"])
+            for s in cfg["samplers"] for p in cfg["proposals"]]
 
 
 def check_for_collisions(experiments):
-    """Every experiment's name, checked for a repeat before any of them runs:
-    two experiments sharing a name would overwrite each other's .h5 files, and
+    """Every experiment's files, checked for a repeat before any of them runs:
+    two experiments writing the same file would overwrite each other, and
     finding that out after a long sweep has already run the first one is a far
     worse time than before it starts."""
     seen = {}
     for i, entry in enumerate(experiments):
-        name = experiment_name(entry)
-        if name in seen:
-            raise SystemExit(
-                f"experiments {seen[name]} and {i} would both write "
-                f"'{name}_*.h5' -- give one of them a distinct 'name'")
-        seen[name] = i
+        for filename in experiment_files(entry):
+            if filename in seen:
+                raise SystemExit(
+                    f"experiments {seen[filename]} and {i} would both write "
+                    f"{filename!r} -- they differ in nothing the filename "
+                    f"carries (dataset, sampler, proposal, ss_prop)")
+            seen[filename] = i
 
 
 def main():
@@ -89,12 +95,6 @@ def main():
     if not experiments:
         raise SystemExit(f"{args.file}: EXPERIMENTS is empty")
 
-    if args.list:
-        for i, entry in enumerate(experiments):
-            overrides = {k: v for k, v in entry.items() if k != "name"}
-            print(f"{i}\t{experiment_name(entry)}\t{overrides}")
-        return
-
     if args.index is not None:
         if not 0 <= args.index < len(experiments):
             raise SystemExit(f"--index {args.index} is out of range: this file has "
@@ -102,14 +102,24 @@ def main():
                              f"Run with --list to see them.")
         experiments = [experiments[args.index]]
 
-    check_for_collisions(experiments)
+    if args.list:
+        for i, entry in enumerate(experiments):
+            try:
+                files = ", ".join(experiment_files(entry))
+            except ValueError as err:
+                files = f"INVALID: {err}"
+            print(f"{i}\t{files}\t{entry}")
+        return
+
     # All of them, before any runs: a bad entry found after hours of the ones
     # ahead of it is the expensive way to find it.
     for i, entry in enumerate(experiments):
         try:
             validate_cfg(dict(DEFAULT_CFG, **entry))
         except ValueError as err:
-            raise SystemExit(f"experiment {i} ({experiment_name(entry)}): {err}") from None
+            raise SystemExit(f"experiment {i}: {err}") from None
+
+    check_for_collisions(experiments)
 
     run_id = resolve_run_id(args.run_id)
     results_dir = os.path.join(args.results_root, run_id)
@@ -120,11 +130,11 @@ def main():
     })
 
     for i, entry in enumerate(experiments):
-        name = experiment_name(entry)
-        print(f"\n{'#' * 78}\n# experiment {i + 1}/{len(experiments)}: {name}\n{'#' * 78}")
-        run_sweep(entry, results_dir, name=name)
+        files = ", ".join(experiment_files(entry))
+        print(f"\n{'#' * 78}\n# experiment {i + 1}/{len(experiments)}: {files}\n{'#' * 78}")
+        run_sweep(entry, results_dir)
 
-    names = sorted({experiment_name(e) for e in experiments})
+    names = experiment_names({"experiments": experiments}, DEFAULT_CFG)
     print(f"\nAll {len(experiments)} experiment(s) complete. Results in: {results_dir}")
     print(f"  python examples/incremental_decision_tree/evaluate_results.py --run-id {run_id}")
     for name in names:

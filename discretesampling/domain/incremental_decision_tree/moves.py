@@ -289,6 +289,14 @@ def evaluate_subtree_move(state, ctx, move, node, idx, rng):
         prop_correction = log(q_b) - log(q_f) - lp_thr - problem.lp_feats
 
     elif move == "prune":
+        if node == ctx.root and len(state.tree) > 1:
+            # Pruning the subtree root leaves it undrawable on the way back, so
+            # the root-draw term bars it (_root_correction). Barred here rather
+            # than there, so that a HINTS sweep loses this one move, as MH and
+            # DA do, instead of finding out at the end of the sweep and
+            # discarding every move it made. The last split is the exception:
+            # its prune leaves a stump, whose root is drawn from {0}.
+            return large_neg, {'node': node, 'feat': None, 'thr': None, 'stump': stump}
         old_feat = int(state.nodes[node][3])
         # The reverse grow would have to re-draw this threshold, so this is the
         # PROPOSAL density, not the prior -- the two differ once

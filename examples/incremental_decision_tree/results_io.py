@@ -5,10 +5,11 @@ One results directory per sweep, named explicitly or by timestamp:
 
     Results/<run-id>/
         config.json                  the CLI args the sweep was run with
-        wine_mcmc_MH.h5               one file per (dataset, sampler, proposal)
-        wine_mcmc_DA.h5
-        wine_mcmc_HINTS.h5
-        wine_smc_MH.h5
+        wine_mcmc_MH_100.h5          one file per (dataset, sampler, proposal,
+        wine_mcmc_DA_10.h5           ss_prop * 100), '.' written as 'p'
+        wine_mcmc_HINTS_12p5.h5
+        wine_mcmc_HINTS_12p5_metrics.npz   evaluate_results.py's, beside it
+        wine_smc_MH_100.h5
         ...
 
 Inside one .h5, one group per chain (MCMC) or per independent run (SMC):
@@ -46,10 +47,8 @@ RUN_PREFIX = "Run_"
 
 # The fixed sweep dimensions a results directory is named over. Everything that
 # goes looking for an experiment's files checks this cross product rather than
-# globbing: two experiment names can share a prefix (a dataset "wine" and a
-# second experiment named "wine_deep", say), and "wine_deep_mcmc_HINTS.h5" is
-# indistinguishable from a "wine" experiment using a sampler called "deep_mcmc"
-# from the filename's shape alone.
+# globbing: "HINTS" is a suffix of "FlatHINTS", so a pattern loose enough to
+# glob with can match a file that belongs to some other proposal.
 #
 # These are the one list of each: sampler_diagnostics.py takes the proposals it
 # will accept from here, and plot_diagnostics.py the pairs it looks for. A
@@ -60,41 +59,96 @@ SAMPLERS = ("mcmc", "smc")
 PROPOSALS = ("MH", "DA", "FlatHINTS", "HINTS")
 
 
-def experiment_filename(name, sampler, proposal):
-    return f"{name}_{sampler}_{proposal}.h5"
+# The proposals that never subsample. They ignore ss_prop, so their files are
+# tagged 100 -- the whole training set -- whatever ss_prop the experiment
+# carried, rather than a level they were never run at.
+FULL_DATA_PROPOSALS = ("MH",)
+
+
+def ss_tag(ss_prop):
+    """ss_prop as a percentage fit for a filename: 0.25 -> '25', 0.125 -> '12p5'."""
+    return f"{round(100 * ss_prop, 6):g}".replace(".", "p")
+
+
+def experiment_stem(dataset, sampler, proposal, ss_prop):
+    """{dataset}_{sampler}_{proposal}_{ss_prop * 100}, the name both an
+    experiment's .h5 and its metrics .npz are built on."""
+    if proposal in FULL_DATA_PROPOSALS:
+        ss_prop = 1.0
+    return f"{dataset}_{sampler}_{proposal}_{ss_tag(ss_prop)}"
+
+
+def experiment_filename(dataset, sampler, proposal, ss_prop):
+    return f"{experiment_stem(dataset, sampler, proposal, ss_prop)}.h5"
+
+
+def metrics_filename(dataset, sampler, proposal, ss_prop):
+    return f"{experiment_stem(dataset, sampler, proposal, ss_prop)}_metrics.npz"
+
+
+# An experiment, as evaluate_results.py and plot_diagnostics.py know it, is
+# every (sampler, proposal) run on one dataset at one subsample level, named
+# {dataset}_{ss_prop * 100}. The full-data proposals belong to every level --
+# they are the reference each level is compared against -- so an experiment
+# holding only those is at 100.
+
+def experiment_key(cfg):
+    """(dataset, ss_prop) of a config already overlaid on DEFAULT_CFG."""
+    proposals = cfg["proposals"]
+    proposals = [proposals] if isinstance(proposals, str) else proposals
+    if all(p in FULL_DATA_PROPOSALS for p in proposals):
+        return cfg["dataset"], 1.0
+    return cfg["dataset"], cfg["ss_prop"]
+
+
+def experiment_name(dataset, ss_prop):
+    return f"{dataset}_{ss_tag(ss_prop)}"
+
+
+def parse_experiment_name(name):
+    """experiment_name's inverse, (dataset, ss_prop); ValueError if `name`
+    is not one experiment_name could have produced."""
+    dataset, _, tag = name.rpartition("_")
+    try:
+        if not dataset:
+            raise ValueError
+        return dataset, float(tag.replace("p", ".")) / 100
+    except ValueError:
+        raise ValueError(f"{name!r} is not a <dataset>_<ss_prop * 100> "
+                         f"experiment name, e.g. covtype_12p5") from None
 
 
 def find_experiment_files(results_dir, name):
-    """{(sampler, proposal): path} for the experiment called `name`."""
+    """{(sampler, proposal): path} for the experiment called `name`, the
+    full-data proposals' files included. {} if `name` is malformed."""
+    try:
+        dataset, ss_prop = parse_experiment_name(name)
+    except ValueError:
+        return {}
     out = {}
     for sampler in SAMPLERS:
         for proposal in PROPOSALS:
-            path = os.path.join(results_dir,
-                                experiment_filename(name, sampler, proposal))
+            path = os.path.join(results_dir, experiment_filename(
+                dataset, sampler, proposal, ss_prop))
             if os.path.exists(path):
                 out[(sampler, proposal)] = path
     return out
 
 
-def experiment_datasets(config, default_dataset):
+def experiment_names(config, defaults):
     """
-    {experiment name: the dataset it was run on}, from a results directory's
-    config.json -- which is what an evaluation needs to know to reload the
-    right rows, and what a "no such experiment" message needs to list.
+    The experiment names a results directory's config.json covers -- what an
+    evaluation or a plot runs over when nothing is named, and what a "no such
+    experiment" message needs to list.
 
     run_experiments.py writes the whole 'experiments' list it was given; a bare
-    sampler_diagnostics.py sweep writes the single config it ran, whose name is
-    its dataset. {} for a directory that predates config.json, or one
-    hand-populated with .h5 files.
+    sampler_diagnostics.py sweep writes the single config it ran. Each is
+    overlaid on `defaults` (DEFAULT_CFG) for whatever it left out. [] for a
+    directory that predates config.json, or one hand-populated with .h5 files.
     """
-    if "experiments" in config:
-        out = {}
-        for entry in config["experiments"]:
-            dataset = entry.get("dataset", default_dataset)
-            out[entry.get("name") or dataset] = dataset
-        return out
-    dataset = config.get("dataset")
-    return {dataset: dataset} if dataset else {}
+    entries = config.get("experiments") or ([config] if "dataset" in config else [])
+    return sorted({experiment_name(*experiment_key(dict(defaults, **entry)))
+                   for entry in entries})
 
 
 def resolve_run_id(run_id=None):

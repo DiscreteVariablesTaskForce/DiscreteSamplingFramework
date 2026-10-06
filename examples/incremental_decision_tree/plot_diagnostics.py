@@ -4,10 +4,10 @@ examples/incremental_decision_tree/evaluate_results.py write into Results/<run-i
 
     python examples/incremental_decision_tree/sampler_diagnostics.py --dataset wine --run-id wine_baseline
     python examples/incremental_decision_tree/evaluate_results.py --run-id wine_baseline
-    python examples/incremental_decision_tree/plot_diagnostics.py --name wine --run-id wine_baseline
+    python examples/incremental_decision_tree/plot_diagnostics.py --name wine_10 --run-id wine_baseline
 
 The sampler's own columns (tree size, ESS, the move log) come off the .h5
-files; the predictive metrics come off the metrics_*.npz beside them, which is
+files; the predictive metrics come off the *_metrics.npz beside them, which is
 where evaluate_results.py puts them. So the metric figure needs the run to have
 been evaluated -- it says so and skips itself if it has not been, rather than
 evaluating anything here: an evaluation is minutes to hours of work and belongs
@@ -16,9 +16,10 @@ in the step that is built to be re-run with different splits and strides.
 --run-id defaults to whichever run is newest under --results-root, and --name
 to every experiment that run's config.json lists, so a plain `python
 examples/incremental_decision_tree/plot_diagnostics.py` plots everything in the sweep that was just run
-without having to name any of it. --name narrows that: it is the <name> half
-of the <name>_<sampler>_<proposal>.h5 files, which is the dataset unless a
-run_experiments.py entry overrode it with its own 'name' (see experiments.py).
+without having to name any of it. --name narrows that: an experiment is
+<dataset>_<ss_prop * 100> (covtype_12p5, say), and covers every
+<dataset>_<sampler>_<proposal>_<ss_prop * 100>.h5 at that subsample level,
+plus the full-data MH files (tagged 100) as the reference to compare against.
 Naming several plots each of them, and adds one all_move_outcomes.png putting
 every configuration of every one of them in a single grid.
 
@@ -59,20 +60,21 @@ import os
 import numpy as np
 
 from discretesampling.domain.incremental_decision_tree import diagnostics as dg
-from evaluate_results import BOOKKEEPING, metrics_filename
-from results_io import (PROPOSALS, SAMPLERS, experiment_datasets,
-                        find_experiment_files, latest_run_id,
-                        load_experiment_hdf5, read_run_config)
+from evaluate_results import BOOKKEEPING
+from results_io import (PROPOSALS, SAMPLERS, experiment_key, experiment_name,
+                        experiment_names, find_experiment_files, latest_run_id,
+                        load_experiment_hdf5, metrics_filename,
+                        parse_experiment_name, read_run_config)
 from sampler_diagnostics import DEFAULT_CFG
 
 
 def known_names(cfg):
     """
-    The experiment names a results directory's config.json lists, for the
+    The experiment names a results directory's config.json covers, for the
     "no such experiment" message below. [] if there is nothing to consult
     (an old results directory, or one hand-populated with .h5 files).
     """
-    return sorted(experiment_datasets(cfg, DEFAULT_CFG["dataset"]))
+    return experiment_names(cfg, DEFAULT_CFG)
 
 
 def find_runs(results_dir, name):
@@ -87,14 +89,18 @@ def find_runs(results_dir, name):
 def find_metrics(results_dir, name):
     """
     {(sampler, proposal): {metric: (n_runs, n_points) array}} for the same
-    experiment, off the metrics_*.npz evaluate_results.py wrote. Empty for a
+    experiment, off the *_metrics.npz evaluate_results.py wrote. Empty for a
     run that has not been evaluated yet.
     """
+    try:
+        dataset, ss_prop = parse_experiment_name(name)
+    except ValueError:
+        return {}
     out = {}
     for sampler in SAMPLERS:
         for proposal in PROPOSALS:
-            path = os.path.join(results_dir,
-                                metrics_filename(name, sampler, proposal))
+            path = os.path.join(results_dir, metrics_filename(
+                dataset, sampler, proposal, ss_prop))
             if os.path.exists(path):
                 with np.load(path) as data:
                     out[(sampler, proposal)] = {k: data[k] for k in data.files}
@@ -156,7 +162,7 @@ def _band(ax, x, y, color, label):
 
 def plot_metric(metrics_by_key, metric, out_path, plt, run_id):
     if not metrics_by_key:
-        print(f"no metrics_*.npz for this experiment -- skipping the {metric} "
+        print(f"no *_metrics.npz for this experiment -- skipping the {metric} "
               f"plot. Evaluate the run first:\n"
               f"    python examples/incremental_decision_tree/evaluate_results.py --run-id {run_id}")
         return
@@ -538,7 +544,7 @@ def main():
     # The dataset default is only a fallback for a results directory written
     # before config.json, or one hand-populated with .h5 files.
     known = known_names(read_run_config(results_dir))
-    names = args.name or known or [DEFAULT_CFG["dataset"]]
+    names = args.name or known or [experiment_name(*experiment_key(DEFAULT_CFG))]
 
     out_dir = args.out_dir or os.path.join(results_dir, "plots")
     os.makedirs(out_dir, exist_ok=True)

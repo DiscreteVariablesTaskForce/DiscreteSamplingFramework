@@ -33,9 +33,14 @@ class FlatHINTSProposal(IncrementalTreeProposalBase):
         Approximation of number of blocks, 1/ss_prop. Default 0.1.
     min_data : int, optional
         Minimum number of rows per block. Default None.
+    equal_blocks : bool, optional
+        Cut the rows into blocks of equal size, labelled in a random order
+        (True), or give every row an independent, uniformly random block label
+        (False), which is cheaper per draw but gives blocks of binomial size.
+        Default True.
     """
 
-    def __init__(self, target, ss_prop=0.1, min_data=None):
+    def __init__(self, target, ss_prop=0.1, min_data=None, equal_blocks=True):
         super().__init__()
         self.target = target
         self.problem = target.problem
@@ -46,7 +51,7 @@ class FlatHINTSProposal(IncrementalTreeProposalBase):
         # Holds each sweep's split of the rows under the subtree root; a new
         # split is drawn into it at the start of every sweep with more than
         # one block.
-        self.blocks = RowBlocks(self.problem.n_rows)
+        self.blocks = RowBlocks(self.problem.n_rows, equal=equal_blocks)
         # Assert after every applied inner move that the sweep's working tree
         # is still admissible. Off in production (it is a walk of the subtree
         # per move); the tests turn it on, because an inadmissible intermediate
@@ -85,10 +90,11 @@ class FlatHINTSProposal(IncrementalTreeProposalBase):
         """
         if num_blocks > 1:
             # A fresh random split of the rows under the subtree root. Because
-            # it is new every sweep, the block labels are exchangeable, so the
-            # sweep that visits the blocks in reverse order is as likely as
-            # this one, and visiting them in label order is enough for the
-            # path correction.
+            # it is new every sweep, and equal-size blocks are labelled in a
+            # random order, the block labels are exchangeable, so the sweep
+            # that visits the blocks in reverse order is as likely as this
+            # one, and visiting them in label order is enough for the path
+            # correction.
             self.blocks.draw(np.concatenate(list(ctx.leaf_idx.values())),
                              num_blocks, rng)
 
