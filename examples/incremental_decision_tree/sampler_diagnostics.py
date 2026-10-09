@@ -80,6 +80,7 @@ from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
+import pandas as pd
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
@@ -96,7 +97,7 @@ from results_io import (PROPOSALS, experiment_filename, experiment_key,
 # defaults, shared with run_experiments.py
 # --------------------------------------------------------------------------- #
 
-DATASETS = ("wine", "digits", "covtype")
+DATASETS = ("wine", "digits", "covtype", "mnist", "hepmass", "susy", "frogs")
 
 # Proposal arguments an experiment may set, by the proposal that takes them.
 # They are deliberately absent from DEFAULT_CFG: an experiment that names one
@@ -134,17 +135,67 @@ DEFAULT_CFG = dict(
 # problem set-up
 # --------------------------------------------------------------------------- #
 
+def load_frogs():
+    df = pd.read_csv('Datasets/Frogs_MFCCs.csv')
+    # remove Family and Genus and Target columns, leaving Species as the target
+    df = df.drop(columns=['Family', 'Genus', 'Target'])
+    y = df.iloc[:, -1].values
+    X = df.iloc[:, :-1].values
+    return X, pd.Categorical(y).codes
+
+def load_susy():
+    df = pd.read_csv('Datasets/SUSY.csv')
+    # first column is the target, the rest are the features, there are no headers
+    y = df.iloc[:, 0].values
+    X = df.iloc[:, 1:].values
+    X = pd.DataFrame(X).apply(pd.to_numeric, errors='coerce').to_numpy()
+    return X, pd.Categorical(y).codes
+
+def load_hepmass():
+    df1 = pd.read_csv('Datasets/hepmass_train.csv')
+    df2 = pd.read_csv('Datasets/hepmass_test.csv')
+    df1.columns = range(df1.shape[1])
+    df2.columns = range(df2.shape[1])
+    df = pd.concat([df1, df2], ignore_index=True)
+    # first column is the label, the rest are the features except the last column
+    y = df.iloc[:, 0].values
+    # the last column is mass, which we will drop
+    X = df.iloc[:, 1:-1].values
+    X = pd.DataFrame(X).apply(pd.to_numeric, errors='coerce')
+    return X.to_numpy(), pd.Categorical(y).codes
+
+def load_mnist():
+    df1 = pd.read_csv('Datasets/mnist_train.csv')
+    df2 = pd.read_csv('Datasets/mnist_test.csv')
+    # reset column headings of df2 and df1 to be counting from 0
+    df1.columns = range(df1.shape[1])
+    df2.columns = range(df2.shape[1])
+    df = pd.concat([df1, df2], ignore_index=True)
+    # first column is the label, the rest are the pixels
+    y = df.iloc[:, 0].values
+    X = df.iloc[:, 1:].values
+    X = pd.DataFrame(X).apply(pd.to_numeric, errors='coerce')
+    X = X.loc[:, (X != 0).any(axis=0)]
+    # drop all columns with <10 non zero values
+    X = X.loc[:, (X != 0).sum(axis=0) >= 10]
+    return X.to_numpy(), pd.Categorical(y).codes
+
+
 def load_data(name):
     if name not in DATASETS:
         raise ValueError(f"unknown dataset {name!r}: expected one of {DATASETS}")
     if name == "covtype":
-        import pandas as pd
         X, y = datasets.fetch_covtype(return_X_y=True)
         y = pd.Categorical(y).codes
     elif name == "wine":
         X, y = datasets.load_wine(return_X_y=True)
-    else:
+    elif name == "digits":
         X, y = datasets.load_digits(return_X_y=True)
+    else:
+        loader = dict(frogs=load_frogs, susy=load_susy,
+                      hepmass=load_hepmass, mnist=load_mnist)[name]
+        X, y = loader()
+
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, train_size=0.8, stratify=y, random_state=0)
     # The problem rejects a feature it cannot draw a threshold inside, and
@@ -462,6 +513,10 @@ def _hms(seconds):
     return f"{seconds // 3600}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
 
 
+# How many times run_sweep runs a config before giving up on the experiment.
+MAX_ATTEMPTS = 2
+
+
 def run_sweep(cfg, results_dir, jobs=None):
     """
     Run one experiment's samplers x proposals x chains cross product and write
@@ -499,16 +554,50 @@ def run_sweep(cfg, results_dir, jobs=None):
               f"{results[index]['cumulative_time'][-1]:7.1f}s sampling   "
               f"elapsed {_hms(elapsed)}  eta {_hms(eta)}", flush=True)
 
+    # A config that raises is run once more before the sweep gives up on it.
+    # A seed fixes the whole run, so a retry that succeeds is the run the
+    # first attempt would have been; what it guards against is a fault in the
+    # worker rather than in the sampler, which would otherwise throw away
+    # every other config of a long experiment along with it.
+    attempts = [0] * total
+
+    def failed(index, err):
+        attempts[index] += 1
+        c = configs[index]
+        tag = f"{c['sampler']}-{c['proposal']} seed {c['seed']}"
+        if attempts[index] >= MAX_ATTEMPTS:
+            raise RuntimeError(f"{tag} failed {attempts[index]} times; "
+                               f"the last failure is above") from err
+        print(f"!!! {tag} failed ({type(err).__name__}: {err}); "
+              f"retrying", flush=True)
+
     if jobs > 1 and total > 1:
-        with ProcessPoolExecutor(max_workers=jobs) as pool:
-            futures = {pool.submit(run, c): i for i, c in enumerate(configs)}
-            for done, future in enumerate(as_completed(futures), start=1):
-                index = futures[future]
-                results[index] = future.result()
-                note(done, index)
+        # Retries go to a fresh pool once the current one has drained, because
+        # a worker that died outright breaks its pool for every config still
+        # in it, and those all have to be run again too.
+        pending, done = list(range(total)), 0
+        while pending:
+            retry = []
+            with ProcessPoolExecutor(max_workers=jobs) as pool:
+                futures = {pool.submit(run, configs[i]): i for i in pending}
+                for future in as_completed(futures):
+                    index = futures[future]
+                    try:
+                        results[index] = future.result()
+                    except Exception as err:
+                        failed(index, err)
+                        retry.append(index)
+                        continue
+                    done += 1
+                    note(done, index)
+            pending = retry
     else:
         for index, c in enumerate(configs):
-            results[index] = run(c)
+            while results[index] is None:
+                try:
+                    results[index] = run(c)
+                except Exception as err:
+                    failed(index, err)
             note(index + 1, index)
 
     grouped = defaultdict(list)

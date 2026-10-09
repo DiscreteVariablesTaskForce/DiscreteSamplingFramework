@@ -193,11 +193,18 @@ def save_run_hdf5(path, run_idx, result):
 
 def save_experiment_hdf5(path, runs):
     """Write every run of one (dataset, sampler, proposal) experiment to
-    `path`, replacing it if it already exists."""
-    if os.path.exists(path):
-        os.remove(path)
+    `path`, replacing it if it already exists.
+
+    The runs are written to a temporary file that is renamed onto `path` only
+    once all of them are in, so `path` is never a partial write: a sweep
+    resumed with run_experiments.py --skip-existing takes any file that exists
+    as finished."""
+    partial = path + ".partial"
+    if os.path.exists(partial):
+        os.remove(partial)
     for i, result in enumerate(runs):
-        save_run_hdf5(path, i, result)
+        save_run_hdf5(partial, i, result)
+    os.replace(partial, path)
 
 
 def load_experiment_hdf5(path):

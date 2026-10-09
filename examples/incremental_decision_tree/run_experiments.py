@@ -8,6 +8,11 @@ then:
     python examples/incremental_decision_tree/run_experiments.py
     python examples/incremental_decision_tree/run_experiments.py --index 2
     python examples/incremental_decision_tree/run_experiments.py --run-id my_sweep
+    python examples/incremental_decision_tree/run_experiments.py --run-id my_sweep --skip-existing
+
+--skip-existing resumes a sweep that stopped partway: every experiment whose
+files are already in Results/<run-id>/ is skipped. Within an experiment, a
+chain that raises is run once more before the experiment is given up on.
 
 Every experiment in the list writes into the same Results/<run-id>/ directory
 -- one run-id for the whole sweep, not one per experiment -- so
@@ -89,7 +94,15 @@ def main():
     p.add_argument("--run-id", default=None,
                    help="results directory shared by every experiment in this "
                         "sweep, under --results-root (default: a timestamp)")
+    p.add_argument("--skip-existing", action="store_true",
+                   help="resume the sweep in --run-id: skip every experiment "
+                        "whose .h5 files are all already there (one with only "
+                        "some of them is run again in full)")
     args = p.parse_args()
+    if args.skip_existing and not args.run_id:
+        raise SystemExit("--skip-existing needs --run-id: without one the sweep "
+                         "writes to a new, empty directory and there is nothing "
+                         "to skip")
 
     experiments = load_experiments(args.file)
     if not experiments:
@@ -130,7 +143,12 @@ def main():
     })
 
     for i, entry in enumerate(experiments):
-        files = ", ".join(experiment_files(entry))
+        filenames = experiment_files(entry)
+        files = ", ".join(filenames)
+        if args.skip_existing and all(os.path.exists(os.path.join(results_dir, f))
+                                      for f in filenames):
+            print(f"\n# experiment {i + 1}/{len(experiments)}: {files} already written, skipped")
+            continue
         print(f"\n{'#' * 78}\n# experiment {i + 1}/{len(experiments)}: {files}\n{'#' * 78}")
         run_sweep(entry, results_dir)
 
