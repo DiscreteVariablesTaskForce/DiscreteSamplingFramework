@@ -55,7 +55,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from discretesampling.domain import incremental_decision_tree as idt  # noqa: E402
 from results_io import (experiment_names, find_experiment_files,  # noqa: E402
                         latest_run_id, load_experiment_hdf5, metrics_filename,
-                        parse_experiment_name, read_run_config, states_of)
+                        parse_experiment, read_run_config, states_of)
 from sampler_diagnostics import DEFAULT_CFG, load_data  # noqa: E402
 
 SPLITS = ("train", "test")
@@ -304,12 +304,12 @@ def plan(results_dir, names, wanted_splits, stride, overwrite):
     jobs = {}
     for name in names:
         try:
-            dataset, ss_prop = parse_experiment_name(name)
+            dataset, ss_prop, init = parse_experiment(name)
         except ValueError as err:
             raise SystemExit(str(err)) from None
         for (sampler, proposal), path in find_experiment_files(results_dir, name).items():
             out_path = os.path.join(results_dir, metrics_filename(
-                dataset, sampler, proposal, ss_prop))
+                dataset, sampler, proposal, ss_prop, init))
             if out_path in jobs:
                 continue
             if os.path.exists(out_path) and not overwrite:

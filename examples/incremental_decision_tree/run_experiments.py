@@ -19,7 +19,7 @@ Every experiment in the list writes into the same Results/<run-id>/ directory
 `evaluate_results.py --run-id <that>` evaluates all of them in one go and
 `plot_diagnostics.py --run-id <that> --name <one of them>` reads any of them
 back afterwards. Each (sampler, proposal) of an entry is written to
-<dataset>_<sampler>_<proposal>_<ss_prop * 100>.h5, and two experiments that
+<dataset>_<sampler>_<proposal>_<ss_prop * 100>[_init<N>|_init-<name>].h5, and two experiments that
 would write the same file are refused before anything runs, rather than one
 silently overwriting the other partway through a long sweep.
 
@@ -39,7 +39,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from results_io import (experiment_filename, experiment_names,  # noqa: E402
+from results_io import (experiment_filename, experiment_names, init_of,  # noqa: E402
                         resolve_run_id, write_run_config)
 from sampler_diagnostics import DEFAULT_CFG, run_sweep, validate_cfg  # noqa: E402
 
@@ -61,7 +61,7 @@ def load_experiments(path):
 def experiment_files(entry):
     """The .h5 files one entry writes, one per (sampler, proposal)."""
     cfg = validate_cfg(dict(DEFAULT_CFG, **entry))
-    return [experiment_filename(cfg["dataset"], s, p, cfg["ss_prop"])
+    return [experiment_filename(cfg["dataset"], s, p, cfg["ss_prop"], init_of(cfg))
             for s in cfg["samplers"] for p in cfg["proposals"]]
 
 
@@ -77,7 +77,8 @@ def check_for_collisions(experiments):
                 raise SystemExit(
                     f"experiments {seen[filename]} and {i} would both write "
                     f"{filename!r} -- they differ in nothing the filename "
-                    f"carries (dataset, sampler, proposal, ss_prop)")
+                    f"carries (dataset, sampler, proposal, ss_prop, "
+                    f"starting tree)")
             seen[filename] = i
 
 

@@ -90,6 +90,170 @@ def test_stumps_share_their_index_array(problem):
     assert a.leaf_idx[0] is b.leaf_idx[0]
 
 
+def test_the_random_starting_tree_is_its_size_and_in_support(problem, target):
+    for seed in range(30):
+        x = idt.IncrementalTreeInitialProposal(problem, n_nodes=5, seed=seed).sample()
+        assert len(x.tree) == 5
+        assert min(len(rows) for rows in x.leaf_idx.values()) >= problem.min_samples_leaf
+        assert target.eval(x) > idt.BARRED
+        # Leaf membership is the one routing the data from the root gives.
+        rebuilt = idt.IncrementalTree.from_rows(problem, x.tree)
+        assert {k: sorted(v) for k, v in x.leaf_idx.items()} == \
+               {k: sorted(v) for k, v in rebuilt.leaf_idx.items()}
+
+
+def test_every_chain_and_particle_starts_from_the_same_tree(problem):
+    """Whatever rng the sampler hands over, and in whichever process the
+    proposal was built, the start is the one tree."""
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=4)
+    first = init.sample(RNG(0))
+    for seed in range(1, 6):
+        assert init.sample(RNG(seed)) == first
+    again = idt.IncrementalTreeInitialProposal(problem, n_nodes=4)
+    assert again.sample(RNG(9)).tree == first.tree
+    # Equal, but never the same object: a move on one must not reach another.
+    other = init.sample(RNG(0))
+    assert other is not first and other.tree is not first.tree
+    assert idt.IncrementalTreeInitialProposal(problem, n_nodes=4, seed=1).sample() != first
+
+
+def test_the_starting_tree_is_the_whole_support_of_the_initial_proposal(problem):
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=4)
+    assert init.eval(init.sample()) == 0.0
+    assert init.eval(idt.IncrementalTree.stump(problem)) == -np.inf
+    elsewhere = idt.IncrementalTreeInitialProposal(problem, n_nodes=4, seed=1).sample()
+    assert init.eval(elsewhere) == -np.inf
+
+
+def test_the_random_starting_tree_on_tied_values():
+    """Integer features: many rows share each value, so a split point is a gap
+    between distinct values, not between rows."""
+    rs = np.random.default_rng(1)
+    X = rs.integers(0, 6, size=(300, 3)).astype(float)
+    y = (X[:, 0] + rs.normal(size=300) > 2.5).astype(np.int64)
+    tied = idt.IncrementalTreeProblem(X, y, min_samples_leaf=10, max_tree_size=8)
+    tied_target = idt.IncrementalTreeTarget(tied)
+    for seed in range(20):
+        x = idt.IncrementalTreeInitialProposal(tied, n_nodes=4, seed=seed).sample()
+        assert len(x.tree) == 4
+        assert tied_target.eval(x) > idt.BARRED
+
+
+def test_random_starting_tree_shapes_are_uniform(problem):
+    """With 2 internal nodes there are C_2 = 2 shapes: the second split hangs
+    off the root's left child or its right one, each half the time."""
+    n = 2000
+    lefts = 0
+    for seed in range(n):
+        x = idt.IncrementalTreeInitialProposal(problem, n_nodes=2, seed=seed).sample()
+        lefts += int(x.nodes[0][1]) in x.nodes
+    assert abs(lefts / n - 0.5) < 0.04
+
+
+def test_zero_initial_nodes_is_the_stump(problem):
+    init = idt.IncrementalTreeInitialProposal(problem)
+    x = init.sample(RNG(0))
+    assert len(x.tree) == 0 and init.eval(x) == 0.0
+    assert x.leaf_idx[0] is idt.IncrementalTree.stump(problem).leaf_idx[0]
+
+
+@pytest.mark.parametrize("n_nodes", [
+    9,      # above max_tree_size=8
+    -1,
+])
+def test_starting_trees_that_cannot_exist_are_refused(problem, n_nodes):
+    with pytest.raises(ValueError):
+        idt.IncrementalTreeInitialProposal(problem, n_nodes=n_nodes)
+
+
+def test_a_starting_tree_with_more_leaves_than_the_rows_allow_is_refused():
+    small = make_problem(n=40, max_tree_size=20)      # min_samples_leaf=10
+    with pytest.raises(ValueError):
+        idt.IncrementalTreeInitialProposal(small, n_nodes=4)   # 5 leaves x 10
+
+
+def test_smc_and_mcmc_start_from_the_random_tree(problem, target):
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=3)
+    proposal = idt.IncrementalTreeProposal()
+    smc = DiscreteVariableSMC(idt.IncrementalTree, target, init,
+                              proposal=proposal, Lkernel=proposal.lkernel())
+    seen = []
+    smc.sample(3, 8, seed=2, verbose=False,
+               callback=lambda t, particles, *_: seen.append(
+                   [len(p.tree) for p in particles]))
+    # One move from a 3-node tree is a 2-, 3- or 4-node one.
+    assert set(seen[0]) <= {2, 3, 4}
+    assert np.isfinite(smc.logWeights).all()
+    chain = DiscreteVariableMCMC(idt.IncrementalTree, target, init,
+                                 proposal=idt.IncrementalTreeProposal()
+                                 ).sample(1, seed=0, verbose=False, keep_samples=True)
+    assert len(chain[0].tree) in (2, 3, 4)
+
+
+# Splits on feature 0 at its median, then the right half on feature 1: three
+# leaves, each with far more than min_samples_leaf=10 of the 300 rows.
+GIVEN_TREE = [[0, 1, 2, 0, 0.0], [2, 5, 6, 1, 0.0]]
+
+
+def test_a_given_tree_is_where_every_chain_and_particle_starts(problem, target):
+    init = idt.IncrementalTreeInitialProposal(problem, tree=GIVEN_TREE)
+    x = init.sample(RNG(0))
+    assert [row[:5] for row in x.tree] == GIVEN_TREE
+    assert [row[5] for row in x.tree] == [0, 1]          # depths, filled in
+    assert sorted(x.leaf_idx) == [1, 5, 6]
+    assert sum(len(rows) for rows in x.leaf_idx.values()) == problem.n_rows
+    assert np.array_equal(np.sort(x.leaf_idx[1]),
+                          np.flatnonzero(problem.X[:, 0] < 0.0))
+    assert target.eval(x) > idt.BARRED
+    for seed in range(1, 4):
+        other = init.sample(RNG(seed))
+        assert other == x and other is not x
+    assert init.eval(x) == 0.0
+    assert init.eval(idt.IncrementalTree.stump(problem)) == -np.inf
+
+
+def test_a_given_tree_reads_the_same_however_its_rows_are_written(problem):
+    x = idt.IncrementalTreeInitialProposal(problem, tree=GIVEN_TREE).sample()
+    reordered = idt.IncrementalTreeInitialProposal(
+        problem, tree=[tuple(r) for r in GIVEN_TREE[::-1]]).sample()
+    assert reordered == x
+    # A tree's own rows, depth column and all, hand the same tree back.
+    grown = idt.IncrementalTreeInitialProposal(problem, n_nodes=5).sample()
+    again = idt.IncrementalTreeInitialProposal(problem, tree=grown.tree).sample()
+    assert again == grown
+    assert sorted(again.tree) == sorted(grown.tree)
+    as_arrays = idt.IncrementalTreeInitialProposal(
+        problem, tree=np.asarray(grown.tree)).sample()
+    assert as_arrays == grown
+
+
+@pytest.mark.parametrize("bad", [
+    [],
+    [[0, 1, 2, 0]],                                  # no threshold
+    [[1, 2, 3, 0, 0.0]],                             # no root
+    [[0, 1, 1, 0, 0.0]],                             # one child, twice
+    [[0, 1, 2, 0, 0.0], [0, 3, 4, 1, 0.0]],          # node 0, twice
+    [[0, 1, 2, 0, 0.0], [1, 0, 3, 1, 0.0]],          # a cycle
+    [[0, 1, 2, 0, 0.0], [7, 8, 9, 1, 0.0]],          # node 7 hangs off nothing
+    [[0, 1, 2, 0, float("nan")]],
+    [[0, 1, 2, 4, 0.0]],                             # the data has features 0-3
+    [[0, 1, 2, -1, 0.0]],
+    [[0, 1, 2, 0, 50.0]],                            # every row goes left
+])
+def test_given_trees_that_are_not_trees_in_support_are_refused(problem, bad):
+    with pytest.raises(ValueError):
+        idt.IncrementalTreeInitialProposal(problem, tree=bad).sample()
+
+
+def test_a_given_tree_must_fit_the_cap_and_agree_with_n_nodes(problem):
+    grown = idt.IncrementalTreeInitialProposal(problem, n_nodes=5).sample()
+    capped = make_problem(max_tree_size=4)
+    with pytest.raises(ValueError):
+        idt.IncrementalTreeInitialProposal(capped, tree=grown.tree)
+    with pytest.raises(ValueError):
+        idt.IncrementalTreeInitialProposal(problem, n_nodes=3, tree=GIVEN_TREE)
+
+
 def test_incremental_moves_match_a_rebuild_from_rows(problem):
     """Leaf membership after incremental moves == routing the data from scratch."""
     final, moves = walk(idt.IncrementalTreeProposal(), problem, seed=9, steps=400)

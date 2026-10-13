@@ -14,7 +14,7 @@ Results land in Results/<run-id>/ (--run-id defaults to a timestamp, so two
 sweeps never collide; name it explicitly to find a sweep again later, e.g.
 `python examples/incremental_decision_tree/plot_diagnostics.py --run-id wine_baseline`). Inside that
 directory sits a config.json recording what was asked for, and one
-<dataset>_<sampler>_<proposal>_<ss_prop * 100>.h5 per configuration -- see
+<dataset>_<sampler>_<proposal>_<ss_prop * 100>[_init<N>|_init-<name>].h5 per configuration -- see
 results_io.py for the layout.
 
 Sampling and evaluation are separate steps
@@ -74,6 +74,7 @@ Costs and how they are kept down:
 MCMC chains are independent and run in parallel across processes.
 """
 import argparse
+import json
 import os
 import time
 from collections import defaultdict
@@ -88,9 +89,9 @@ from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVaria
 from discretesampling.domain import incremental_decision_tree as idt
 from discretesampling.domain.incremental_decision_tree import diagnostics as dg
 from discretesampling.domain.incremental_decision_tree.states import StateRecorder
-from results_io import (PROPOSALS, experiment_filename, experiment_key,
-                        experiment_name, resolve_run_id, save_experiment_hdf5,
-                        write_run_config)
+from results_io import (INIT_NAME, PROPOSALS, experiment_filename,
+                        experiment_key, experiment_name, init_of,
+                        resolve_run_id, save_experiment_hdf5, write_run_config)
 
 
 # --------------------------------------------------------------------------- #
@@ -127,6 +128,18 @@ DEFAULT_CFG = dict(
     lam=15.0,
     min_samples_leaf=3,
     max_tree_size=None,
+    # Internal nodes in the starting tree: 0 starts from a stump, N > 0 from
+    # one random tree of that size, the same for every chain, every particle,
+    # both samplers and every proposal (see IncrementalTreeInitialProposal).
+    init_tree_size=0,
+    # Or the starting tree itself, in place of a random one: a list of
+    # [node, left, right, feat, thr] rows, one per internal node, the root
+    # being node 0 (see idt.tree_rows; any tree's own .tree is such a list).
+    # feat numbers the columns load_data hands back, i.e. after it has dropped
+    # the constant ones. init_tree_name is what the result files are tagged
+    # with (letters, digits, '-'); left out, a digest of the rows is used.
+    init_tree=None,
+    init_tree_name=None,
     jobs=min(8, (os.cpu_count() or 2) - 1),
 )
 
@@ -321,13 +334,20 @@ def counters_of(proposal, target, prefix=""):
 # the two samplers
 # --------------------------------------------------------------------------- #
 
+def initial_proposal(cfg, problem):
+    """Where every chain and particle of a configuration starts: the tree it
+    was given, else a random one of init_tree_size nodes, else a stump."""
+    return idt.IncrementalTreeInitialProposal(
+        problem, cfg['init_tree_size'], tree=cfg['init_tree'])
+
+
 def run_mcmc(cfg):
     # Only the training split reaches the sampler now: the test split is what
     # the metrics are read on, and those happen in evaluate_results.py.
     X_train, _, y_train, _ = load_data(cfg['dataset'])
     problem, target, proposal = build(cfg, X_train, y_train)
     mcmc = DiscreteVariableMCMC(idt.IncrementalTree, target,
-                                idt.IncrementalTreeInitialProposal(problem),
+                                initial_proposal(cfg, problem),
                                 proposal=proposal)
 
     rec = Recorder(problem, cfg['store_every'], cfg['record_states'])
@@ -354,7 +374,7 @@ def run_smc(cfg):
     X_train, _, y_train, _ = load_data(cfg['dataset'])
     problem, target, proposal = build(cfg, X_train, y_train)
     smc = DiscreteVariableSMC(idt.IncrementalTree, target,
-                              idt.IncrementalTreeInitialProposal(problem),
+                              initial_proposal(cfg, problem),
                               proposal=proposal, Lkernel=proposal.lkernel())
 
     rec = Recorder(problem, cfg['store_every'], cfg['record_states'])
@@ -504,6 +524,35 @@ def validate_cfg(cfg):
                         if set(unused) & set(knobs))
         raise ValueError(f"{unused} only apply to {owners}, which this experiment "
                          f"does not run (proposals={cfg['proposals']})")
+    size = cfg["init_tree_size"]
+    if not isinstance(size, int) or size < 0:
+        raise ValueError(f"init_tree_size={size!r}: must be an int >= 0")
+    if cfg["max_tree_size"] is not None and size > cfg["max_tree_size"]:
+        raise ValueError(f"init_tree_size={size} is above "
+                         f"max_tree_size={cfg['max_tree_size']}")
+    rows, name = cfg["init_tree"], cfg["init_tree_name"]
+    if rows is None:
+        if name is not None:
+            raise ValueError(f"init_tree_name={name!r} names an init_tree, "
+                             f"and this experiment has none")
+    else:
+        if size:
+            raise ValueError(f"init_tree and init_tree_size={size} both say where "
+                             f"to start: set one of the two")
+        # Its shape only: whether its features exist and its leaves hold
+        # min_samples_leaf rows takes the data, and is checked when a chain
+        # builds it.
+        try:
+            n_nodes = len(idt.tree_rows(rows))
+        except ValueError as err:
+            raise ValueError(f"init_tree: {err}") from None
+        if cfg["max_tree_size"] is not None and n_nodes > cfg["max_tree_size"]:
+            raise ValueError(f"init_tree has {n_nodes} internal nodes, above "
+                             f"max_tree_size={cfg['max_tree_size']}")
+        if name is not None and not (isinstance(name, str)
+                                     and INIT_NAME.fullmatch(name)):
+            raise ValueError(f"init_tree_name={name!r}: letters, digits and '-' "
+                             f"only, as it goes into the result file names")
     return cfg
 
 
@@ -520,10 +569,10 @@ MAX_ATTEMPTS = 2
 def run_sweep(cfg, results_dir, jobs=None):
     """
     Run one experiment's samplers x proposals x chains cross product and write
-    <dataset>_<sampler>_<proposal>_<ss_prop * 100>.h5 into results_dir for
-    each (sampler, proposal) pair. This is main()'s body, factored out so a
-    driver script can run a list of experiments into one results directory --
-    see run_experiments.py and experiments.py.
+    <dataset>_<sampler>_<proposal>_<ss_prop * 100>[_init<N>|_init-<name>].h5 into
+    results_dir for each (sampler, proposal) pair. This is main()'s body,
+    factored out so a driver script can run a list of experiments into one
+    results directory -- see run_experiments.py and experiments.py.
 
     `cfg` is overlaid on DEFAULT_CFG, so any key it does not set keeps its
     default. Two configs that differ only in something the filename does not
@@ -608,7 +657,7 @@ def run_sweep(cfg, results_dir, jobs=None):
     for (sampler, proposal), pairs in grouped.items():
         cfgs, runs = zip(*pairs)
         path = os.path.join(results_dir, experiment_filename(
-            cfg['dataset'], sampler, proposal, cfg['ss_prop']))
+            cfg['dataset'], sampler, proposal, cfg['ss_prop'], init_of(cfg)))
         # One .h5 per configuration, one group per run, so runs of unequal
         # length (different numbers of accepted moves) stay separable.
         save_experiment_hdf5(path, list(runs))
@@ -644,12 +693,25 @@ def main():
     p.add_argument("--lam", type=float, default=DEFAULT_CFG['lam'])
     p.add_argument("--min-samples-leaf", type=int, default=DEFAULT_CFG['min_samples_leaf'])
     p.add_argument("--max-tree-size", type=int, default=DEFAULT_CFG['max_tree_size'])
+    p.add_argument("--init-tree-size", type=int, default=DEFAULT_CFG['init_tree_size'],
+                   help="internal nodes in the starting tree every chain and "
+                        "particle shares (0: a stump)")
+    p.add_argument("--init-tree", default=None, metavar="FILE",
+                   help="start from the tree in this JSON file instead: a list "
+                        "of [node, left, right, feat, thr] rows, root node 0")
+    p.add_argument("--init-tree-name", default=None,
+                   help="tag for --init-tree's result files (default: a digest "
+                        "of its rows)")
     p.add_argument("--jobs", type=int, default=DEFAULT_CFG['jobs'])
     p.add_argument("--results-root", default="Results")
     p.add_argument("--run-id", default=None,
                    help="results directory name under --results-root "
                         "(default: a timestamp)")
     args = p.parse_args()
+    init_tree = None
+    if args.init_tree is not None:
+        with open(args.init_tree) as f:
+            init_tree = json.load(f)
 
     cfg = dict(DEFAULT_CFG,
                dataset=args.dataset, samplers=args.samplers, proposals=args.proposals,
@@ -659,7 +721,8 @@ def main():
                record_moves=not args.no_moves, ss_prop=args.ss_prop,
                min_data=args.min_data, lam=args.lam,
                min_samples_leaf=args.min_samples_leaf, max_tree_size=args.max_tree_size,
-               jobs=args.jobs)
+               init_tree_size=args.init_tree_size, init_tree=init_tree,
+               init_tree_name=args.init_tree_name, jobs=args.jobs)
 
     run_id = resolve_run_id(args.run_id)
     results_dir = os.path.join(args.results_root, run_id)

@@ -9,6 +9,8 @@ One results directory per sweep, named explicitly or by timestamp:
         wine_mcmc_DA_10.h5           ss_prop * 100), '.' written as 'p'
         wine_mcmc_HINTS_12p5.h5
         wine_mcmc_HINTS_12p5_metrics.npz   evaluate_results.py's, beside it
+        wine_mcmc_HINTS_12p5_init10.h5     started from a 10-node random tree
+        wine_mcmc_HINTS_12p5_init-mine.h5  started from a given tree, named 'mine'
         wine_smc_MH_100.h5
         ...
 
@@ -34,8 +36,10 @@ in memory during a batch, that machinery is what to reach for.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 from datetime import datetime
 
 import h5py
@@ -70,66 +74,115 @@ def ss_tag(ss_prop):
     return f"{round(100 * ss_prop, 6):g}".replace(".", "p")
 
 
-def experiment_stem(dataset, sampler, proposal, ss_prop):
-    """{dataset}_{sampler}_{proposal}_{ss_prop * 100}, the name both an
-    experiment's .h5 and its metrics .npz are built on."""
+# What a run started from, as names carry it: the starting tree's size (an
+# int; 0 is a stump) for a random tree, or a label (a str) for a given one.
+# A label has no '_' in it, which is what the names are split on.
+INIT_NAME = re.compile(r"[A-Za-z0-9-]+")
+
+
+def init_of(cfg):
+    """
+    What a config's runs start from: init_tree_size, or for a given init_tree
+    its init_tree_name -- by default a digest of its rows, so that two
+    different trees never share a name and the same tree always has the same
+    one, whichever order its rows were written in.
+    """
+    rows = cfg.get("init_tree")
+    if rows is None:
+        return cfg.get("init_tree_size", 0)
+    if cfg.get("init_tree_name"):
+        return cfg["init_tree_name"]
+    canonical = sorted([int(r[0]), int(r[1]), int(r[2]), int(r[3]), float(r[4])]
+                       for r in rows)
+    return "t" + hashlib.sha1(json.dumps(canonical).encode()).hexdigest()[:8]
+
+
+def init_tag(init):
+    """The starting tree as a name suffix: '' for a stump, so names from
+    before there was a choice still mean what they meant, '_init10' for a
+    random 10-node tree, '_init-mine' for a given tree named 'mine'."""
+    if isinstance(init, str):
+        return f"_init-{init}"
+    return f"_init{int(init)}" if init else ""
+
+
+def experiment_stem(dataset, sampler, proposal, ss_prop, init=0):
+    """{dataset}_{sampler}_{proposal}_{ss_prop * 100}[_init{N}|_init-{name}],
+    the name both an experiment's .h5 and its metrics .npz are built on."""
     if proposal in FULL_DATA_PROPOSALS:
         ss_prop = 1.0
-    return f"{dataset}_{sampler}_{proposal}_{ss_tag(ss_prop)}"
+    return f"{dataset}_{sampler}_{proposal}_{ss_tag(ss_prop)}{init_tag(init)}"
 
 
-def experiment_filename(dataset, sampler, proposal, ss_prop):
-    return f"{experiment_stem(dataset, sampler, proposal, ss_prop)}.h5"
+def experiment_filename(dataset, sampler, proposal, ss_prop, init=0):
+    return f"{experiment_stem(dataset, sampler, proposal, ss_prop, init)}.h5"
 
 
-def metrics_filename(dataset, sampler, proposal, ss_prop):
-    return f"{experiment_stem(dataset, sampler, proposal, ss_prop)}_metrics.npz"
+def metrics_filename(dataset, sampler, proposal, ss_prop, init=0):
+    return f"{experiment_stem(dataset, sampler, proposal, ss_prop, init)}_metrics.npz"
 
 
 # An experiment, as evaluate_results.py and plot_diagnostics.py know it, is
-# every (sampler, proposal) run on one dataset at one subsample level, named
-# {dataset}_{ss_prop * 100}. The full-data proposals belong to every level --
-# they are the reference each level is compared against -- so an experiment
-# holding only those is at 100.
+# every (sampler, proposal) run on one dataset at one subsample level from one
+# starting tree, named {dataset}_{ss_prop * 100}[_init{N}|_init-{name}]. The
+# full-data proposals belong to every level -- they are the reference each
+# level is compared against -- so an experiment holding only those is at 100.
 
 def experiment_key(cfg):
-    """(dataset, ss_prop) of a config already overlaid on DEFAULT_CFG."""
+    """(dataset, ss_prop, init) of a config already overlaid on DEFAULT_CFG;
+    see init_of for the last."""
     proposals = cfg["proposals"]
     proposals = [proposals] if isinstance(proposals, str) else proposals
     if all(p in FULL_DATA_PROPOSALS for p in proposals):
-        return cfg["dataset"], 1.0
-    return cfg["dataset"], cfg["ss_prop"]
+        return cfg["dataset"], 1.0, init_of(cfg)
+    return cfg["dataset"], cfg["ss_prop"], init_of(cfg)
 
 
-def experiment_name(dataset, ss_prop):
-    return f"{dataset}_{ss_tag(ss_prop)}"
+def experiment_name(dataset, ss_prop, init=0):
+    return f"{dataset}_{ss_tag(ss_prop)}{init_tag(init)}"
+
+
+def parse_experiment(name):
+    """experiment_name's inverse, (dataset, ss_prop, init); ValueError if
+    `name` is not one experiment_name could have produced."""
+    rest, _, tag = name.rpartition("_")
+    init = 0
+    try:
+        if tag.startswith("init"):
+            init = tag[len("init"):]
+            if init.startswith("-") and INIT_NAME.fullmatch(init[1:]):
+                init = init[1:]
+            else:
+                init = int(init)
+            rest, _, tag = rest.rpartition("_")
+        if not rest:
+            raise ValueError
+        return rest, float(tag.replace("p", ".")) / 100, init
+    except ValueError:
+        raise ValueError(f"{name!r} is not a <dataset>_<ss_prop * 100>"
+                         f"[_init<N>|_init-<name>] experiment name, e.g. "
+                         f"covtype_12p5, covtype_12p5_init10 or "
+                         f"covtype_12p5_init-mine") from None
 
 
 def parse_experiment_name(name):
-    """experiment_name's inverse, (dataset, ss_prop); ValueError if `name`
-    is not one experiment_name could have produced."""
-    dataset, _, tag = name.rpartition("_")
-    try:
-        if not dataset:
-            raise ValueError
-        return dataset, float(tag.replace("p", ".")) / 100
-    except ValueError:
-        raise ValueError(f"{name!r} is not a <dataset>_<ss_prop * 100> "
-                         f"experiment name, e.g. covtype_12p5") from None
+    """(dataset, ss_prop) of an experiment name, its starting tree dropped;
+    parse_experiment keeps it."""
+    return parse_experiment(name)[:2]
 
 
 def find_experiment_files(results_dir, name):
     """{(sampler, proposal): path} for the experiment called `name`, the
     full-data proposals' files included. {} if `name` is malformed."""
     try:
-        dataset, ss_prop = parse_experiment_name(name)
+        dataset, ss_prop, init = parse_experiment(name)
     except ValueError:
         return {}
     out = {}
     for sampler in SAMPLERS:
         for proposal in PROPOSALS:
             path = os.path.join(results_dir, experiment_filename(
-                dataset, sampler, proposal, ss_prop))
+                dataset, sampler, proposal, ss_prop, init))
             if os.path.exists(path):
                 out[(sampler, proposal)] = path
     return out
@@ -233,6 +286,30 @@ def states_of(run):
     round trip through disk.
     """
     return series_from_arrays(run)
+
+
+def stored_tree(path, run=0, record=0, particle=None):
+    """
+    One tree out of a results file, as the [node, left, right, feat, thr] rows
+    an experiment takes as its init_tree: the tree `particle` held at stored
+    record `record` of Run_<run>. Left unnamed, the particle is the one
+    carrying the most weight there (the only one, for MCMC).
+
+    Only that run's states are read, not the whole file.
+    """
+    with h5py.File(path, 'r') as f:
+        grp = f[f"{RUN_PREFIX}{run}"]
+        arrays = {key: grp.attrs[key] for key in grp.attrs}
+        arrays.update({key: grp[key][()] for key in grp.keys()
+                       if key.startswith("state_")})
+    series = series_from_arrays(arrays)
+    if series is None:
+        raise ValueError(f"{path}: Run_{run} was stored without states")
+    if particle is None:
+        weights = series.weights(record)
+        particle = 0 if weights is None else int(np.argmax(weights))
+    tree = series.state(series.slots(record)[particle]).tree
+    return [[int(r[0]), int(r[1]), int(r[2]), int(r[3]), float(r[4])] for r in tree]
 
 
 def write_run_config(results_dir, config):

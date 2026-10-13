@@ -64,7 +64,7 @@ from evaluate_results import BOOKKEEPING
 from results_io import (PROPOSALS, SAMPLERS, experiment_key, experiment_name,
                         experiment_names, find_experiment_files, latest_run_id,
                         load_experiment_hdf5, metrics_filename,
-                        parse_experiment_name, read_run_config)
+                        parse_experiment, read_run_config)
 from sampler_diagnostics import DEFAULT_CFG
 
 
@@ -93,14 +93,14 @@ def find_metrics(results_dir, name):
     run that has not been evaluated yet.
     """
     try:
-        dataset, ss_prop = parse_experiment_name(name)
+        dataset, ss_prop, init = parse_experiment(name)
     except ValueError:
         return {}
     out = {}
     for sampler in SAMPLERS:
         for proposal in PROPOSALS:
             path = os.path.join(results_dir, metrics_filename(
-                dataset, sampler, proposal, ss_prop))
+                dataset, sampler, proposal, ss_prop, init))
             if os.path.exists(path):
                 with np.load(path) as data:
                     out[(sampler, proposal)] = {k: data[k] for k in data.files}
