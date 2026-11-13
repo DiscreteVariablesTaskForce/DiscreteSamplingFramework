@@ -263,16 +263,39 @@ def save_experiment_hdf5(path, runs):
 def load_experiment_hdf5(path):
     """The runs written by save_experiment_hdf5, as a list of {column: array}
     dicts in Run_0, Run_1, ... order -- the same shape run() itself returns."""
-    out = []
+    return list(iter_experiment_hdf5(path))
+
+
+def iter_experiment_hdf5(path, prefix=""):
+    """
+    load_experiment_hdf5's runs one at a time, so only one is ever in memory
+    -- a long SMC file holds gigabytes of states over all its runs. `prefix`
+    is as for load_run_hdf5.
+    """
     with h5py.File(path, 'r') as f:
         names = sorted((k for k in f if k.startswith(RUN_PREFIX)),
                        key=lambda k: int(k[len(RUN_PREFIX):]))
         for name in names:
-            grp = f[name]
-            run = {key: grp.attrs[key] for key in grp.attrs}
-            run.update({key: grp[key][()] for key in grp.keys()})
-            out.append(run)
-    return out
+            yield _read_run(f[name], prefix)
+
+
+def _read_run(grp, prefix=""):
+    """One run group as a {column: value} dict: every attribute, and the
+    datasets whose names start with `prefix`."""
+    run = {key: grp.attrs[key] for key in grp.attrs}
+    run.update({key: grp[key][()] for key in grp.keys()
+                if key.startswith(prefix)})
+    return run
+
+
+def load_run_hdf5(path, run, prefix=""):
+    """
+    Run_<run> alone, as the entry load_experiment_hdf5 would give for it,
+    without reading the other runs. `prefix` narrows it further to the datasets
+    whose names start with it: "state_" is the stored trees and nothing else.
+    """
+    with h5py.File(path, 'r') as f:
+        return _read_run(f[f"{RUN_PREFIX}{run}"], prefix)
 
 
 def states_of(run):
@@ -297,12 +320,7 @@ def stored_tree(path, run=0, record=0, particle=None):
 
     Only that run's states are read, not the whole file.
     """
-    with h5py.File(path, 'r') as f:
-        grp = f[f"{RUN_PREFIX}{run}"]
-        arrays = {key: grp.attrs[key] for key in grp.attrs}
-        arrays.update({key: grp[key][()] for key in grp.keys()
-                       if key.startswith("state_")})
-    series = series_from_arrays(arrays)
+    series = series_from_arrays(load_run_hdf5(path, run, prefix="state_"))
     if series is None:
         raise ValueError(f"{path}: Run_{run} was stored without states")
     if particle is None:
