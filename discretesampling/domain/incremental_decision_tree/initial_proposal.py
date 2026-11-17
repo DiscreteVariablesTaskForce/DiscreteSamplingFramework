@@ -2,10 +2,12 @@ import math
 from collections import deque
 
 import numpy as np
+from scipy.stats import poisson
 
 from discretesampling.base.random import RNG
 from discretesampling.base.types import DiscreteVariableInitialProposal
 from discretesampling.domain.incremental_decision_tree.incremental_tree import IncrementalTree
+from discretesampling.domain.incremental_decision_tree.target import IncrementalTreeTarget
 
 
 def tree_rows(rows, n_features=None):
@@ -52,12 +54,44 @@ def tree_rows(rows, n_features=None):
 
 class IncrementalTreeInitialProposal(DiscreteVariableInitialProposal):
     """
-    Initial proposal for the incremental decision tree domain: a point mass on
-    one starting tree, so every chain and every particle starts from the same
-    place.
+    Initial proposal for the incremental decision tree domain.
 
-    With n_nodes=0 (the default) that tree is a stump, i.e. a tree with no
-    splits, a single leaf where all training data is routed.
+    By default (n_nodes=None, tree=None) every sample is a fresh tree, drawn
+    with the rng the sampler passes in, from the target's prior conditioned
+    split by split on the tree staying admissible, i.e. on every leaf holding
+    at least min_samples_leaf rows (m below):
+    - its size n is the prior's Poisson(lam), truncated to the sizes an
+      admissible tree can have: at most max_tree_size, and at most
+      n_rows // m - 1, so that n + 1 leaves of m rows fit in the data,
+    - its shape is the prior's, uniform over the Catalan(n) shapes,
+    - its splits are filled in from the root down, each node's left subtree
+      size drawn first. A node's split is the prior's -- a uniform feature,
+      then a threshold uniform over that feature's whole range -- conditioned
+      on leaving each side m rows for every leaf the shape hangs below it. So
+      a feature is drawn with probability proportional to the fraction of its
+      range where a threshold does that, and the threshold uniformly inside
+      that part of the range.
+    With m = 0 nothing is conditioned and this is exactly the prior.
+    Otherwise the draw differs from the prior only by, at each internal node
+    v, Z_v: the prior probability that v's split keeps the tree admissible,
+    given the rows reaching v and the shape below it. eval returns this draw's
+    own log-density, log p(T) - sum_v log Z_v, so the SMC starting weight
+    target - eval is the log-likelihood plus sum_v log Z_v: an exact
+    importance weight for the posterior. Drawing from the prior exactly and
+    rejecting inadmissible trees gives the likelihood alone, but keeps around
+    one draw in 300 to 2000 on the datasets used here, and none on covtype;
+    Subsampling_Trees.tex, "Initialising the particles", has the argument.
+    eval ignores the `target` it is handed: an importance weight needs the
+    density the tree was actually drawn from, which is this one even when the
+    target's prior differs.
+    A draw that reaches a node no split can satisfy -- possible only through
+    tied values -- is started again from scratch, size included.
+
+    The other starts are a point mass on one starting tree, so every chain and
+    every particle starts from the same place.
+
+    With n_nodes=0 that tree is a stump, i.e. a tree with no splits, a single
+    leaf where all training data is routed.
 
     With n_nodes=N > 0 it is one random tree with exactly N internal nodes,
     drawn once from RNG(seed) and never from the rng a sampler passes in. It
@@ -82,14 +116,24 @@ class IncrementalTreeInitialProposal(DiscreteVariableInitialProposal):
     any of its leaves holds fewer than min_samples_leaf rows.
     """
 
-    def __init__(self, problem, n_nodes=0, seed=0, max_attempts=1000, tree=None):
+    def __init__(self, problem, n_nodes=None, seed=0, max_attempts=1000, tree=None):
         if tree is not None:
             tree = tree_rows(tree, problem.n_features)
-            if n_nodes not in (0, len(tree)):
+            if n_nodes not in (None, 0, len(tree)):
                 raise ValueError(f"n_nodes={n_nodes} given with a tree of "
                                  f"{len(tree)} internal nodes: set one of the two")
             n_nodes = len(tree)
         self._rows = tree
+        self.problem = problem
+        self.seed = seed
+        self.max_attempts = int(max_attempts)
+        self.from_prior = n_nodes is None
+        self.n_nodes = n_nodes
+        # Exact Catalan numbers, for the left-subtree size draws.
+        self._catalan = [1]
+        if self.from_prior:
+            self._init_prior()
+            return
         if n_nodes < 0:
             raise ValueError(f"n_nodes must be >= 0, got {n_nodes}")
         if n_nodes > problem.max_tree_size:
@@ -99,16 +143,34 @@ class IncrementalTreeInitialProposal(DiscreteVariableInitialProposal):
             raise ValueError(f"n_nodes={n_nodes} needs {n_nodes + 1} leaves of "
                              f"min_samples_leaf={problem.min_samples_leaf} rows, "
                              f"more than the {problem.n_rows} there are")
-        self.problem = problem
         self.n_nodes = int(n_nodes)
-        self.seed = seed
-        self.max_attempts = int(max_attempts)
-        # Exact Catalan numbers, for the left-subtree size draws.
-        self._catalan = [1]
-        for n in range(self.n_nodes):
-            self._catalan.append(self._catalan[-1] * 2 * (2 * n + 1) // (n + 2))
+        self._extend_catalan(self.n_nodes)
         # Built on first use, so a proposal that is never sampled costs nothing.
         self._start = None
+
+    def _init_prior(self):
+        problem = self.problem
+        m = problem.min_samples_leaf
+        if problem.n_rows < max(m, 1):
+            raise ValueError(f"no tree is admissible: even a stump's one leaf "
+                             f"needs min_samples_leaf={m} of the "
+                             f"{problem.n_rows} rows")
+        # The sizes an admissible tree can have; inf when nothing bounds it.
+        self.max_nodes = problem.max_tree_size
+        if m > 0:
+            self.max_nodes = min(self.max_nodes, problem.n_rows // m - 1)
+        self._cdf_max = float(poisson.cdf(self.max_nodes, problem.lam))
+        self._vmin = np.array([lo for lo, _ in problem.vals])
+        self._vmax = np.array([hi for _, hi in problem.vals])
+        self._range = self._vmax - self._vmin
+        # The prior is the target's own, so that target - eval leaves exactly
+        # the likelihood and the per-split factors.
+        self._prior = IncrementalTreeTarget(problem)
+
+    def _extend_catalan(self, n):
+        cat = self._catalan
+        for k in range(len(cat) - 1, n):
+            cat.append(cat[-1] * 2 * (2 * k + 1) // (k + 2))
 
     # ------------------- valid splits ------------------- #
 
@@ -151,7 +213,9 @@ class IncrementalTreeInitialProposal(DiscreteVariableInitialProposal):
         """Internal nodes in the left subtree of one with n, drawn so that the
         whole shape is uniform: k with probability C_k C_{n-1-k} / C_n."""
         cat = self._catalan
-        u = rng.random() * cat[n]
+        # u * C_n in exact integers: rng.random() is a multiple of 2**-53, and
+        # C_n overflows a float from n ~ 500.
+        u = (int(rng.random() * 2 ** 53) * cat[n]) >> 53
         acc = 0
         for k in range(n - 1):
             acc += cat[k] * cat[n - 1 - k]
@@ -159,10 +223,146 @@ class IncrementalTreeInitialProposal(DiscreteVariableInitialProposal):
                 return k
         return n - 1
 
+    # ------------------- the prior, split by split ------------------- #
+
+    def _prior_size(self, rng):
+        """n ~ Poisson(lam) truncated to n <= max_nodes, by inverting its CDF."""
+        # u in (0, 1], so the quantile is in (0, F(max_nodes)] and n >= 0.
+        q = (1.0 - rng.random()) * self._cdf_max
+        n = poisson.ppf(q, self.problem.lam)
+        return int(min(max(n, 0), self.max_nodes))
+
+    def _valid_ranges(self, idx, k_left, k_right):
+        """
+        (lo, hi) per feature: the thresholds (lo, hi] that split the rows `idx`
+        leaving min_samples_leaf rows for every leaf of a k_left-node subtree
+        below and of a k_right-node one at or above; lo == hi where no
+        threshold does. With min_samples_leaf=0 that is the whole prior range.
+        """
+        problem = self.problem
+        m = problem.min_samples_leaf
+        if m == 0:
+            return self._vmin, self._vmax
+        need_left, need_right = (k_left + 1) * m, (k_right + 1) * m
+        n = len(idx)
+        lo = np.zeros(problem.n_features)
+        hi = np.zeros(problem.n_features)
+        if n >= need_left + need_right:
+            # Valid iff the need_left-th smallest value is below the
+            # threshold and the need_right-th largest is at or above it.
+            a, b = need_left - 1, n - need_right
+            for f in range(problem.n_features):
+                part = np.partition(problem.X[idx, f], (a, b))
+                lo[f], hi[f] = part[a], part[b]
+        return lo, hi
+
+    def _valid_fractions(self, lo, hi):
+        """The fraction of each feature's prior range that is valid."""
+        return (hi - lo) / self._range
+
+    def _log_z(self, frac):
+        """log Z_v: the prior probability, 1/J * sum_f frac_f, that a split
+        drawn from the prior has a threshold in its valid range."""
+        return math.log(float(frac.sum()) / self.problem.n_features)
+
+    def _prior_split(self, idx, k_left, k_right, rng):
+        """(feat, thr, log Z_v) drawn from the prior conditioned on the split
+        being valid, or None if no split is."""
+        lo, hi = self._valid_ranges(idx, k_left, k_right)
+        frac = self._valid_fractions(lo, hi)
+        cum = np.cumsum(frac)
+        if not cum[-1] > 0:
+            return None
+        feat = int(np.searchsorted(cum, rng.random() * cum[-1], side="right"))
+        feat = min(feat, int(np.flatnonzero(frac)[-1]))
+        # hi - width * [0, 1) is the half-open (lo, hi] the valid range is,
+        # and never rounds above hi, which would cost the right side a row.
+        thr = float(hi[feat] - (hi[feat] - lo[feat]) * rng.random())
+        if not thr > lo[feat]:
+            return None      # rounded onto lo: too narrow a range to draw inside
+        return feat, thr, self._log_z(frac)
+
+    def _prior_attempt(self, rng):
+        """One top-down draw, or None if it reaches a node it cannot split."""
+        n = self._prior_size(rng)
+        self._extend_catalan(n)
+        x = IncrementalTree.stump(self.problem)
+        log_z = 0.0
+        queue = deque([(0, n)])
+        while queue:
+            leaf, k = queue.popleft()
+            if k == 0:
+                continue
+            k_left = self._left_size(k, rng)
+            split = self._prior_split(x.leaf_idx[leaf], k_left, k - 1 - k_left, rng)
+            if split is None:
+                return None
+            feat, thr, lz = split
+            log_z += lz
+            x.grow(leaf, feat, thr)
+            left, right = x._child_nodes(leaf)
+            queue.append((left, k_left))
+            queue.append((right, k - 1 - k_left))
+        # Memoised for eval, which SMC calls on this very object; a move works
+        # on a deep_copy, which does not carry it.
+        x._log_q0 = self._prior.evaluatePrior(x) - log_z
+        return x
+
+    def _draw_from_prior(self, rng):
+        for _ in range(self.max_attempts):
+            x = self._prior_attempt(rng)
+            if x is not None:
+                return x
+        raise RuntimeError(
+            f"no tree drawn from the prior in {self.max_attempts} attempts: "
+            f"tied values leave some node no split with "
+            f"min_samples_leaf={self.problem.min_samples_leaf} rows for every "
+            f"leaf below it")
+
+    def _prior_log_density(self, x):
+        """log p(x) - sum_v log Z_v, recomputed from the tree itself."""
+        problem = self.problem
+        if len(x.tree) > self.max_nodes:
+            return -math.inf
+        m = problem.min_samples_leaf
+        if any(len(rows) < m for rows in x.leaf_idx.values()):
+            return -math.inf
+        log_z = 0.0
+        if m > 0:
+            nodes = x.nodes
+            # Internal nodes below each node, itself included: children first.
+            order, stack = [], [0]
+            while stack:
+                node = stack.pop()
+                if node in nodes:
+                    order.append(node)
+                    stack.extend((int(nodes[node][1]), int(nodes[node][2])))
+            size = {}
+            for node in reversed(order):
+                left, right = int(nodes[node][1]), int(nodes[node][2])
+                size[node] = 1 + size.get(left, 0) + size.get(right, 0)
+            # Every leaf holds m rows, so every split is valid and Z_v > 0.
+            stack = [(0, problem.all_rows())]
+            while stack:
+                node, idx = stack.pop()
+                row = nodes.get(node)
+                if row is None:
+                    continue
+                left, right = int(row[1]), int(row[2])
+                lo, hi = self._valid_ranges(idx, size.get(left, 0), size.get(right, 0))
+                log_z += self._log_z(self._valid_fractions(lo, hi))
+                go_left = problem.X[idx, int(row[3])] < float(row[4])
+                stack.append((left, idx[go_left]))
+                stack.append((right, idx[~go_left]))
+        return self._prior.evaluatePrior(x) - log_z
+
     # ------------------- the starting tree ------------------- #
 
     def start(self):
         """The one tree every sample is a copy of."""
+        if self.from_prior:
+            raise ValueError("drawn from the prior, every sample is a tree of "
+                             "its own: there is no one starting tree")
         if self._start is None:
             self._start = self._draw()
         return self._start
@@ -227,11 +427,18 @@ class IncrementalTreeInitialProposal(DiscreteVariableInitialProposal):
     # ------------------- the proposal ------------------- #
 
     def sample(self, rng=RNG(), target=None):
+        if self.from_prior:
+            return self._draw_from_prior(rng)
         # A copy each time: the rows are shared, the tree is not, so no two
         # particles hold the same object.
         return self.start().deep_copy()
 
     def eval(self, x, target=None):
+        if self.from_prior:
+            cached = getattr(x, '_log_q0', None)
+            if cached is not None and x.problem is self.problem:
+                return cached
+            return self._prior_log_density(x)
         if len(x.tree) != self.n_nodes:
             return -math.inf
         if self.n_nodes == 0 and self._rows is None:
@@ -239,4 +446,5 @@ class IncrementalTreeInitialProposal(DiscreteVariableInitialProposal):
         return 0.0 if x == self.start() else -math.inf
 
     def __repr__(self):
-        return f"<IncrementalTreeInitialProposal {self.problem} n_nodes={self.n_nodes}>"
+        start = "from the prior" if self.from_prior else f"n_nodes={self.n_nodes}"
+        return f"<IncrementalTreeInitialProposal {self.problem} {start}>"

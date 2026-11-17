@@ -151,7 +151,7 @@ def test_random_starting_tree_shapes_are_uniform(problem):
 
 
 def test_zero_initial_nodes_is_the_stump(problem):
-    init = idt.IncrementalTreeInitialProposal(problem)
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
     x = init.sample(RNG(0))
     assert len(x.tree) == 0 and init.eval(x) == 0.0
     assert x.leaf_idx[0] is idt.IncrementalTree.stump(problem).leaf_idx[0]
@@ -252,6 +252,97 @@ def test_a_given_tree_must_fit_the_cap_and_agree_with_n_nodes(problem):
         idt.IncrementalTreeInitialProposal(capped, tree=grown.tree)
     with pytest.raises(ValueError):
         idt.IncrementalTreeInitialProposal(problem, n_nodes=3, tree=GIVEN_TREE)
+
+
+# --------------------------------------------------------------------------- #
+# the default start: a tree of its own for every chain and particle, drawn
+# from the prior conditioned split by split on staying admissible
+# --------------------------------------------------------------------------- #
+
+def test_prior_draws_are_admissible_and_their_own(problem, target):
+    init = idt.IncrementalTreeInitialProposal(problem)
+    assert init.from_prior
+    trees = [init.sample(RNG(seed)) for seed in range(60)]
+    for x in trees:
+        assert len(x.tree) <= problem.max_tree_size
+        assert min(len(rows) for rows in x.leaf_idx.values()) >= problem.min_samples_leaf
+        assert target.eval(x) > idt.BARRED
+    # One per rng: different seeds give different trees, the same seed the
+    # same one, so a chain's start is reproducible from its seed.
+    assert len({tuple(map(tuple, x.tree)) for x in trees}) > 30
+    assert init.sample(RNG(7)) == trees[7]
+    with pytest.raises(ValueError):
+        init.start()
+
+
+def test_prior_draw_density_is_the_trees_own(problem):
+    """The density memoised while drawing is the one the tree alone gives:
+    SMC reads it back off the particle, so the two must not drift apart."""
+    init = idt.IncrementalTreeInitialProposal(problem)
+    for seed in range(40):
+        x = init.sample(RNG(seed))
+        rebuilt = idt.IncrementalTree.from_rows(problem, x.tree)
+        assert not hasattr(rebuilt, "_log_q0")
+        assert init.eval(rebuilt) == pytest.approx(init.eval(x), abs=1e-9)
+        # A moved particle is a deep copy, which must not carry it.
+        assert not hasattr(x.deep_copy(), "_log_q0")
+
+
+def test_prior_draw_scores_trees_it_cannot_draw_at_minus_inf(problem):
+    init = idt.IncrementalTreeInitialProposal(problem)
+    # A leaf of 2 rows: the split sends the two smallest values of feature 0 left.
+    thr = float(np.sort(problem.X[:, 0])[2])
+    short = idt.IncrementalTree.from_rows(problem, [[0, 1, 2, 0, thr]])
+    assert init.eval(short) == -np.inf
+    capped = make_problem(max_tree_size=2)
+    big = largest_tree_visited(problem, seed=3)
+    assert len(big.tree) > 2
+    assert idt.IncrementalTreeInitialProposal(capped).eval(
+        idt.IncrementalTree.from_rows(capped, big.tree)) == -np.inf
+
+
+def test_prior_draw_is_exactly_the_prior_with_no_leaf_minimum():
+    """min_samples_leaf=0 conditions on nothing: every Z_v is 1, and the
+    density is the target's prior to the last digit."""
+    problem = make_problem(min_samples_leaf=0)
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem)
+    for seed in range(40):
+        x = init.sample(RNG(seed))
+        assert init.eval(x) == target.evaluatePrior(x)
+
+
+def test_prior_draw_sizes_are_the_truncated_poisson():
+    from scipy.stats import poisson
+    problem = make_problem(lam=2.0, max_tree_size=3)
+    init = idt.IncrementalTreeInitialProposal(problem)
+    n = 4000
+    rng = RNG(0)
+    sizes = np.array([len(init.sample(rng).tree) for _ in range(n)])
+    want = poisson.pmf(np.arange(4), 2.0)
+    want /= want.sum()
+    got = np.bincount(sizes, minlength=4) / n
+    assert np.all(np.abs(got - want) < 4 * np.sqrt(want * (1 - want) / n))
+
+
+def test_prior_draw_shapes_are_uniform():
+    """With 2 internal nodes the second split hangs off the root's left child
+    or its right one, each half the time, as the Catalan prior has it."""
+    problem = make_problem(lam=2.0)
+    init = idt.IncrementalTreeInitialProposal(problem)
+    rng = RNG(1)
+    lefts = total = 0
+    while total < 1500:
+        x = init.sample(rng)
+        if len(x.tree) == 2:
+            total += 1
+            lefts += int(x.nodes[0][1]) in x.nodes
+    assert abs(lefts / total - 0.5) < 0.04
+
+
+def test_prior_draw_refuses_data_too_small_for_a_stump():
+    with pytest.raises(ValueError):
+        idt.IncrementalTreeInitialProposal(make_problem(n=8))   # min_samples_leaf=10
 
 
 def test_incremental_moves_match_a_rebuild_from_rows(problem):
@@ -1134,7 +1225,7 @@ def test_smc_returns_a_usable_sample(problem, target, name):
                  "hints": lambda: idt.HINTSProposal(target, ss_prop=0.25, min_data=20)}
     proposal = proposals[name]()
     smc = DiscreteVariableSMC(idt.IncrementalTree, target,
-                              idt.IncrementalTreeInitialProposal(problem),
+                              idt.IncrementalTreeInitialProposal(problem, n_nodes=0),
                               proposal=proposal, Lkernel=proposal.lkernel())
     particles = smc.sample(25, 32, seed=1, verbose=False)
 
@@ -1213,7 +1304,8 @@ def test_subsampled_kernels_sample_the_same_posterior():
     problem.y = np.random.default_rng(5).integers(0, 2, size=problem.n_rows)
     problem._root_counts = None
     target = idt.IncrementalTreeTarget(problem)
-    init = idt.IncrementalTreeInitialProposal(problem)
+    # From a stump, as calibrated: this grades the kernels, not the start.
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
 
     # Calibrated, not guessed: with the admissibility check on the sweep
     # removed, this separates at 5+ sigma on P(nodes=0) and P(nodes=1), while
@@ -1275,7 +1367,9 @@ def exact_p_stump(problem, target, grid=50_001):
     exp(problem.lp_vals[f]) is exactly the uniform density of t over that
     feature's range, so the integral against it is a plain average over an
     evenly spaced grid. Sorting the rows by the feature turns every threshold
-    into a prefix cut, so all grid points are evaluated in one pass.
+    into a prefix cut, so all grid points are evaluated in one pass. A
+    threshold leaving either side fewer than min_samples_leaf rows is outside
+    the support and contributes nothing.
     """
     lp0 = target.log_prior(0, 1) + target.log_dm(problem.root_counts())
 
@@ -1294,6 +1388,8 @@ def exact_p_stump(problem, target, grid=50_001):
         left = cumulative[np.searchsorted(cols, thr, side="left")]
         right = cumulative[-1] - left
         ll = _exact_log_dm(problem, left) + _exact_log_dm(problem, right)
+        m = problem.min_samples_leaf
+        ll[(left.sum(axis=1) < m) | (right.sum(axis=1) < m)] = -np.inf
         per_feature.append(logsumexp(ll) - np.log(grid))
 
     lp1 = target.log_prior(1, 2) + problem.lp_feats + logsumexp(per_feature)
@@ -1330,7 +1426,8 @@ def test_kernels_match_the_exact_posterior(name):
     problem._root_counts = None
 
     target = idt.IncrementalTreeTarget(problem)
-    init = idt.IncrementalTreeInitialProposal(problem)
+    # From a stump, as calibrated: this grades the kernels, not the start.
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
     exact = exact_p_stump(problem, target)
     assert 0.2 < exact < 0.8, f"reference problem lost its power: P(0)={exact}"
 
@@ -1365,6 +1462,41 @@ def test_kernels_match_the_exact_posterior(name):
         f"({diff / max(se, 1e-12):+.1f} sigma)")
 
 
+@pytest.mark.parametrize("min_samples_leaf", [5, 15])
+def test_smc_starting_weights_match_the_exact_posterior(min_samples_leaf):
+    """
+    SMC's starting particles, weighted by target - initial.eval, must already
+    be a sample of the posterior: the prior draw's density has to include
+    every Z_v the conditioning on admissibility introduced.
+
+    Same exact reference as test_kernels_match_the_exact_posterior, with a
+    leaf minimum that binds, so the draw is not the prior. Calibrated, not
+    guessed: these sit at -0.3 and -0.6 sigma, and scoring the draw under the
+    prior instead -- dropping the Z_v -- puts them 36 and 76 sigma out.
+    """
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0,
+                           min_samples_leaf=min_samples_leaf, max_tree_size=1)
+    problem.y = np.random.default_rng(0).integers(
+        0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+    target = idt.IncrementalTreeTarget(problem)
+    exact = exact_p_stump(problem, target)
+
+    smc = DiscreteVariableSMC(idt.IncrementalTree, target,
+                              idt.IncrementalTreeInitialProposal(problem),
+                              proposal=idt.IncrementalTreeProposal())
+    particles = smc.sample(0, 40_000, seed=100_000, verbose=False)
+    w = np.exp(smc.logWeights)
+    stump = idt.tree_sizes(particles) == 0
+    estimate = float(w[stump].sum())
+    # Delta-method standard error of the self-normalised estimate.
+    se = float(np.sqrt(np.sum((w * (stump - estimate)) ** 2)))
+    assert abs(estimate - exact) < 4.0 * se, (
+        f"SMC's starting weights disagree with the exact posterior on "
+        f"P(0 nodes): {estimate:.4f} vs {exact:.4f} "
+        f"({(estimate - exact) / se:+.1f} sigma)")
+
+
 @pytest.mark.parametrize("equal_blocks", [False, True])
 def test_hints_hierarchy_matches_the_exact_posterior(equal_blocks):
     """
@@ -1384,7 +1516,8 @@ def test_hints_hierarchy_matches_the_exact_posterior(equal_blocks):
     problem._root_counts = None
 
     target = idt.IncrementalTreeTarget(problem)
-    init = idt.IncrementalTreeInitialProposal(problem)
+    # From a stump, as calibrated: this grades the kernels, not the start.
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
     exact = exact_p_stump(problem, target)
     assert idt.HINTSProposal(target, ss_prop=0.1, min_data=4)._shape(10) == (2, 3)
 
@@ -1426,7 +1559,8 @@ def test_non_uniform_threshold_proposal_keeps_the_target():
     problem._root_counts = None
 
     target = idt.IncrementalTreeTarget(problem)
-    init = idt.IncrementalTreeInitialProposal(problem)
+    # From a stump, as calibrated: this grades the kernels, not the start.
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
     exact = exact_p_stump(problem, target)
 
     estimates = []

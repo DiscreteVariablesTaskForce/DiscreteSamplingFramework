@@ -65,6 +65,14 @@ def experiment_files(entry):
             for s in cfg["samplers"] for p in cfg["proposals"]]
 
 
+def stored_entries(experiments):
+    """The experiments as config.json records them: as given, plus the
+    init_tree_size each one runs with, so that a reader never takes a missing
+    one for a stump (see results_io.LEGACY_INIT_TREE_SIZE)."""
+    return [dict(entry, init_tree_size=dict(DEFAULT_CFG, **entry)["init_tree_size"])
+            for entry in experiments]
+
+
 def check_for_collisions(experiments):
     """Every experiment's files, checked for a repeat before any of them runs:
     two experiments writing the same file would overwrite each other, and
@@ -140,7 +148,7 @@ def main():
     os.makedirs(results_dir, exist_ok=True)
     write_run_config(results_dir, {
         "experiments_file": os.path.abspath(args.file),
-        "experiments": experiments,
+        "experiments": stored_entries(experiments),
     })
 
     for i, entry in enumerate(experiments):
@@ -153,7 +161,7 @@ def main():
         print(f"\n{'#' * 78}\n# experiment {i + 1}/{len(experiments)}: {files}\n{'#' * 78}")
         run_sweep(entry, results_dir)
 
-    names = experiment_names({"experiments": experiments}, DEFAULT_CFG)
+    names = experiment_names({"experiments": stored_entries(experiments)}, DEFAULT_CFG)
     print(f"\nAll {len(experiments)} experiment(s) complete. Results in: {results_dir}")
     print(f"  python examples/incremental_decision_tree/evaluate_results.py --run-id {run_id}")
     for name in names:

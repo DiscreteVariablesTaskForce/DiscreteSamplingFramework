@@ -147,7 +147,47 @@ def test_the_harness_starts_from_the_tree_it_is_given():
     start = sd.initial_proposal(cfg(init_tree=TREE), problem).sample()
     assert [row[:5] for row in start.tree] == TREE
     assert len(sd.initial_proposal(cfg(init_tree_size=3), problem).sample().tree) == 3
-    assert len(sd.initial_proposal(cfg(), problem).sample().tree) == 0
+    assert len(sd.initial_proposal(cfg(init_tree_size=0), problem).sample().tree) == 0
+
+
+def test_by_default_the_harness_draws_every_start_from_the_prior():
+    from discretesampling.base.random import RNG
+    X, y = load_wine(return_X_y=True)
+    problem, _, _ = sd.build(cfg(proposal="MH"), X, y)
+    init = sd.initial_proposal(cfg(), problem)
+    assert init.from_prior
+    starts = [init.sample(RNG(seed)) for seed in range(10)]
+    assert len({tuple(map(tuple, x.tree)) for x in starts}) > 1
+
+
+def test_starts_drawn_from_the_prior_are_in_the_name():
+    import results_io as rio
+    key = rio.experiment_key(sd.validate_cfg(cfg(proposals=["DA"], ss_prop=0.25)))
+    assert key == ("wine", 0.25, rio.PRIOR_INIT)
+    assert rio.experiment_name(*key) == "wine_25_init-prior"
+    assert rio.parse_experiment("wine_25_init-prior") == key
+    assert (rio.experiment_filename("wine", "smc", "DA", 0.25, rio.PRIOR_INIT)
+            == "wine_smc_DA_25_init-prior.h5")
+    # A given tree may not take the prior's tag.
+    with pytest.raises(ValueError):
+        sd.validate_cfg(cfg(init_tree=TREE, init_tree_name=rio.PRIOR_INIT))
+
+
+def test_stored_configs_keep_meaning_what_they_meant():
+    """A config.json entry with no init_tree_size was written when leaving it
+    out meant a stump, and still names the stump's files; entries written now
+    carry it, so they name the prior's."""
+    import results_io as rio
+    from run_experiments import stored_entries
+    entry = dict(dataset="wine", samplers=["mcmc"], proposals=["DA"], ss_prop=0.25)
+    assert rio.experiment_names({"experiments": [entry]}, sd.DEFAULT_CFG) == ["wine_25"]
+    assert rio.init_of(entry) == 0
+    stored = stored_entries([entry])
+    assert stored[0]["init_tree_size"] is None
+    assert rio.experiment_names({"experiments": stored}, sd.DEFAULT_CFG) == ["wine_25_init-prior"]
+    assert rio.init_of(stored[0]) == rio.PRIOR_INIT
+    sized = stored_entries([dict(entry, init_tree_size=5)])
+    assert rio.experiment_names({"experiments": sized}, sd.DEFAULT_CFG) == ["wine_25_init5"]
 
 
 

@@ -89,7 +89,7 @@ from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVaria
 from discretesampling.domain import incremental_decision_tree as idt
 from discretesampling.domain.incremental_decision_tree import diagnostics as dg
 from discretesampling.domain.incremental_decision_tree.states import StateRecorder
-from results_io import (INIT_NAME, PROPOSALS, experiment_filename,
+from results_io import (INIT_NAME, PRIOR_INIT, PROPOSALS, experiment_filename,
                         experiment_key, experiment_name, init_of,
                         resolve_run_id, save_experiment_hdf5, write_run_config)
 
@@ -128,10 +128,13 @@ DEFAULT_CFG = dict(
     lam=15.0,
     min_samples_leaf=3,
     max_tree_size=None,
-    # Internal nodes in the starting tree: 0 starts from a stump, N > 0 from
-    # one random tree of that size, the same for every chain, every particle,
-    # both samplers and every proposal (see IncrementalTreeInitialProposal).
-    init_tree_size=0,
+    # Where the runs start. None draws every chain's and every particle's
+    # starting tree from the prior, conditioned split by split on being
+    # admissible (files tagged _init-prior). Otherwise every chain, every
+    # particle, both samplers and every proposal start from one tree: 0 a
+    # stump (untagged files), N > 0 one random tree of N internal nodes
+    # (_init<N>). See IncrementalTreeInitialProposal.
+    init_tree_size=None,
     # Or the starting tree itself, in place of a random one: a list of
     # [node, left, right, feat, thr] rows, one per internal node, the root
     # being node 0 (see idt.tree_rows; any tree's own .tree is such a list).
@@ -336,7 +339,8 @@ def counters_of(proposal, target, prefix=""):
 
 def initial_proposal(cfg, problem):
     """Where every chain and particle of a configuration starts: the tree it
-    was given, else a random one of init_tree_size nodes, else a stump."""
+    was given, else a random one of init_tree_size nodes (a stump for 0),
+    else a tree of its own drawn from the prior."""
     return idt.IncrementalTreeInitialProposal(
         problem, cfg['init_tree_size'], tree=cfg['init_tree'])
 
@@ -525,9 +529,10 @@ def validate_cfg(cfg):
         raise ValueError(f"{unused} only apply to {owners}, which this experiment "
                          f"does not run (proposals={cfg['proposals']})")
     size = cfg["init_tree_size"]
-    if not isinstance(size, int) or size < 0:
-        raise ValueError(f"init_tree_size={size!r}: must be an int >= 0")
-    if cfg["max_tree_size"] is not None and size > cfg["max_tree_size"]:
+    if size is not None and (not isinstance(size, int) or size < 0):
+        raise ValueError(f"init_tree_size={size!r}: must be an int >= 0, or "
+                         f"None to draw the start from the prior")
+    if size is not None and cfg["max_tree_size"] is not None and size > cfg["max_tree_size"]:
         raise ValueError(f"init_tree_size={size} is above "
                          f"max_tree_size={cfg['max_tree_size']}")
     rows, name = cfg["init_tree"], cfg["init_tree_name"]
@@ -553,6 +558,9 @@ def validate_cfg(cfg):
                                      and INIT_NAME.fullmatch(name)):
             raise ValueError(f"init_tree_name={name!r}: letters, digits and '-' "
                              f"only, as it goes into the result file names")
+        if name == PRIOR_INIT:
+            raise ValueError(f"init_tree_name={name!r} is what the files of runs "
+                             f"started from the prior are tagged with")
     return cfg
 
 
@@ -694,8 +702,9 @@ def main():
     p.add_argument("--min-samples-leaf", type=int, default=DEFAULT_CFG['min_samples_leaf'])
     p.add_argument("--max-tree-size", type=int, default=DEFAULT_CFG['max_tree_size'])
     p.add_argument("--init-tree-size", type=int, default=DEFAULT_CFG['init_tree_size'],
-                   help="internal nodes in the starting tree every chain and "
-                        "particle shares (0: a stump)")
+                   help="internal nodes in one starting tree every chain and "
+                        "particle shares (0: a stump). Left out, each chain and "
+                        "particle draws its own from the prior")
     p.add_argument("--init-tree", default=None, metavar="FILE",
                    help="start from the tree in this JSON file instead: a list "
                         "of [node, left, right, feat, thr] rows, root node 0")

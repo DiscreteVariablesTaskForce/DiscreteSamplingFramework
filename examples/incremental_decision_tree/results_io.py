@@ -9,6 +9,8 @@ One results directory per sweep, named explicitly or by timestamp:
         wine_mcmc_DA_10.h5           ss_prop * 100), '.' written as 'p'
         wine_mcmc_HINTS_12p5.h5
         wine_mcmc_HINTS_12p5_metrics.npz   evaluate_results.py's, beside it
+        wine_mcmc_HINTS_12p5_init-prior.h5 every chain / particle started from
+                                           a tree of its own, drawn from the prior
         wine_mcmc_HINTS_12p5_init10.h5     started from a 10-node random tree
         wine_mcmc_HINTS_12p5_init-mine.h5  started from a given tree, named 'mine'
         wine_smc_MH_100.h5
@@ -75,21 +77,31 @@ def ss_tag(ss_prop):
 
 
 # What a run started from, as names carry it: the starting tree's size (an
-# int; 0 is a stump) for a random tree, or a label (a str) for a given one.
-# A label has no '_' in it, which is what the names are split on.
+# int; 0 is a stump) for a random tree, a label (a str) for a given one, or
+# PRIOR_INIT when every chain and particle drew its own from the prior. A
+# label has no '_' in it, which is what the names are split on.
 INIT_NAME = re.compile(r"[A-Za-z0-9-]+")
+PRIOR_INIT = "prior"
+
+# What a stored config entry with no init_tree_size started from. Entries
+# were written without one before the start could be drawn from the prior,
+# when leaving it out meant a stump; run_experiments.py has written it into
+# every entry since, so a missing one is never read as today's default.
+LEGACY_INIT_TREE_SIZE = 0
 
 
 def init_of(cfg):
     """
-    What a config's runs start from: init_tree_size, or for a given init_tree
-    its init_tree_name -- by default a digest of its rows, so that two
-    different trees never share a name and the same tree always has the same
-    one, whichever order its rows were written in.
+    What a config's runs start from: PRIOR_INIT for init_tree_size None,
+    else init_tree_size, or for a given init_tree its init_tree_name -- by
+    default a digest of its rows, so that two different trees never share a
+    name and the same tree always has the same one, whichever order its rows
+    were written in.
     """
     rows = cfg.get("init_tree")
     if rows is None:
-        return cfg.get("init_tree_size", 0)
+        size = cfg.get("init_tree_size", LEGACY_INIT_TREE_SIZE)
+        return PRIOR_INIT if size is None else size
     if cfg.get("init_tree_name"):
         return cfg["init_tree_name"]
     canonical = sorted([int(r[0]), int(r[1]), int(r[2]), int(r[3]), float(r[4])]
@@ -100,7 +112,8 @@ def init_of(cfg):
 def init_tag(init):
     """The starting tree as a name suffix: '' for a stump, so names from
     before there was a choice still mean what they meant, '_init10' for a
-    random 10-node tree, '_init-mine' for a given tree named 'mine'."""
+    random 10-node tree, '_init-mine' for a given tree named 'mine',
+    '_init-prior' for starts drawn from the prior."""
     if isinstance(init, str):
         return f"_init-{init}"
     return f"_init{int(init)}" if init else ""
@@ -196,11 +209,13 @@ def experiment_names(config, defaults):
 
     run_experiments.py writes the whole 'experiments' list it was given; a bare
     sampler_diagnostics.py sweep writes the single config it ran. Each is
-    overlaid on `defaults` (DEFAULT_CFG) for whatever it left out. [] for a
-    directory that predates config.json, or one hand-populated with .h5 files.
+    overlaid on `defaults` (DEFAULT_CFG) for whatever it left out, except the
+    starting tree size: see LEGACY_INIT_TREE_SIZE. [] for a directory that
+    predates config.json, or one hand-populated with .h5 files.
     """
     entries = config.get("experiments") or ([config] if "dataset" in config else [])
-    return sorted({experiment_name(*experiment_key(dict(defaults, **entry)))
+    return sorted({experiment_name(*experiment_key(
+                       {**defaults, "init_tree_size": LEGACY_INIT_TREE_SIZE, **entry}))
                    for entry in entries})
 
 
