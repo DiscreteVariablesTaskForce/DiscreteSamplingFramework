@@ -5,13 +5,15 @@ The list of experiments run_experiments.py runs.
 import math
 
 # Shared by every entry, so the samplers differ only in what is being compared.
-COMMON = dict(dataset="susy", store_every=1, max_tree_size=80, init_tree_size=0)
+COMMON = dict(dataset="susy", store_every=1, max_tree_size=100)
 RUNS_LONG = {
-    "smc": dict(chains=4, particles=6, steps=800)
+    "smc": dict(chains=10, particles=10, steps=800),
+    "mcmc": dict(chains=10, iters=800)
     }
 
 RUNS = {
-    "smc": dict(chains=4, particles=6, steps=100)
+    "smc": dict(chains=10, particles=10, steps=200),
+    "mcmc": dict(chains=10, iters=200)
     }
 # MH Experiments
 EXPERIMENTS = [dict(samplers=[sampler], proposals=["MH"],
@@ -19,7 +21,7 @@ EXPERIMENTS = [dict(samplers=[sampler], proposals=["MH"],
                for sampler, run in RUNS_LONG.items()]
 
 # EXPERIMENTS = []
-SS_PROPS = (1/16,)
+SS_PROPS = (1/16, 1/4,)
 
 # MH Experiments
 EXPERIMENTS = [dict(samplers=[sampler], proposals=["MH"],

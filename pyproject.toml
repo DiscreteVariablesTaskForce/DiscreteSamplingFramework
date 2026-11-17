@@ -12,4 +12,7 @@ dynamic = ["version"]
 [project.urls]
 "Repository" = "https://github.com/DiscreteVariablesTaskForce/DiscreteSamplingFramework"
 
+[tool.setuptools.packages.find]
+include = ["discretesampling*"]
+
 [tool.setuptools_scm]
