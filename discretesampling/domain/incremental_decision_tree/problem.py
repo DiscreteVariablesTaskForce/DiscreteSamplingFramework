@@ -10,6 +10,26 @@ large_neg = -1e9
 BARRED = large_neg / 2
 
 
+class RowReads:
+    """
+    A running count of the sampler's row reads, its cost measure: one for each
+    row, each time a row's feature value or class label is read, or its block
+    label assigned or read. Routing n rows through a split is n reads, counting
+    their labels is n more; index bookkeeping that reads no data (concatenating
+    or slicing row arrays) is free. Scoring a tree from its leaf counts reads no
+    rows, which is why counting likelihood evaluations says little about cost
+    here.
+
+    One is shared by everything that samples on a problem (problem.reads), so
+    a run's total is problem.row_reads. Drawing the starting trees is set-up,
+    not sampling, and is left out of it.
+    """
+    __slots__ = ("n",)
+
+    def __init__(self):
+        self.n = 0
+
+
 class IncrementalTreeProblem:
     """
     Data plus hyperparameters for one incremental decision tree run,
@@ -78,6 +98,12 @@ class IncrementalTreeProblem:
 
         self._all_rows = None
         self._root_counts = None
+        self.reads = RowReads()
+
+    @property
+    def row_reads(self):
+        """Row reads so far by everything sampling on this problem: see RowReads."""
+        return self.reads.n
 
     # ------------------------------------------------------------------ #
 

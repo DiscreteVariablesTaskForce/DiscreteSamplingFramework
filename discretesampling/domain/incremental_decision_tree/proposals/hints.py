@@ -3,7 +3,7 @@ import math
 import numpy as np
 
 from discretesampling.base.random import RNG
-from discretesampling.domain.incremental_decision_tree.problem import BARRED
+from discretesampling.domain.incremental_decision_tree.problem import BARRED, RowReads
 from discretesampling.domain.incremental_decision_tree.moves import (
     SubtreeContext, apply_subtree_proposal, change_partition, draw_subtree,
     evaluate_subtree_move, make_context, select_move, subtree_leaves,
@@ -34,14 +34,15 @@ class BlockRows:
     overwrites them. Block states never outlive their sweep -- the particle the
     sweep returns is the original brought forward by replay, with real arrays.
     """
-    __slots__ = ('parent', 'lo', 'hi', 'pos', 'labels', '_rows')
+    __slots__ = ('parent', 'lo', 'hi', 'pos', 'labels', 'reads', '_rows')
 
-    def __init__(self, parent, lo, hi, pos, labels, rows=None):
+    def __init__(self, parent, lo, hi, pos, labels, reads, rows=None):
         self.parent = parent
         self.lo = lo            # minimum unit label in this leaf's block, inclusive
         self.hi = hi            # maximum unit label in this leaf's block, exclusive
         self.pos = pos          # the leaf's row in NestedBlocks' count table
         self.labels = labels
+        self.reads = reads      # the RowReads building the rows is charged to
         self._rows = rows
 
     def rows(self):
@@ -49,12 +50,13 @@ class BlockRows:
         if r is None:
             p = self.parent.rows()
             lab = self.labels[p]
+            self.reads.n += len(p)
             r = self._rows = p[(lab >= self.lo) & (lab < self.hi)]
         return r
 
     def child(self, lo, hi):
         """The same leaf's rows in the narrower range [lo, hi)."""
-        return BlockRows(self, lo, hi, self.pos, self.labels)
+        return BlockRows(self, lo, hi, self.pos, self.labels, self.reads)
 
 
 class LazyLeafIdx(dict):
@@ -124,19 +126,24 @@ class NestedBlocks:
 
     A new split is drawn for every sweep, as HINTS prescribes, so nothing here
     outlives the sweep it was drawn for.
+
+    `reads` is the RowReads the labelling, the table and the rows built from it
+    are charged to: the problem's, for a proposal; a private one otherwise.
     """
 
-    def __init__(self, n_rows, y, equal=True):
+    def __init__(self, n_rows, y, equal=True, reads=None):
         self.y = y
         self.equal = bool(equal)
         self.labels = np.zeros(n_rows, dtype=np.intp)
         self.n_units = 1
         self._cum = None
         self._total = None
+        self.reads = RowReads() if reads is None else reads
 
     def draw(self, rows, n_units, rng):
         """Split `rows` uniformly at random into `n_units` unit blocks."""
         draw_block_labels(self.labels, rows, n_units, rng, self.equal)
+        self.reads.n += len(rows)
         self.n_units = n_units
 
     def tabulate(self, leaf_rows, num_classes):
@@ -148,6 +155,8 @@ class NestedBlocks:
         U, n_leaves = self.n_units, len(leaf_rows)
         lens = np.fromiter(map(len, leaf_rows), np.intp, n_leaves)
         rows = np.concatenate(leaf_rows)
+        # Every row's block label and class label.
+        self.reads.n += 2 * len(rows)
         key = np.repeat(np.arange(n_leaves), lens) * U + self.labels[rows]
         table = np.bincount(key * num_classes + self.y[rows],
                             minlength=n_leaves * U * num_classes)
@@ -156,7 +165,7 @@ class NestedBlocks:
         self._cum = cum
         # Rows in units [0, u), summed over every leaf and class.
         self._total = cum.sum(axis=(0, 2))
-        return [BlockRows(None, 0, U, i, self.labels, rows=r)
+        return [BlockRows(None, 0, U, i, self.labels, self.reads, rows=r)
                 for i, r in enumerate(leaf_rows)]
 
     def counts(self, pos, lo, hi):
@@ -194,6 +203,8 @@ class NestedBlocks:
         Only the leaves a move has rewritten mid-sweep come through here; every
         other leaf is read off the table and left as a placeholder.
         """
+        # Every row's block label and class label.
+        self.reads.n += 2 * len(rows)
         child = (self.labels[rows] - lo) // (width // branching)
         sizes = np.bincount(child, minlength=branching)
         counts = np.bincount(child * num_classes + self.y[rows],
@@ -262,7 +273,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
         # split is drawn into it at the start of every sweep that has more
         # than one block.
         self.blocks = NestedBlocks(self.problem.n_rows, self.problem.y,
-                                   equal=equal_blocks)
+                                   equal=equal_blocks, reads=self.problem.reads)
         self.n_blocks_total = 0
         self.n_level_accepts = 0
         self.n_level_rejects = 0
@@ -534,6 +545,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
             go_left = prop_move.get('go_left')
             if go_left is None:
                 go_left = self.problem.X[rows, int(prop_move['feat'])] < prop_move['thr']
+                self.problem.reads.n += len(rows)
             L, R = state._child_nodes(node)
             full_after[L] = rows[go_left]
             full_after[R] = rows[~go_left]

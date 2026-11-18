@@ -76,6 +76,9 @@ class DAProposal(IncrementalTreeProposalBase):
         # node's rows is ever needed, and that is O(overlap) to draw.
         subset, leaf_pos = sample_partition_block(m, leaf_rows, rng,
                                                   self.ss_prop, self.min_data)
+        # Drawing a row into the block is assigning it a block, as the
+        # sweeps' labelling is.
+        self.problem.reads.n += len(subset)
         v_sub, v_sub_prime, _ = self.target.eval_subset(
             x, move, node, prop_move, subset, leaf_pos, leaves, n_rows)
         self._note(move, node, n_rows, len(subset), v_sub_prime - v_sub)

@@ -51,7 +51,8 @@ class FlatHINTSProposal(IncrementalTreeProposalBase):
         # Holds each sweep's split of the rows under the subtree root; a new
         # split is drawn into it at the start of every sweep with more than
         # one block.
-        self.blocks = RowBlocks(self.problem.n_rows, equal=equal_blocks)
+        self.blocks = RowBlocks(self.problem.n_rows, equal=equal_blocks,
+                                reads=self.problem.reads)
         # Assert after every applied inner move that the sweep's working tree
         # is still admissible. Off in production (it is a walk of the subtree
         # per move); the tests turn it on, because an inadmissible intermediate

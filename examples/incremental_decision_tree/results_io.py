@@ -219,6 +219,15 @@ def experiment_names(config, defaults):
                    for entry in entries})
 
 
+def available_cpus():
+    """The CPUs this process may run on. On a SLURM node that is the task's
+    allocation, not the whole node, which is what os.cpu_count() reports."""
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:          # not on Linux
+        return os.cpu_count() or 1
+
+
 def resolve_run_id(run_id=None):
     """Results directory name: given explicitly, or a timestamp."""
     return run_id if run_id else datetime.now().strftime("%y%m%d_%H%M%S")
@@ -347,9 +356,15 @@ def stored_tree(path, run=0, record=0, particle=None):
 
 def write_run_config(results_dir, config):
     """config.json alongside the .h5 files: what the sweep that wrote this
-    directory was asked to run, for reference when loading it back later."""
-    with open(os.path.join(results_dir, "config.json"), 'w') as f:
+    directory was asked to run, for reference when loading it back later.
+
+    Written to a temporary file and renamed into place, so the tasks of a SLURM
+    array, which all write the same config, never leave a half-written one."""
+    path = os.path.join(results_dir, "config.json")
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, 'w') as f:
         json.dump(config, f, indent=2, default=str)
+    os.replace(tmp, path)
 
 
 def read_run_config(results_dir):

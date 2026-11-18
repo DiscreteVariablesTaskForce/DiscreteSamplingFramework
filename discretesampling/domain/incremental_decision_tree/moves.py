@@ -185,6 +185,7 @@ def change_partition(state, node, feat, thr, idx):
     """
     m = state.nodes
     X = state.problem.X
+    reads = state.problem.reads
     min_leaf = state.problem.min_samples_leaf
     partition = {}
     queue = deque([(node, idx, True)])
@@ -198,6 +199,7 @@ def change_partition(state, node, feat, thr, idx):
             continue
         curr_feat = int(feat) if is_changed else int(row[3])
         curr_thr = float(thr) if is_changed else float(row[4])
+        reads.n += len(curr_idx)
         left = X[curr_idx, curr_feat] < curr_thr
         queue.append((int(row[1]), curr_idx[left], False))
         queue.append((int(row[2]), curr_idx[~left], False))
@@ -235,9 +237,14 @@ def check_grow_split(problem, idx, feat, thr):
     the move is actually applied.
     """
     head = problem.X[idx[:_SPLIT_PROBE], feat] < thr
+    problem.reads.n += len(head)
     if len(idx) > _SPLIT_PROBE and valid_split(problem, head):
         return True, None
-    go_left = head if len(idx) <= _SPLIT_PROBE else problem.X[idx, feat] < thr
+    if len(idx) <= _SPLIT_PROBE:
+        go_left = head
+    else:
+        go_left = problem.X[idx, feat] < thr
+        problem.reads.n += len(idx)
     return valid_split(problem, go_left), go_left
 
 

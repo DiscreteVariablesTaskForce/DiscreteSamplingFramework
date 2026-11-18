@@ -59,9 +59,14 @@ def test_build_has_no_fallback_proposal():
 
 
 def test_the_shipped_experiment_list_is_valid():
-    from run_experiments import DEFAULT_FILE, load_experiments
-    for entry in load_experiments(DEFAULT_FILE):
-        sd.validate_cfg(cfg(**entry))
+    from run_experiments import DEFAULT_FILE, check_for_collisions, load_experiments
+    here = os.path.dirname(DEFAULT_FILE)
+    for path in (DEFAULT_FILE, os.path.join(here, "experiments_reference.py"),
+                 os.path.join(here, "experiments_hints_shapes.py")):
+        experiments = load_experiments(path)
+        for entry in experiments:
+            sd.validate_cfg(cfg(**entry))
+        check_for_collisions(experiments)
 
 
 @pytest.mark.parametrize("bad", [
@@ -158,6 +163,59 @@ def test_by_default_the_harness_draws_every_start_from_the_prior():
     assert init.from_prior
     starts = [init.sample(RNG(seed)) for seed in range(10)]
     assert len({tuple(map(tuple, x.tree)) for x in starts}) > 1
+
+
+def test_one_task_of_an_array_records_the_whole_list(tmp_path):
+    """A SLURM array runs one --index per task into one run directory: each
+    task must run only its own experiment, but config.json must still list
+    them all, or the evaluation afterwards would only know about one."""
+    import json
+    import subprocess
+    script = os.path.join(os.path.dirname(__file__), os.pardir, "examples",
+                          "incremental_decision_tree", "run_experiments.py")
+    experiments = tmp_path / "experiments.py"
+    experiments.write_text(
+        "EXPERIMENTS = [dict(dataset='wine', samplers=['mcmc'], proposals=[p], "
+        "ss_prop=0.25, chains=1, iters=5, store_every=1) for p in ('MH', 'DA')]\n")
+
+    def run(*args):
+        return subprocess.run(["python", script, "--file", str(experiments), *args],
+                              capture_output=True, text=True, check=True).stdout
+
+    assert run("--count").strip() == "2"
+    run("--index", "1", "--jobs", "1", "--run-id", "arr", "--results-root", str(tmp_path))
+    out = tmp_path / "arr"
+    assert len(json.loads((out / "config.json").read_text())["experiments"]) == 2
+    assert sorted(p.name for p in out.glob("*.h5")) == ["wine_mcmc_DA_25_init-prior.h5"]
+    # --prepare splits each dataset of the list once, into the run's directory.
+    run("--prepare", "--run-id", "arr", "--results-root", str(tmp_path))
+    assert sorted(p.name for p in (out / "data").iterdir()) == ["wine.npz"]
+
+
+def test_prepared_data_is_the_split_itself(tmp_path, monkeypatch):
+    """The jobs read a split prepared at submission; it has to be the split
+    load_data computes, and a missing one has to fail rather than quietly
+    re-reading the CSV on every compute node."""
+    import numpy as np
+    sd.prepare_data("wine", str(tmp_path))
+    monkeypatch.setenv(sd.DATA_CACHE_ENV, str(tmp_path))
+    for got, want in zip(sd.load_data("wine"), sd.split_data("wine")):
+        assert np.array_equal(got, want)
+    with pytest.raises(FileNotFoundError):
+        sd.load_data("digits")
+
+
+@pytest.mark.parametrize("sampler", ["mcmc", "smc"])
+def test_runs_record_their_row_reads(sampler):
+    import numpy as np
+    chain = {k: v for k, v in cfg(dataset="wine", iters=20, steps=4, particles=4,
+                                  record_states=False, record_moves=False).items()
+             if k not in sd._SWEEP_KEYS}
+    out = sd.run(dict(chain, sampler=sampler, proposal="HINTS", seed=0))
+    reads = np.asarray(out["row_reads"])
+    assert len(reads) == (20 if sampler == "mcmc" else 4)
+    assert reads[-1] > 0
+    assert np.all(np.diff(reads) >= 0)
 
 
 def test_starts_drawn_from_the_prior_are_in_the_name():

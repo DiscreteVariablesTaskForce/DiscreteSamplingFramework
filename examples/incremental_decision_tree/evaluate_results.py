@@ -59,7 +59,7 @@ from tqdm.auto import tqdm
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from discretesampling.domain import incremental_decision_tree as idt  # noqa: E402
-from results_io import (experiment_names, find_experiment_files,  # noqa: E402
+from results_io import (available_cpus, experiment_names, find_experiment_files,  # noqa: E402
                         iter_experiment_hdf5, latest_run_id, load_run_hdf5,
                         metrics_filename, parse_experiment, read_run_config,
                         states_of)
@@ -501,9 +501,10 @@ def main():
                         "test is routed through every tree")
     p.add_argument("--stride", type=int, default=1,
                    help="evaluate every k-th stored record")
-    p.add_argument("--jobs", type=int, default=os.cpu_count() or 1,
+    p.add_argument("--jobs", type=int, default=available_cpus(),
                    help="worker processes, shared by every experiment being "
-                        "evaluated (default: one per core)")
+                        "evaluated (default: one per CPU this process may use, "
+                        "i.e. the allocation on a SLURM node)")
     p.add_argument("--overwrite", action="store_true",
                    help="re-evaluate experiments whose .npz already exists")
     args = p.parse_args()

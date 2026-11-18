@@ -44,6 +44,10 @@ What comes out, per configuration, as one .h5, one group per chain/run:
                             than against iteration count. The clock excludes
                             the state recording itself, so it measures the
                             sampler and not the diagnostics.
+  per iteration/step        row_reads, the cumulative rows the sampler has read
+                            (idt.RowReads): the cost measure that does not
+                            depend on how fast the code is. Drawing the
+                            starting trees is not counted.
   per stored record         the tree at that iteration (MCMC), or every
                             particle of that step plus its log weight (SMC)
   per move considered       move type, node, rows under it, the rows of the
@@ -89,7 +93,7 @@ from discretesampling.base.algorithms import DiscreteVariableMCMC, DiscreteVaria
 from discretesampling.domain import incremental_decision_tree as idt
 from discretesampling.domain.incremental_decision_tree import diagnostics as dg
 from discretesampling.domain.incremental_decision_tree.states import StateRecorder
-from results_io import (INIT_NAME, PRIOR_INIT, PROPOSALS, experiment_filename,
+from results_io import (INIT_NAME, PRIOR_INIT, PROPOSALS, available_cpus, experiment_filename,
                         experiment_key, experiment_name, init_of,
                         resolve_run_id, save_experiment_hdf5, write_run_config)
 
@@ -143,7 +147,7 @@ DEFAULT_CFG = dict(
     # with (letters, digits, '-'); left out, a digest of the rows is used.
     init_tree=None,
     init_tree_name=None,
-    jobs=min(8, (os.cpu_count() or 2) - 1),
+    jobs=min(8, max(1, available_cpus() - 1)),
 )
 
 
@@ -197,7 +201,46 @@ def load_mnist():
     return X.to_numpy(), pd.Categorical(y).codes
 
 
+# A directory of datasets already split, one <name>.npz each, written by
+# prepare_data. When this variable names one, load_data reads from it and
+# nothing else: the SLURM jobs set it, so the CSV is parsed once at submission
+# rather than by every chain, and no compute node needs the network for a
+# scikit-learn download. Unset, load_data splits the data itself, as before.
+DATA_CACHE_ENV = "DSF_DATA_CACHE"
+
+
+def prepared_path(name, cache_dir):
+    return os.path.join(cache_dir, f"{name}.npz")
+
+
+def prepare_data(name, cache_dir):
+    """Split dataset `name` as load_data does and write it to cache_dir."""
+    os.makedirs(cache_dir, exist_ok=True)
+    X_train, X_test, y_train, y_test = split_data(name)
+    path = prepared_path(name, cache_dir)
+    tmp = f"{path}.{os.getpid()}.tmp.npz"       # np.savez wants the suffix
+    np.savez(tmp, X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test)
+    os.replace(tmp, path)
+    return path
+
+
 def load_data(name):
+    """(X_train, X_test, y_train, y_test): the stratified 80/20 split, with
+    constant training columns dropped. Read from the prepared copy when
+    DSF_DATA_CACHE is set, and split here otherwise."""
+    cache_dir = os.environ.get(DATA_CACHE_ENV)
+    if not cache_dir:
+        return split_data(name)
+    path = prepared_path(name, cache_dir)
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"{DATA_CACHE_ENV}={cache_dir} has no {name}.npz: prepare it with "
+            f"run_experiments.py --prepare (slurm/submit.sh does)")
+    with np.load(path) as f:
+        return f["X_train"], f["X_test"], f["y_train"], f["y_test"]
+
+
+def split_data(name):
     if name not in DATASETS:
         raise ValueError(f"unknown dataset {name!r}: expected one of {DATASETS}")
     if name == "covtype":
@@ -359,7 +402,7 @@ def run_mcmc(cfg):
     def record(i, current, accepted):
         rec.tick()
         rec.add(n_nodes=len(current.tree), n_leaves=len(current.leaf_idx),
-                accepted=accepted)
+                accepted=accepted, row_reads=problem.row_reads)
         rec.store(i, (current,))
 
     rec.start()
@@ -392,6 +435,8 @@ def run_smc(cfg):
         rec.add(ess=neff, resampled=resampled,
                 mean_nodes=sizes.mean(), max_nodes=sizes.max(),
                 mean_leaves=leaves.mean(),
+                # Every particle's moves so far, as one running total.
+                row_reads=problem.row_reads,
                 # Where in the move log this step's calls end, so the moves can
                 # be sliced back out per step: the proposal is shared by every
                 # particle, so its call index runs over particle-steps.

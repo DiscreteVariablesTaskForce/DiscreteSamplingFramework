@@ -427,11 +427,18 @@ class IncrementalTreeInitialProposal(DiscreteVariableInitialProposal):
     # ------------------- the proposal ------------------- #
 
     def sample(self, rng=RNG(), target=None):
+        # Drawing a start is set-up, not sampling: the rows it reads are left
+        # out of the problem's RowReads, which measures the sampler's cost.
+        reads = self.problem.reads
+        before = reads.n
         if self.from_prior:
-            return self._draw_from_prior(rng)
-        # A copy each time: the rows are shared, the tree is not, so no two
-        # particles hold the same object.
-        return self.start().deep_copy()
+            x = self._draw_from_prior(rng)
+        else:
+            # A copy each time: the rows are shared, the tree is not, so no
+            # two particles hold the same object.
+            x = self.start().deep_copy()
+        reads.n = before
+        return x
 
     def eval(self, x, target=None):
         if self.from_prior:

@@ -1,5 +1,7 @@
 import numpy as np
 
+from discretesampling.domain.incremental_decision_tree.problem import RowReads
+
 
 def block_count(m, ss_prop, min_data):
     """
@@ -55,15 +57,20 @@ class RowBlocks:
     labels are in random order, or with equal=False by an independent,
     uniformly random label per row. Either way every block is a uniform random
     subset of those rows. Nothing outlives the sweep it was drawn for.
+
+    `reads` is the RowReads its labelling is charged to: the problem's, for a
+    proposal; a private one otherwise.
     """
 
-    def __init__(self, n_rows, equal=True):
+    def __init__(self, n_rows, equal=True, reads=None):
         self.labels = np.zeros(n_rows, dtype=np.intp)
         self.equal = bool(equal)
+        self.reads = RowReads() if reads is None else reads
 
     def draw(self, rows, num_blocks, rng):
         """Split `rows` uniformly at random into `num_blocks` blocks."""
         draw_block_labels(self.labels, rows, num_blocks, rng, self.equal)
+        self.reads.n += len(rows)
 
     def block_rows(self, leaf_rows, j):
         """
@@ -71,6 +78,8 @@ class RowBlocks:
         see grouped_rows. Every row of `leaf_rows` must be one the current
         split was drawn over.
         """
+        # Every row's block label is read to find the block's.
+        self.reads.n += sum(map(len, leaf_rows))
         return grouped_rows([rows[self.labels[rows] == j] for rows in leaf_rows])
 
 

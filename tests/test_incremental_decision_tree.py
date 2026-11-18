@@ -1825,6 +1825,69 @@ def test_smc_records_ess_and_returns_usable_weights(problem, target):
         assert np.allclose(probs.sum(axis=1), 1.0)
 
 
+# --------------------------------------------------------------------------- #
+# the cost measure: row reads
+# --------------------------------------------------------------------------- #
+
+def test_row_reads_count_every_value_a_move_reads():
+    """Routing n rows through a split reads n feature values, and counting the
+    leaves they land in reads n labels; merging two leaves reads nothing."""
+    problem = make_problem()
+    n = problem.n_rows
+    x = idt.IncrementalTree.stump(problem)
+
+    def reads(op):
+        before = problem.row_reads
+        op()
+        return problem.row_reads - before
+
+    assert reads(lambda: x.grow(0, 0, 0.0)) == 2 * n
+    assert reads(lambda: x.change(0, 1, 0.1)) == 2 * n
+    assert reads(lambda: x.prune(0)) == 0
+    # A grow's split test stops at the probe once the probe alone is valid.
+    assert n > 256
+    valid, go_left = check_grow_split(problem, problem.all_rows(), 0, 0.0)
+    assert valid and go_left is None
+    assert reads(lambda: check_grow_split(problem, problem.all_rows(), 0, 0.0)) == 256
+
+
+@pytest.mark.parametrize("start", [dict(), dict(n_nodes=0), dict(n_nodes=3),
+                                   dict(tree=GIVEN_TREE)])
+def test_drawing_the_start_reads_no_rows(start):
+    """The counter measures sampling; every chain pays the same for its start."""
+    problem = make_problem()
+    init = idt.IncrementalTreeInitialProposal(problem, **start)
+    for seed in range(3):
+        init.sample(RNG(seed))
+    assert problem.row_reads == 0
+
+
+@pytest.mark.parametrize("name", ["MH", "DA", "FlatHINTS", "HINTS"])
+def test_every_proposal_charges_its_row_reads(name):
+    problem = make_problem()
+    target = idt.IncrementalTreeTarget(problem)
+    proposal = _make_proposal(name, target)
+    trace = []
+    DiscreteVariableMCMC(idt.IncrementalTree, target,
+                         idt.IncrementalTreeInitialProposal(problem, n_nodes=0),
+                         proposal=proposal).sample(
+        60, seed=1, verbose=False, callback=lambda i, c, a: trace.append(problem.row_reads))
+    assert trace[-1] > 0
+    assert all(b >= a for a, b in zip(trace, trace[1:]))
+
+
+def test_a_sweep_pays_for_splitting_the_rows_into_blocks():
+    """FlatHINTS labels every row under the subtree root; HINTS labels them and
+    reads each one's labels again for its count table."""
+    n = make_problem().n_rows
+    for name, at_least in [("FlatHINTS", n), ("HINTS", 3 * n)]:
+        problem = make_problem()
+        target = idt.IncrementalTreeTarget(problem)
+        proposal = _make_proposal(name, target)
+        proposal.sample(idt.IncrementalTree.stump(problem), RNG(0))
+        assert problem.row_reads >= at_least, name
+
+
 def test_classification_metrics_agree_with_sklearn(problem, target):
     from sklearn import metrics as skm
 

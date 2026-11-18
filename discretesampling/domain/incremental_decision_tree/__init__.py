@@ -1,4 +1,4 @@
-from .problem import IncrementalTreeProblem, large_neg, BARRED  # noqa
+from .problem import IncrementalTreeProblem, RowReads, large_neg, BARRED  # noqa
 from .tree_ops import IncBDTree  # noqa
 from .incremental_tree import IncrementalTree  # noqa
 from .target import IncrementalTreeTarget  # noqa

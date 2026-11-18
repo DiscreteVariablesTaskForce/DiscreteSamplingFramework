@@ -27,10 +27,12 @@ This step only samples and stores trees. No predictive metric is computed
 until evaluate_results.py is run over what it wrote; see sampler_diagnostics.py
 for why the two are separate.
 
-Experiments run one after another; each one's own --jobs (default: this
-machine's cores minus a couple, same as sampler_diagnostics.py) parallelises
-its chains across processes. There is no cross-experiment parallelism here --
-run two of these at once, with the same --run-id, if that is wanted.
+Experiments run one after another; each one's jobs (default: the CPUs this
+process may use, minus one, at most 8; --jobs sets it for every experiment)
+parallelises its chains across processes. There is no cross-experiment
+parallelism here -- run several of these at once with the same --run-id and
+different --index values, which is what slurm/submit.sh does as a SLURM job
+array. --count prints the size that array needs.
 """
 import argparse
 import importlib.util
@@ -41,7 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from results_io import (experiment_filename, experiment_names, init_of,  # noqa: E402
                         resolve_run_id, write_run_config)
-from sampler_diagnostics import DEFAULT_CFG, run_sweep, validate_cfg  # noqa: E402
+from sampler_diagnostics import DEFAULT_CFG, prepare_data, run_sweep, validate_cfg  # noqa: E402
 
 DEFAULT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "experiments.py")
 
@@ -98,7 +100,21 @@ def main():
     p.add_argument("--list", action="store_true",
                    help="print the experiments (index, name, overrides) and exit")
     p.add_argument("--index", type=int, default=None,
-                   help="run only the n-th experiment of the list")
+                   help="run only the n-th experiment of the list (config.json "
+                        "still records the whole list, so a SLURM array of these "
+                        "sharing one --run-id evaluates as one sweep)")
+    p.add_argument("--count", action="store_true",
+                   help="check the whole list, print how many experiments it has "
+                        "and exit: the size of the SLURM array to run it as")
+    p.add_argument("--prepare", action="store_true",
+                   help="split every dataset the list uses once, into "
+                        "<results-root>/<run-id>/data/, and exit; jobs run with "
+                        "DSF_DATA_CACHE pointing there read it instead of the "
+                        "CSV (slurm/submit.sh does both)")
+    p.add_argument("--jobs", type=int, default=None,
+                   help="processes each experiment's chains are spread over, in "
+                        "place of each entry's own jobs (on SLURM: the CPUs the "
+                        "task was given)")
     p.add_argument("--results-root", default="Results")
     p.add_argument("--run-id", default=None,
                    help="results directory shared by every experiment in this "
@@ -116,16 +132,20 @@ def main():
     experiments = load_experiments(args.file)
     if not experiments:
         raise SystemExit(f"{args.file}: EXPERIMENTS is empty")
+    if args.jobs is not None and args.jobs < 1:
+        raise SystemExit(f"--jobs {args.jobs}: must be at least 1")
 
+    # What this invocation runs; the whole list is still checked and recorded.
+    selected = list(enumerate(experiments))
     if args.index is not None:
         if not 0 <= args.index < len(experiments):
             raise SystemExit(f"--index {args.index} is out of range: this file has "
                              f"{len(experiments)} experiments (0-{len(experiments) - 1}). "
                              f"Run with --list to see them.")
-        experiments = [experiments[args.index]]
+        selected = [selected[args.index]]
 
     if args.list:
-        for i, entry in enumerate(experiments):
+        for i, entry in selected:
             try:
                 files = ", ".join(experiment_files(entry))
             except ValueError as err:
@@ -143,15 +163,29 @@ def main():
 
     check_for_collisions(experiments)
 
+    if args.count:
+        print(len(experiments))
+        return
+
+    if args.prepare and not args.run_id:
+        raise SystemExit("--prepare needs --run-id: the split is written into "
+                         "that run's directory")
     run_id = resolve_run_id(args.run_id)
     results_dir = os.path.join(args.results_root, run_id)
+    if args.prepare:
+        cache_dir = os.path.join(results_dir, "data")
+        for dataset in sorted({dict(DEFAULT_CFG, **e)["dataset"] for e in experiments}):
+            print(f"prepared {dataset}: {prepare_data(dataset, cache_dir)}")
+        return
     os.makedirs(results_dir, exist_ok=True)
+    # The whole list, whichever part of it runs here: an array of --index runs
+    # writes the same file from every task, and the evaluation reads it back.
     write_run_config(results_dir, {
         "experiments_file": os.path.abspath(args.file),
         "experiments": stored_entries(experiments),
     })
 
-    for i, entry in enumerate(experiments):
+    for i, entry in selected:
         filenames = experiment_files(entry)
         files = ", ".join(filenames)
         if args.skip_existing and all(os.path.exists(os.path.join(results_dir, f))
@@ -159,10 +193,10 @@ def main():
             print(f"\n# experiment {i + 1}/{len(experiments)}: {files} already written, skipped")
             continue
         print(f"\n{'#' * 78}\n# experiment {i + 1}/{len(experiments)}: {files}\n{'#' * 78}")
-        run_sweep(entry, results_dir)
+        run_sweep(entry, results_dir, jobs=args.jobs)
 
     names = experiment_names({"experiments": stored_entries(experiments)}, DEFAULT_CFG)
-    print(f"\nAll {len(experiments)} experiment(s) complete. Results in: {results_dir}")
+    print(f"\n{len(selected)} experiment(s) complete. Results in: {results_dir}")
     print(f"  python examples/incremental_decision_tree/evaluate_results.py --run-id {run_id}")
     for name in names:
         print(f"  python examples/incremental_decision_tree/plot_diagnostics.py --run-id {run_id} --name {name}")

@@ -7,6 +7,13 @@ __pycache__/
 *.json
 *.prof
 *.callgrind
+*.log
+*.tex
+*.pdf
+*.egg-info/
 auxiliary/
 Datasets/
 profiles/
+
+# SLURM job logs
+logs/

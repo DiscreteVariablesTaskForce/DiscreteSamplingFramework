@@ -70,11 +70,14 @@ class IncBDTree:
         """
         node_map = self.nodes
         X, y, K = self.problem.X, self.problem.y, self.problem.num_classes
+        reads = self.problem.reads
         self.leaf_idx = {}
         self.counts = {}
         pending = [(0, np.arange(self.problem.n_rows))]
         while pending:
             nid, idx = pending.pop()
+            # A leaf reads its rows' labels, a split their feature values.
+            reads.n += len(idx)
             row = node_map.get(nid)
             if row is None:
                 self.leaf_idx[nid] = idx
@@ -250,8 +253,15 @@ class IncBDTree:
 
         # Only the rows in this one leaf move.
         idx = np.asarray(self.leaf_idx.pop(leaf_id), dtype=int)
-        mask = self.problem.X[idx, feat] < thr if go_left is None else go_left
-        y, K = self.problem.y, self.problem.num_classes
+        problem = self.problem
+        if go_left is None:
+            mask = problem.X[idx, feat] < thr
+            problem.reads.n += len(idx)
+        else:
+            mask = go_left          # read, and counted, by whoever split them
+        # The new leaves' labels.
+        problem.reads.n += len(idx)
+        y, K = problem.y, problem.num_classes
         for nid, sub_idx in ((left_id, idx[mask]), (right_id, idx[~mask])):
             self.leaf_idx[nid] = sub_idx
             self.counts[nid] = np.bincount(y[sub_idx], minlength=K)
@@ -296,6 +306,7 @@ class IncBDTree:
         row[3], row[4] = new_feat, new_thr
 
         desc = self._descendant_leaves(node_id)
+        reads = self.problem.reads
         if partition is None:
             idx_all = (np.concatenate([np.asarray(self.leaf_idx.get(leaf, []), dtype=int)
                                        for leaf in desc])
@@ -308,6 +319,7 @@ class IncBDTree:
                 curr, curr_idx = queue.popleft()
                 if curr in m:
                     _, L, R, feat, thr, _ = m[curr]
+                    reads.n += len(curr_idx)
                     mask = X[curr_idx, int(feat)] < thr
                     queue.append((int(L), curr_idx[mask]))
                     queue.append((int(R), curr_idx[~mask]))
@@ -321,6 +333,7 @@ class IncBDTree:
         for leaf, rows in partition.items():
             self.leaf_idx[leaf] = rows
             self.counts[leaf] = np.bincount(y[rows], minlength=K)
+            reads.n += len(rows)
         return self
 
     # -------------------- copying -------------------- #

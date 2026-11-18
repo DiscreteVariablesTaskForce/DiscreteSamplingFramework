@@ -189,9 +189,11 @@ class IncrementalTreeTarget(DiscreteVariableTarget):
         """
         problem, m = self.problem, state.nodes
         X, y, K = problem.X, problem.y, problem.num_classes
+        reads = problem.reads
         left_child, right_child = int(m[node][1]), int(m[node][2])
         left_leaves = set(state._descendant_leaves(left_child))
         was_left = np.array([leaf in left_leaves for leaf in leaves])[leaf_pos]
+        reads.n += len(subset)
         goes_left = X[subset, feat] < thr
         crossed = was_left != goes_left
         new = counts - self._leaf_counts(y_sub[crossed], leaf_pos[crossed], len(leaves))
@@ -204,6 +206,8 @@ class IncrementalTreeTarget(DiscreteVariableTarget):
                 curr, curr_idx = queue.popleft()
                 if curr_idx.size == 0:
                     continue
+                # Their labels at a leaf, their feature values at a split.
+                reads.n += curr_idx.size
                 row = m.get(curr)
                 if row is None:
                     new[pos[curr]] += np.bincount(y[curr_idx], minlength=K)
@@ -234,6 +238,7 @@ class IncrementalTreeTarget(DiscreteVariableTarget):
         old_feat = int(row[3]) if row is not None else 0
         lp_old = problem.lp_feats + problem.lp_vals[old_feat]
         y_sub = problem.y[subset]
+        problem.reads.n += len(subset)
 
         if move == "prune":
             # A terminal node's children are both leaves, so the leaf a row
@@ -257,6 +262,7 @@ class IncrementalTreeTarget(DiscreteVariableTarget):
         else:  # grow: `node` is a leaf
             K = problem.num_classes
             feat = int(prop_move['feat'])
+            problem.reads.n += len(subset)
             left = problem.X[subset, feat] < float(prop_move['thr'])
             v = self.log_dm(np.bincount(y_sub, minlength=K) * scale)
             v_prime = (self.log_dm(np.bincount(y_sub[left], minlength=K) * scale)
