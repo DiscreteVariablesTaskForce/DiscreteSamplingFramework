@@ -1,10 +1,16 @@
 #!/bin/bash -l
-# One-off: build the virtualenv the jobs run in. Run it on a login node, from
-# anywhere in the clone: pip needs the network, which compute nodes lack.
+# One-off: build the virtualenv the jobs run in. Run it on a visualisation node
+# (barklaviz1 or barklaviz2), from anywhere in the clone: pip needs the
+# network, and Barkla asks for installs and builds to run there rather than on
+# the login nodes.
 #
-#   export DSF_MODULE="python/3.11.9-gcc14.2.0 python-venv/1.0-gcc14.2.0"
-#   export DSF_VENV=$HOME/venvs/dsf     # anywhere the compute nodes can read
+#   export DSF_MODULE="miniforge3/25.3.0-python3.12.10"
+#   export DSF_VENV=/mnt/fastscratch/users/$USER/venvs/dsf
 #   bash slurm/setup_env.sh
+#
+# The virtualenv goes on fastscratch, which Barkla recommends for Python
+# installs: home has a 100k-file quota and asks for none there. fastscratch has
+# no redundancy, so if it is ever lost, rerun this script to rebuild it.
 #
 # Put the two exports in your ~/.bashrc as well: the jobs are submitted with
 # --export=ALL and load the same module and virtualenv on the compute node.
@@ -23,6 +29,13 @@ if [ -n "${DSF_MODULE:-}" ]; then
     module load $DSF_MODULE
 fi
 
+# Barkla's own python3 is 3.9; the code is checked on 3.11 and later.
+python3 - <<'EOF'
+import sys
+if sys.version_info < (3, 11):
+    sys.exit(f"python3 is {sys.version.split()[0]}: load a module with Python 3.11 "
+             "or later in DSF_MODULE first, e.g. miniforge3/25.3.0-python3.12.10")
+EOF
 python3 -m venv "$DSF_VENV"
 # shellcheck disable=SC1091
 source "$DSF_VENV/bin/activate"

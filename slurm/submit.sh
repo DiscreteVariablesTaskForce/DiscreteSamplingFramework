@@ -1,7 +1,9 @@
 #!/bin/bash
-# Submit an experiment list and its evaluation in one go: a job array with one
-# task per experiment, and an evaluation job held until the array has finished,
-# so both go in now and the metrics are waiting when you come back.
+# Submit an experiment list and its evaluation in one go: a short job that
+# splits the datasets once, a job array with one task per experiment held on
+# it, and an evaluation job held on the array, so everything goes in now and
+# the metrics are waiting when you come back. Only light work runs here on the
+# login node (checking and listing the experiments): its limit is 1 core, 4 GB.
 #
 #   slurm/submit.sh                                   # experiments.py, id = timestamp
 #   RUN_ID=ch3 slurm/submit.sh                        # a named run, or resume one
@@ -82,46 +84,56 @@ WHERE=(--file "$EXPERIMENTS" --run-id "$RUN_ID" --results-root "$RESULTS_ROOT")
 N=$(python "$RUNNER" --file "$EXPERIMENTS" --count ${RUN_ARGS[@]+"${RUN_ARGS[@]}"})
 python "$RUNNER" --file "$EXPERIMENTS" --list ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} | cut -f1,2 | sed 's/^/  /'
 
-# 2. Split every dataset once, here, into the run's directory. The jobs read
-#    that copy, so none of them re-parses the CSV or needs the network for a
-#    scikit-learn download.
+# 2. The jobs read every dataset from the one split the prepare job writes
+#    into the run's directory, so none of them re-parses the CSV.
 case "$RESULTS_ROOT" in
     /*) export DSF_DATA_CACHE="$RESULTS_ROOT/$RUN_ID/data" ;;
     *)  export DSF_DATA_CACHE="$PWD/$RESULTS_ROOT/$RUN_ID/data" ;;
 esac
 
+# Each command is its sbatch options, then the script and its arguments; the
+# dependency on the job before goes in between, once that job's id is known.
+PREP_OPTS=(sbatch --parsable --job-name="dsf_prep_$RUN_ID"
+           --partition="$PARTITION" --nodes=1 --ntasks=1 --time="${PREP_TIME:-0:30:00}"
+           ${MAIL_OPTS[@]+"${MAIL_OPTS[@]}"})
+PREP_SCRIPT=(slurm/prepare.sbatch "${WHERE[@]}" ${RUN_ARGS[@]+"${RUN_ARGS[@]}"})
 array="0-$((N - 1))"
 if [ -n "$MAX_PARALLEL" ]; then array+="%$MAX_PARALLEL"; fi
-SAMPLE_CMD=(sbatch --parsable --array="$array" --job-name="dsf_$RUN_ID"
-            --partition="$PARTITION" --nodes=1 --ntasks="$CORES" --time="$TIME"
-            ${MAIL_OPTS[@]+"${MAIL_OPTS[@]}"}
-            slurm/experiment.sbatch "${WHERE[@]}" ${RUN_ARGS[@]+"${RUN_ARGS[@]}"})
-EVAL_CMD=(sbatch --parsable --job-name="dsf_eval_$RUN_ID"
-          --partition="$PARTITION" --nodes=1 --ntasks="$EVAL_CORES" --time="$EVAL_TIME"
-          ${MAIL_OPTS[@]+"${MAIL_OPTS[@]}"})
+SAMPLE_OPTS=(sbatch --parsable --array="$array" --job-name="dsf_$RUN_ID"
+             --partition="$PARTITION" --nodes=1 --ntasks="$CORES" --time="$TIME"
+             ${MAIL_OPTS[@]+"${MAIL_OPTS[@]}"})
+SAMPLE_SCRIPT=(slurm/experiment.sbatch "${WHERE[@]}" ${RUN_ARGS[@]+"${RUN_ARGS[@]}"})
+EVAL_OPTS=(sbatch --parsable --job-name="dsf_eval_$RUN_ID"
+           --partition="$PARTITION" --nodes=1 --ntasks="$EVAL_CORES" --time="$EVAL_TIME"
+           ${MAIL_OPTS[@]+"${MAIL_OPTS[@]}"})
 EVAL_SCRIPT=(slurm/evaluate.sbatch --run-id "$RUN_ID" --results-root "$RESULTS_ROOT"
              ${EVAL_ARGS[@]+"${EVAL_ARGS[@]}"})
 
 if [ "$DRY_RUN" = 1 ]; then
     echo "DSF_DATA_CACHE=$DSF_DATA_CACHE"
-    echo "${SAMPLE_CMD[*]}"
-    echo "${EVAL_CMD[*]} --dependency=$DEPEND_TYPE:<sampling job> ${EVAL_SCRIPT[*]}"
+    echo "${PREP_OPTS[*]} ${PREP_SCRIPT[*]}"
+    echo "${SAMPLE_OPTS[*]} --dependency=afterok:<prepare job> ${SAMPLE_SCRIPT[*]}"
+    echo "${EVAL_OPTS[*]} --dependency=$DEPEND_TYPE:<sampling job> ${EVAL_SCRIPT[*]}"
     exit 0
 fi
 
-python "$RUNNER" "${WHERE[@]}" --prepare ${RUN_ARGS[@]+"${RUN_ARGS[@]}"}
 mkdir -p logs
 
-# 3. Sampling: one task per experiment.
-RUN_JOB=$("${SAMPLE_CMD[@]}")
-RUN_JOB="${RUN_JOB%%;*}"               # --parsable may append ";cluster"
+# 3. The data, split once.
+PREP_JOB=$("${PREP_OPTS[@]}" "${PREP_SCRIPT[@]}")
+PREP_JOB="${PREP_JOB%%;*}"             # --parsable may append ";cluster"
 
-# 4. Evaluation, held on the sampling array.
-EVAL_JOB=$("${EVAL_CMD[@]}" --dependency="$DEPEND_TYPE:$RUN_JOB" "${EVAL_SCRIPT[@]}")
+# 4. Sampling: one task per experiment, held until the data is there.
+RUN_JOB=$("${SAMPLE_OPTS[@]}" --dependency="afterok:$PREP_JOB" "${SAMPLE_SCRIPT[@]}")
+RUN_JOB="${RUN_JOB%%;*}"
+
+# 5. Evaluation, held on the sampling array.
+EVAL_JOB=$("${EVAL_OPTS[@]}" --dependency="$DEPEND_TYPE:$RUN_JOB" "${EVAL_SCRIPT[@]}")
 EVAL_JOB="${EVAL_JOB%%;*}"
 
 echo
 echo ">>> run id    $RUN_ID  ->  $RESULTS_ROOT/$RUN_ID"
-echo ">>> sampling  job $RUN_JOB   ($N tasks, $CORES cores each, $TIME)"
+echo ">>> data      job $PREP_JOB"
+echo ">>> sampling  job $RUN_JOB   ($N tasks, $CORES cores each, $TIME), held on afterok:$PREP_JOB"
 echo ">>> metrics   job $EVAL_JOB   ($EVAL_CORES cores, $EVAL_TIME), held on $DEPEND_TYPE:$RUN_JOB"
 echo ">>> logs in logs/, watch with: squeue -u \$USER"
