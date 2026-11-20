@@ -38,6 +38,11 @@ class DiscreteVariableSMC():
         self.target = target
 
     def sample(self, Tsmc, N, seed=0, verbose=True, callback=None):
+        """
+        Run up to Tsmc steps with N particles. `callback(t, particles,
+        logWeights, neff, resampled)` is called after each step, and the run
+        stops early if it returns a true value.
+        """
         loc_n = int(N/self.exec.P)
         rank = self.exec.rank
         mvrs_rng = RNG(seed)
@@ -90,9 +95,10 @@ class DiscreteVariableSMC():
                 logWeights[i] += new_target_logprob - current_target_logprob + reverse_logprob - forward_logprob[i]
 
             current_particles = new_particles
-            if callback is not None:
-                callback(t, current_particles, logWeights, neff, resampled)
+            stop = callback is not None and callback(t, current_particles, logWeights, neff, resampled)
             progress_bar.update(1)
+            if stop:
+                break
 
         progress_bar.close()
         logWeights = normalise(logWeights, self.exec)

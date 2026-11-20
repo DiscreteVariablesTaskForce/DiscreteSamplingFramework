@@ -128,6 +128,7 @@ squeue -u $USER                                         # your queued and runnin
 | `EXPERIMENTS` | `examples/incremental_decision_tree/experiments.py` | the experiment list |
 | `CORES` | 16 | cores per sampling task: match the experiments' chains |
 | `TIME` | 12:00:00 | time limit per sampling task (at most 3 days on `nodes`) |
+| `PREP_CORES` | 1 | cores for the prepare job; memory comes with them (about 9 GB each), and hepmass needs about 12 GB to split, so 2 or more |
 | `PREP_TIME` | 0:30:00 | time limit for the prepare job |
 | `EVAL_CORES` | 24 | cores for the evaluation job |
 | `EVAL_TIME` | 12:00:00 | time limit for the evaluation job |

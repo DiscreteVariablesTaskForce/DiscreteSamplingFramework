@@ -20,6 +20,9 @@
 #   RUN_ID=ch3 CORES=10 TIME=12:00:00 EVAL_CORES=24 EVAL_TIME=12:00:00 \
 #   MAIL_USER=you@liverpool.ac.uk slurm/submit.sh
 #
+# PREP_CORES (default 1) is the cores of the job that splits the data; a core
+# comes with about 9 GB, and splitting hepmass needs about 12 GB, so give it 2+.
+#
 # CORES is what each sampling task requests (-N 1 -n CORES). Match it to the
 # experiments' chains: a task runs one chain per core, so chains beyond CORES
 # queue inside the task and cores beyond the chain count sit idle.
@@ -94,7 +97,7 @@ esac
 # Each command is its sbatch options, then the script and its arguments; the
 # dependency on the job before goes in between, once that job's id is known.
 PREP_OPTS=(sbatch --parsable --job-name="dsf_prep_$RUN_ID"
-           --partition="$PARTITION" --nodes=1 --ntasks=1 --time="${PREP_TIME:-0:30:00}"
+           --partition="$PARTITION" --nodes=1 --ntasks="${PREP_CORES:-1}" --time="${PREP_TIME:-0:30:00}"
            ${MAIL_OPTS[@]+"${MAIL_OPTS[@]}"})
 PREP_SCRIPT=(slurm/prepare.sbatch "${WHERE[@]}" ${RUN_ARGS[@]+"${RUN_ARGS[@]}"})
 array="0-$((N - 1))"

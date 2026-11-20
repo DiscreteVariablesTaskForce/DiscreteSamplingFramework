@@ -102,7 +102,7 @@ from results_io import (INIT_NAME, PRIOR_INIT, PROPOSALS, available_cpus, experi
 # defaults, shared with run_experiments.py
 # --------------------------------------------------------------------------- #
 
-DATASETS = ("wine", "digits", "covtype", "mnist", "hepmass", "susy", "frogs")
+DATASETS = ("wine", "digits", "covtype", "mnist", "hepmass", "susy", "frogs", "sensorless")
 
 # Proposal arguments an experiment may set, by the proposal that takes them.
 # They are deliberately absent from DEFAULT_CFG: an experiment that names one
@@ -125,6 +125,15 @@ DEFAULT_CFG = dict(
     steps=20,
     particles=200,
     store_every=1,
+    # A budget of row reads (problem.row_reads) per chain or SMC run, the
+    # cost measure the samplers are compared on. Set, a run stops at the first
+    # iteration or step that reaches it, as every run of Chapter 2 stops at a
+    # budget of full evaluations; `iters` and `steps` are then only upper
+    # limits, and the states are stored at `records` evenly spaced row-read
+    # marks instead of every `store_every` iterations, so that every sampler
+    # is recorded at the same costs. None runs for `iters`/`steps`.
+    budget=None,
+    records=5_000,
     record_states=True,
     record_moves=True,
     ss_prop=0.1,
@@ -170,6 +179,13 @@ def load_susy():
     X = df.iloc[:, 1:].values
     X = pd.DataFrame(X).apply(pd.to_numeric, errors='coerce').to_numpy()
     return X, pd.Categorical(y).codes
+
+def load_sensorless():
+    """Sensorless drive diagnosis: 58,509 rows of 48 continuous features of
+    the motor current, and 11 classes of fault, 1 to 11 in the last column."""
+    df = pd.read_csv('Datasets/Sensorless_drive_diagnosis.csv', header=None)
+    return df.iloc[:, :-1].to_numpy(dtype=np.float64), pd.Categorical(df.iloc[:, -1]).codes
+
 
 def load_hepmass():
     df1 = pd.read_csv('Datasets/hepmass_train.csv')
@@ -251,8 +267,8 @@ def split_data(name):
     elif name == "digits":
         X, y = datasets.load_digits(return_X_y=True)
     else:
-        loader = dict(frogs=load_frogs, susy=load_susy,
-                      hepmass=load_hepmass, mnist=load_mnist)[name]
+        loader = dict(frogs=load_frogs, susy=load_susy, hepmass=load_hepmass,
+                      mnist=load_mnist, sensorless=load_sensorless)[name]
         X, y = loader()
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -305,13 +321,30 @@ class Recorder:
     Collects the per-iteration columns, and the states themselves on a thinned
     subset of iterations.
 
+    A run set by iterations stores a state every `every` iterations and the
+    columns every iteration. A run given a budget of row reads (`marks`, the
+    row reads at which to record, from budget_marks) records once per mark
+    instead, the state of the first iteration to reach it, so every sampler's
+    records sit at the same costs whatever an iteration of it costs, and every
+    chain that reaches its budget has exactly one record per mark. An
+    iteration that passes several marks at once is recorded once for each:
+    the repeats cost an index each, since only distinct states are stored. With `thin_columns`
+    the per-iteration columns are kept at those records only, which is what
+    keeps a run of millions of cheap iterations in memory; the run-level
+    counts (iterations, full evaluations, accepted proposals) are kept in
+    full either way.
+
     No metric is evaluated here, or anywhere else in this file: what is kept is
     the tree, and evaluate_results.py turns stored trees into metrics
     afterwards. See the module docstring for why.
     """
 
-    def __init__(self, problem, every, record_states=True):
+    def __init__(self, problem, every, record_states=True, marks=None,
+                 thin_columns=False):
         self.every = every
+        self.marks = None if marks is None else np.asarray(marks, dtype=np.float64)
+        self.thin_columns = bool(thin_columns) and self.marks is not None
+        self._next = 0
         self.cols = defaultdict(list)
         self.states = (StateRecorder(problem.num_classes, problem.alpha)
                        if record_states else None)
@@ -327,7 +360,7 @@ class Recorder:
     def tick(self):
         """
         This iteration's own duration, and the run's cumulative time, both in
-        seconds and both recorded every iteration.
+        seconds, recorded every iteration unless the columns are thinned.
 
         The clock runs from the end of the last iteration's recording to the
         start of this one, so it measures the sampler alone: what this recorder
@@ -340,23 +373,44 @@ class Recorder:
         now = time.perf_counter()
         iter_time = now - self._mark
         self._elapsed += iter_time
-        self.cols['iter_time'].append(iter_time)
-        self.cols['cumulative_time'].append(self._elapsed)
+        if not self.thin_columns:
+            self.cols['iter_time'].append(iter_time)
+            self.cols['cumulative_time'].append(self._elapsed)
 
-    def add(self, **kv):
+    def due(self, i, row_reads):
+        """
+        How many records iteration (or step) `i`, after which the run has read
+        `row_reads` rows, makes: for a run set by iterations, one if it is an
+        `every`-th iteration and none otherwise; for a run with a budget, one
+        for each mark it is the first to reach. With thinned columns, the
+        iteration and the cumulative time are recorded here, once per record.
+        """
+        if self.marks is None:
+            return int(i % self.every == 0)
+        reached = int(np.searchsorted(self.marks, row_reads, side='right'))
+        count = max(reached - self._next, 0)
+        self._next = max(reached, self._next)
+        if self.thin_columns:
+            self.cols['iteration'].extend([i] * count)
+            self.cols['cumulative_time'].extend([self._elapsed] * count)
+        return count
+
+    def add(self, count=1, **kv):
+        """Append each column's value, `count` times."""
         for k, v in kv.items():
-            self.cols[k].append(v)
+            self.cols[k].extend([v] * count)
 
-    def store(self, i, states, log_weights=None):
+    def store(self, i, states, log_weights=None, due=1):
         """
         Store this iteration's ensemble -- the single current tree for MCMC,
-        the whole particle set plus its log weights for SMC -- if this
-        iteration is one of the thinned ones.
+        the whole particle set plus its log weights for SMC -- as `due`
+        records (from due()), none if it is not one to record.
         """
         try:
-            if self.states is None or i % self.every:
+            if self.states is None:
                 return
-            self.states.record(states, iteration=i, log_weights=log_weights)
+            for _ in range(due):
+                self.states.record(states, iteration=i, log_weights=log_weights)
         finally:
             # Restart the clock: whatever was just spent recording belongs to
             # the diagnostics, not to the next sampler iteration.
@@ -367,6 +421,15 @@ class Recorder:
         if self.states is not None:
             out.update(self.states.arrays())
         return out
+
+
+def budget_marks(cfg):
+    """The row reads at which a run with a budget stores its states: `records`
+    evenly spaced marks, the last of them the budget itself. None for a run
+    set by iterations."""
+    if cfg['budget'] is None:
+        return None
+    return np.linspace(cfg['budget'] / cfg['records'], cfg['budget'], cfg['records'])
 
 
 def counters_of(proposal, target, prefix=""):
@@ -397,21 +460,40 @@ def run_mcmc(cfg):
                                 initial_proposal(cfg, problem),
                                 proposal=proposal)
 
-    rec = Recorder(problem, cfg['store_every'], cfg['record_states'])
+    budget = cfg['budget']
+    rec = Recorder(problem, cfg['store_every'], cfg['record_states'],
+                   marks=budget_marks(cfg), thin_columns=True)
+    # What became of each iteration's proposal, counted over the whole run:
+    # whether it reached the accept step on the full data (the proposal did
+    # not stay put) and whether it was then accepted.
+    tally = {'iterations': 0, 'full_evals': 0, 'accepted_full': 0}
+    moved = [proposal.n_moved]
 
     def record(i, current, accepted):
         rec.tick()
-        rec.add(n_nodes=len(current.tree), n_leaves=len(current.leaf_idx),
-                accepted=accepted, row_reads=problem.row_reads)
-        rec.store(i, (current,))
+        reads = problem.row_reads
+        full = proposal.n_moved != moved[0]
+        moved[0] = proposal.n_moved
+        tally['iterations'] += 1
+        tally['full_evals'] += full
+        tally['accepted_full'] += full and accepted
+        due = rec.due(i, reads)
+        rec.add(due if rec.thin_columns else 1,
+                n_nodes=len(current.tree), n_leaves=len(current.leaf_idx),
+                accepted=accepted, row_reads=reads)
+        rec.store(i, (current,), due=due)
+        return budget is not None and reads >= budget
 
     rec.start()
     mcmc.sample(cfg['iters'], seed=cfg['seed'], verbose=False, callback=record)
 
     out = rec.arrays()
     out.update(counters_of(proposal, target))
+    out.update(tally)
     out['acceptance_rate'] = mcmc.acceptance_rate
     out['tail_acceptance_rate'] = mcmc.tail_acceptance_rate
+    if budget is not None:
+        out['budget'] = float(budget)
     if cfg['record_moves']:
         out.update(proposal.move_log.arrays())
     return out
@@ -424,7 +506,12 @@ def run_smc(cfg):
                               initial_proposal(cfg, problem),
                               proposal=proposal, Lkernel=proposal.lkernel())
 
-    rec = Recorder(problem, cfg['store_every'], cfg['record_states'])
+    # SMC takes far fewer steps than MCMC takes iterations, and its per-step
+    # columns (the ESS above all) are wanted at every step, so only its states
+    # are thinned by the budget.
+    budget = cfg['budget']
+    rec = Recorder(problem, cfg['store_every'], cfg['record_states'],
+                   marks=budget_marks(cfg))
 
     def record(t, particles, logWeights, neff, resampled):
         rec.tick()
@@ -432,11 +519,12 @@ def run_smc(cfg):
                             len(particles))
         leaves = np.fromiter((len(p.leaf_idx) for p in particles), np.int64,
                              len(particles))
+        reads = problem.row_reads
         rec.add(ess=neff, resampled=resampled,
                 mean_nodes=sizes.mean(), max_nodes=sizes.max(),
                 mean_leaves=leaves.mean(),
                 # Every particle's moves so far, as one running total.
-                row_reads=problem.row_reads,
+                row_reads=reads,
                 # Where in the move log this step's calls end, so the moves can
                 # be sliced back out per step: the proposal is shared by every
                 # particle, so its call index runs over particle-steps.
@@ -446,7 +534,8 @@ def run_smc(cfg):
         # targets -- so the weights are stored with the states rather than
         # thrown away; they are unnormalised here and StateSeries.weights
         # normalises on the way out.
-        rec.store(t, particles, log_weights=logWeights)
+        rec.store(t, particles, log_weights=logWeights, due=rec.due(t, reads))
+        return budget is not None and reads >= budget
 
     rec.start()
     smc.sample(cfg['steps'], cfg['particles'], seed=cfg['seed'],
@@ -460,6 +549,8 @@ def run_smc(cfg):
     # early to see: the state stored for the last step carries the weights as
     # they were before it.
     out['final_logWeights'] = smc.logWeights
+    if budget is not None:
+        out['budget'] = float(budget)
     if cfg['record_moves']:
         out.update(proposal.move_log.arrays())
     return out
@@ -573,6 +664,12 @@ def validate_cfg(cfg):
                         if set(unused) & set(knobs))
         raise ValueError(f"{unused} only apply to {owners}, which this experiment "
                          f"does not run (proposals={cfg['proposals']})")
+    budget, records = cfg["budget"], cfg["records"]
+    if budget is not None and not (isinstance(budget, (int, float)) and budget > 0):
+        raise ValueError(f"budget={budget!r}: must be a positive number of row "
+                         f"reads, or None to run for a number of iterations")
+    if not (isinstance(records, int) and records >= 1):
+        raise ValueError(f"records={records!r}: must be an int >= 1")
     size = cfg["init_tree_size"]
     if size is not None and (not isinstance(size, int) or size < 0):
         raise ValueError(f"init_tree_size={size!r}: must be an int >= 0, or "
@@ -737,6 +834,12 @@ def main():
                    help="store the sampler's state every k iterations/steps "
                         "(1, every one, is what makes the per-iteration curves "
                         "dense; only distinct states cost anything)")
+    p.add_argument("--budget", type=float, default=DEFAULT_CFG['budget'],
+                   help="row reads per chain / SMC run: stop each one there "
+                        "(--iters and --steps become upper limits) and store "
+                        "the states at --records evenly spaced row-read marks")
+    p.add_argument("--records", type=int, default=DEFAULT_CFG['records'],
+                   help="states stored per run when --budget is set")
     p.add_argument("--no-states", action="store_true",
                    help="skip state recording entirely -- the run can then be "
                         "timed but not evaluated")
@@ -771,6 +874,7 @@ def main():
                dataset=args.dataset, samplers=args.samplers, proposals=args.proposals,
                chains=args.chains, iters=args.iters, steps=args.steps,
                particles=args.particles, store_every=args.store_every,
+               budget=args.budget, records=args.records,
                record_states=not args.no_states,
                record_moves=not args.no_moves, ss_prop=args.ss_prop,
                min_data=args.min_data, lam=args.lam,

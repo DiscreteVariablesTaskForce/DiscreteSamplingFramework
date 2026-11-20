@@ -16,6 +16,11 @@ class DiscreteVariableMCMC():
         self.target = target
 
     def sample(self, N, seed=0, verbose=True, callback=None, keep_samples=False, mixed_in=1000):
+        """
+        Run up to N iterations. `callback(i, current, accepted)` is called after
+        each one, and the run stops early if it returns a true value, which is
+        how a run is given a budget of cost rather than of iterations.
+        """
         rng = RNG(seed)
         initialSample = self.initialProposal.sample(rng)
         current = initialSample
@@ -57,14 +62,15 @@ class DiscreteVariableMCMC():
                 # Do nothing
                 accepted.append(False)
 
-            if callback is not None:
-                callback(i, current, was_accepted)
+            stop = callback is not None and callback(i, current, was_accepted)
             if keep_samples:
                 samples.append(copy.copy(current))
             progress_bar.update(1)
+            if stop:
+                break
 
         progress_bar.close()
-        self.acceptance_rate = sum(accepted) / N if N else float('nan')
+        self.acceptance_rate = sum(accepted) / len(accepted) if accepted else float('nan')
         tail = accepted[-mixed_in:]
         self.tail_acceptance_rate = sum(tail) / len(tail) if tail else float('nan')
         return samples
