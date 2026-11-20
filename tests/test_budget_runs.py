@@ -105,3 +105,20 @@ def test_the_analysis_reads_a_budget_run():
     assert np.array_equal(summary["rec_reads"], out["row_reads"])
     assert summary["total_reads"] == out["row_reads"][-1]
     assert summary["full_evals"] == out["full_evals"]
+
+
+def test_the_analysis_reads_an_smc_budget_run():
+    out = sd.run_smc(cfg(sampler="smc", budget=100_000, records=10))
+    X_train = sd.load_data("wine")[0]
+    lp_vals = -np.log(X_train.max(axis=0) - X_train.min(axis=0))
+    summary = ar.summarise_smc_run(out, 6.0, lp_vals, -np.log(X_train.shape[1]))
+    assert summary["budget"] == 100_000
+    assert len(summary["rec_wlp"]) == 10
+    assert summary["total_reads"] == out["row_reads"][-1] >= 100_000
+
+
+def test_the_report_takes_runs_of_different_lengths(capsys):
+    runs = [sd.run_smc(cfg(sampler="smc", budget=100_000, records=5, seed=s)) for s in (1, 2)]
+    assert len(runs[0]["ess_history"]) != len(runs[1]["ess_history"])
+    sd.report(cfg(sampler="smc"), runs)
+    assert "ESS" in capsys.readouterr().out

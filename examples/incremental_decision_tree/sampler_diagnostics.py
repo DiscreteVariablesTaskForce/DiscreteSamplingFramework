@@ -585,13 +585,16 @@ def report(cfg, results):
         print("tree size            mean %.2f  median %d  max %d"
               % (sizes.mean(), int(np.median(sizes)), sizes.max()))
     else:
-        ess = np.vstack([r['ess_history'] for r in results])
+        # Runs given a budget take different numbers of steps, so each run is
+        # summarised on its own and the summaries averaged.
+        ess = [np.asarray(r['ess_history']) for r in results]
         print("ESS                  first %.1f  min %.1f  final %.1f  (of %d particles)"
-              % (ess[:, 0].mean(), ess.min(axis=1).mean(), ess[:, -1].mean(),
-                 cfg['particles']))
-        resampled = np.vstack([r['resampled_history'] for r in results])
+              % (np.mean([e[0] for e in ess]), np.mean([e.min() for e in ess]),
+                 np.mean([e[-1] for e in ess]), cfg['particles']))
+        resampled = [np.asarray(r['resampled_history']) for r in results]
         print("resampled            %d of %d steps"
-              % (resampled.sum(axis=1).mean(), resampled.shape[1]))
+              % (np.mean([r.sum() for r in resampled]),
+                 np.mean([len(r) for r in resampled])))
 
     print("proposal time        %.2f s over %d calls"
           % (mean_of('prop_sample_time'), mean_of('prop_calls')))

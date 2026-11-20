@@ -320,6 +320,7 @@ def summarise_smc_run(run, lam, lp_vals, lp_feats):
         rec_wnodes=(w * nodes[slots]).sum(axis=1),
         rec_distinct=np.array([len(np.unique(keys[s])) for s in slots]),
         rec_ess=1.0 / (w ** 2).sum(axis=1),
+        budget=float(run["budget"]) if "budget" in run else None,
         fates=move_fates(run), counters=_counters(run))
 
 
@@ -862,28 +863,41 @@ def plot_mixing(plt, path, dataset, rows_by_experiment):
 
 
 def plot_smc_ess(plt, path, dataset, experiments, window=20):
-    """Median over runs of ESS / N against step, as a running mean over
-    `window` steps, one panel per subsample fraction."""
+    """
+    Median over runs of ESS / N against the row reads a run has used, as a
+    running mean over `window` steps, one panel per subsample fraction. Row
+    reads rather than steps, so runs that take different numbers of steps to
+    reach a budget line up, and samplers are compared at equal cost.
+    """
     panels = panels_by_ss(experiments)
     mh = [e for e in experiments if e.proposal == "MH"]
     if not panels:
         return
-    fig, axes, cols = _panel_axes(plt, len(panels))
     kernel = np.ones(window) / window
+
+    def smoothed(run):
+        frac = run["ess"] / run["particles"]
+        if len(frac) < window:
+            return dict(rec_reads=run["reads"], value=frac)
+        return dict(rec_reads=run["reads"][window - 1:],
+                    value=np.convolve(frac, kernel, mode="valid"))
+
+    grid = read_grid([e for es in panels.values() for e in es] + mh)
+    fig, axes, cols = _panel_axes(plt, len(panels))
     for ax, (ss, group) in zip(axes, panels.items()):
         for e in mh + group:
-            frac = np.median([r["ess"] / r["particles"] for r in e.runs], axis=0)
-            smooth = np.convolve(frac, kernel, mode="valid")
-            ax.plot(np.arange(len(smooth)) + window, smooth, color=e.colour, label=e.label)
+            med, _, _ = curve_on_grid([smoothed(r) for r in e.runs], "rec_reads", "value", grid)
+            ax.plot(grid, med, color=e.colour, label=e.label)
         ax.set_ylim(0, 1)
+        ax.set_xscale("log")
         _ss_title(ax, ss)
     for i, ax in enumerate(axes):
         if i % cols == 0:
             ax.set_ylabel(f"ESS / N ({window}-step mean)")
         if i >= len(axes) - cols:
-            ax.set_xlabel("Step")
+            ax.set_xlabel("Row reads per run")
     _finish(plt, fig, axes, cols, path,
-            f"{dataset}: SMC effective sample size before resampling, median over 16 runs")
+            f"{dataset}: SMC effective sample size before resampling, median over runs")
 
 
 def plot_smc_vs_mcmc(plt, path, dataset, mcmc, smc, reference):
