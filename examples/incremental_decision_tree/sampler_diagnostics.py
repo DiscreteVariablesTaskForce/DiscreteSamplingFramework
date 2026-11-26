@@ -77,6 +77,7 @@ Costs and how they are kept down:
 
 MCMC chains are independent and run in parallel across processes.
 """
+import math
 import argparse
 import json
 import os
@@ -109,7 +110,7 @@ DATASETS = ("wine", "digits", "covtype", "mnist", "hepmass", "susy", "frogs", "s
 # gets it, and one that does not gets whatever the proposal's own signature
 # says, rather than a second opinion kept here.
 PROPOSAL_KNOBS = {
-    "HINTS": ("levels", "branching", "equal_blocks"),
+    "HINTS": ("levels", "branching", "hierarchy", "equal_blocks"),
     "FlatHINTS": ("equal_blocks",),
 }
 ALL_KNOBS = frozenset(k for knobs in PROPOSAL_KNOBS.values() for k in knobs)
@@ -667,6 +668,20 @@ def validate_cfg(cfg):
                         if set(unused) & set(knobs))
         raise ValueError(f"{unused} only apply to {owners}, which this experiment "
                          f"does not run (proposals={cfg['proposals']})")
+    if "hierarchy" in cfg:
+        # Checked here rather than left to HINTSProposal, so a bad entry fails
+        # on the login node, not in a queued job.
+        hierarchy = cfg["hierarchy"]
+        if "levels" in cfg or "branching" in cfg:
+            raise ValueError("hierarchy replaces levels and branching: set one or the other")
+        if not (isinstance(hierarchy, (list, tuple)) and len(hierarchy) >= 2
+                and all(isinstance(m, int) for m in hierarchy)
+                and hierarchy[0] >= 1 and all(m >= 2 for m in hierarchy[1:])):
+            raise ValueError(f"hierarchy={hierarchy!r}: must be [m_0 >= 1, m_1 >= 2, ...]")
+        blocks = math.prod(hierarchy)
+        if abs(cfg["ss_prop"] * blocks - 1.0) > 1e-9:
+            raise ValueError(f"hierarchy {list(hierarchy)} has {blocks} blocks, so "
+                             f"ss_prop must be 1/{blocks}, not {cfg['ss_prop']}")
     budget, records = cfg["budget"], cfg["records"]
     if budget is not None and not (isinstance(budget, (int, float)) and budget > 0):
         raise ValueError(f"budget={budget!r}: must be a positive number of row "

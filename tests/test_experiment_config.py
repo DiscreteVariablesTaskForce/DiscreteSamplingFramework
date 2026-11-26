@@ -62,11 +62,28 @@ def test_the_shipped_experiment_list_is_valid():
     from run_experiments import DEFAULT_FILE, check_for_collisions, load_experiments
     here = os.path.dirname(DEFAULT_FILE)
     for path in (DEFAULT_FILE, os.path.join(here, "experiments_reference.py"),
-                 os.path.join(here, "experiments_hints_shapes.py")):
+                 os.path.join(here, "experiments_hints_shapes.py"),
+                 *(os.path.join(here, f"experiments_budget_hierarchies{suffix}.py")
+                   for suffix in ("", "_one_level", "_branch4", "_branch8"))):
         experiments = load_experiments(path)
         for entry in experiments:
             sd.validate_cfg(cfg(**entry))
         check_for_collisions(experiments)
+
+
+@pytest.mark.parametrize("bad", [
+    dict(hierarchy=[1, 2, 4], levels=2),
+    dict(hierarchy=[1, 2, 4], ss_prop=0.25),
+    dict(hierarchy=[1, 1, 8], ss_prop=1 / 8),
+    dict(hierarchy="1,2,4", ss_prop=1 / 8),
+])
+def test_a_hierarchy_that_cannot_be_run_as_given_is_refused(bad):
+    with pytest.raises(ValueError):
+        sd.validate_cfg(cfg(**dict(dict(proposals=["HINTS"]), **bad)))
+
+
+def test_a_hierarchy_with_its_own_ss_prop_is_accepted():
+    sd.validate_cfg(cfg(proposals=["HINTS"], hierarchy=[2, 4, 8], ss_prop=1 / 64))
 
 
 @pytest.mark.parametrize("bad", [

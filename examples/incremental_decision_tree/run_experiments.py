@@ -50,10 +50,19 @@ DEFAULT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "experim
 
 def load_experiments(path):
     """The EXPERIMENTS list out of a Python file, loaded by path rather than
-    import so --file can point anywhere, not just at a sibling of this script."""
+    import so --file can point anywhere, not just at a sibling of this script.
+    `path::NAME` reads GROUPS[NAME] from the file instead, so that one file can
+    hold the lists of several runs (each its own --run-id, when their file
+    names would otherwise clash)."""
+    path, _, group = path.partition("::")
     spec = importlib.util.spec_from_file_location("experiments_module", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    if group:
+        groups = getattr(module, "GROUPS", {})
+        if group not in groups:
+            raise SystemExit(f"{path} has no GROUPS[{group!r}]; it has {sorted(groups)}")
+        return groups[group]
     try:
         return module.EXPERIMENTS
     except AttributeError:

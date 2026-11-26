@@ -1038,6 +1038,78 @@ def test_hints_drops_levels_rather_than_starve_them(problem, target):
         assert levels == 0 or branching ** levels <= total
 
 
+@pytest.mark.parametrize("levels,branching", [(2, 4), (3, 4), (2, 8), (1, 64)])
+def test_hints_with_a_fixed_branching_drops_levels_it_cannot_fill(target, levels, branching):
+    """
+    A fixed branching factor is not lowered to fit a small subtree, so it is
+    the levels that have to go: a wide hierarchy must not keep more unit
+    blocks than the subtree's rows can fill at min_data rows each.
+    """
+    full = branching ** levels
+    proposal = idt.HINTSProposal(target, ss_prop=1 / full, min_data=20,
+                                 levels=levels, branching=branching)
+    assert proposal._shape(full) == (levels, branching)
+    assert proposal._shape(branching - 1) == (0, 0)
+    for total in range(1, full + 1):
+        shape_levels, shape_branching = proposal._shape(total)
+        assert shape_levels == 0 or shape_branching ** shape_levels <= total
+        assert shape_levels in (0, *range(1, levels + 1))
+
+
+def test_hints_hierarchy_is_chapter_2s_notation(target):
+    """[m_0, m_1, ..., m_H]: m_0 blocks per unit vertex and branch factor m_h
+    at level h counted up from the units, so the top splits m_H ways first."""
+    proposal = idt.HINTSProposal(target, ss_prop=1 / 16, min_data=20,
+                                 hierarchy=[2, 2, 4])
+    assert proposal.levels == 2
+    assert proposal._sweep_factors(16) == (4, 2)
+    assert proposal._sweep_factors(1000) == (4, 2)
+    # Too few rows for eight unit vertices: the units take in the level below.
+    assert proposal._sweep_factors(7) == (4,)
+    assert proposal._sweep_factors(3) == ()
+    uniform = idt.HINTSProposal(target, ss_prop=1 / 16, min_data=20, levels=2, branching=4)
+    assert uniform._sweep_factors(16) == (4, 4)
+
+
+@pytest.mark.parametrize("bad", [dict(hierarchy=[1, 2, 4], levels=2),
+                                 dict(hierarchy=[1, 2, 4], branching=2),
+                                 dict(hierarchy=[1, 2, 4], ss_prop=0.25),
+                                 dict(hierarchy=[1, 1, 8]),
+                                 dict(hierarchy=[0, 8]),
+                                 dict(hierarchy=[8])])
+def test_hints_refuses_a_hierarchy_it_cannot_build_as_given(target, bad):
+    """A hierarchy whose ss_prop disagrees with its block count, or that is
+    given beside levels or branching, is refused rather than reinterpreted."""
+    kwargs = dict(ss_prop=1 / 8, min_data=20)
+    kwargs.update(bad)
+    with pytest.raises(ValueError):
+        idt.HINTSProposal(target, **kwargs)
+
+
+@pytest.mark.parametrize("hierarchy", [[1, 2, 4], [1, 4, 2], [2, 2, 2]])
+def test_hints_mixed_hierarchy_sweeps_through_every_level(problem, target, hierarchy):
+    """With a different branch factor at each level, every sweep that splits
+    at all draws one unit block per unit vertex, and the intermediate levels
+    both accept and reject, with the full rows valid throughout."""
+    blocks = int(np.prod(hierarchy))
+    proposal = idt.HINTSProposal(target, ss_prop=1 / blocks, min_data=5,
+                                 hierarchy=hierarchy)
+    proposal.validate_intermediate = True
+    draws = []
+    draw = proposal.blocks.draw
+
+    def watched(rows, n_units, rng):
+        draws.append(n_units)
+        return draw(rows, n_units, rng)
+
+    proposal.blocks.draw = watched
+    _, moves = walk(proposal, problem, seed=21, steps=300)
+    assert len(moves) > 20 and draws
+    assert set(draws) <= {int(np.prod(hierarchy[k:])) for k in range(1, len(hierarchy))}
+    assert int(np.prod(hierarchy[1:])) in draws
+    assert proposal.n_level_accepts > 0 and proposal.n_level_rejects > 0
+
+
 @pytest.mark.parametrize("bad", [dict(branching=1), dict(branching=0),
                                  dict(levels=-1)])
 def test_hints_refuses_settings_it_would_otherwise_quietly_change(target, bad):
@@ -1535,6 +1607,43 @@ def test_hints_hierarchy_matches_the_exact_posterior(equal_blocks):
     diff = estimates.mean() - exact
     assert abs(diff) < 4.0 * se + 0.003, (
         f"the HINTS hierarchy disagrees with the exact posterior on "
+        f"P(0 nodes): {estimates.mean():.4f} vs {exact:.4f} "
+        f"({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+@pytest.mark.parametrize("hierarchy", [[1, 2, 4], [1, 4, 2]])
+def test_hints_mixed_hierarchy_matches_the_exact_posterior(hierarchy):
+    """
+    test_hints_hierarchy_matches_the_exact_posterior, for hierarchies with a
+    different branch factor at each level: the path correction has to cancel
+    the intermediate accept whichever level has the wider split.
+    """
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0, min_samples_leaf=0,
+                           max_tree_size=1)
+    problem.y = np.random.default_rng(0).integers(
+        0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
+    exact = exact_p_stump(problem, target)
+    proposal = idt.HINTSProposal(target, ss_prop=1 / 8, min_data=4, hierarchy=hierarchy)
+    assert proposal._sweep_factors(8) == tuple(reversed(hierarchy[1:]))
+
+    estimates = []
+    for seed in range(8):
+        chain = DiscreteVariableMCMC(
+            idt.IncrementalTree, target, init,
+            proposal=idt.HINTSProposal(target, ss_prop=1 / 8, min_data=4,
+                                       hierarchy=hierarchy)
+        ).sample(40_000, seed=seed, verbose=False, keep_samples=True)[5_000:]
+        estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
+
+    estimates = np.array(estimates)
+    se = estimates.std(ddof=1) / np.sqrt(len(estimates))
+    diff = estimates.mean() - exact
+    assert abs(diff) < 4.0 * se + 0.003, (
+        f"the HINTS hierarchy {hierarchy} disagrees with the exact posterior on "
         f"P(0 nodes): {estimates.mean():.4f} vs {exact:.4f} "
         f"({diff / max(se, 1e-12):+.1f} sigma)")
 

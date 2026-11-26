@@ -241,6 +241,16 @@ class HINTSProposal(IncrementalTreeProposalBase):
     branching : int, optional
         Children per data node. Default: whatever makes the primitive blocks
         come out at about `ss_prop` of the rows.
+    hierarchy : sequence of int, optional
+        The whole hierarchy in Chapter 2's notation [m_0, m_1, ..., m_H]: m_0
+        blocks of ss_prop of the rows at each unit vertex, and branch factor
+        m_h at level h, counted up from the unit vertices, so [1,2,4] is four
+        vertices under the top, each with two unit vertices of one block, and
+        [4,2] is two unit vertices of four blocks each. Replaces `levels` and
+        `branching`, which must then be left unset, and ss_prop must be
+        1 / (m_0 m_1 ... m_H). On a subtree too small for every unit vertex to
+        hold min_data rows, the unit vertices take in the level below them
+        (m_1 is dropped first, then m_2, ...) until they can.
     equal_blocks : bool, optional
         Cut the rows into unit blocks of equal size, labelled in a random order
         (True), or give every row an independent, uniformly random unit-block
@@ -251,15 +261,28 @@ class HINTSProposal(IncrementalTreeProposalBase):
     of every sweep (NestedBlocks), as HINTS prescribes.
     """
 
-    def __init__(self, target, ss_prop=0.1, min_data=None, levels=2,
-                 branching=None, equal_blocks=True):
+    def __init__(self, target, ss_prop=0.1, min_data=None, levels=None,
+                 branching=None, equal_blocks=True, hierarchy=None):
         super().__init__()
         self.target = target
         self.problem = target.problem
         self.ss_prop = float(ss_prop)
         self.min_data = int(min_data) if min_data is not None \
             else max(1, self.problem.n_rows // 10)
-        self.levels = int(levels)
+        self.hierarchy = None if hierarchy is None else tuple(int(m) for m in hierarchy)
+        if self.hierarchy is not None:
+            if levels is not None or branching is not None:
+                raise ValueError("give either hierarchy or levels/branching, not both")
+            if len(self.hierarchy) < 2 or self.hierarchy[0] < 1 \
+                    or any(m < 2 for m in self.hierarchy[1:]):
+                raise ValueError(f"hierarchy must be [m_0 >= 1, m_1 >= 2, ...], "
+                                 f"got {list(hierarchy)}")
+            blocks = math.prod(self.hierarchy)
+            if abs(self.ss_prop * blocks - 1.0) > 1e-9:
+                raise ValueError(f"hierarchy {list(self.hierarchy)} has {blocks} "
+                                 f"blocks, so ss_prop must be 1/{blocks}, got {ss_prop}")
+            levels = len(self.hierarchy) - 1
+        self.levels = 2 if levels is None else int(levels)
         self.branching = None if branching is None else int(branching)
         # Refused rather than clamped: a value quietly moved to the nearest
         # legal one is a run that reports settings it did not use.
@@ -279,7 +302,10 @@ class HINTSProposal(IncrementalTreeProposalBase):
         self.n_level_rejects = 0
         # This sweep's shape, fixed in _sample before the recursion starts: the
         # branching factor has to be the same on the reverse path, so it cannot
-        # be read off a state the sweep is changing.
+        # be read off a state the sweep is changing. _factors holds the branch
+        # factor of each level, the top level's first; _levels and _branching
+        # describe it when every level has the same factor (else _branching 0).
+        self._factors = ()
         self._levels = 0
         self._branching = 0
         # Assert after every applied primitive move that every leaf under the
@@ -310,10 +336,13 @@ class HINTSProposal(IncrementalTreeProposalBase):
     def _sample(self, x, rng):
         subtree_root, ctx = draw_subtree(x, rng)
         total = block_count(subtree_size(ctx), self.ss_prop, self.min_data)
-        self._levels, self._branching = self._shape(total)
-        self.n_blocks_total += self._branching ** self._levels if self._levels else 1
+        self._factors = self._sweep_factors(total)
+        self._levels = len(self._factors)
+        self._branching = (self._factors[0] if len(set(self._factors)) == 1 else 0)
+        n_units = math.prod(self._factors)
+        self.n_blocks_total += n_units
 
-        if self._levels == 0:
+        if not self._factors:
             # Too few rows to split: the top level is primitive, at f = 1, where
             # the surrogate is the target, so the outer accept only sees the
             # root-draw term.
@@ -327,9 +356,8 @@ class HINTSProposal(IncrementalTreeProposalBase):
             pi_out = self._log_pi(state_new, ctx.root, 1.0)
             return self._finish_sweep(x, state_new, subtree_root, pi_out, pi_in)
 
-        # A fresh random split of the rows under the subtree root, into
-        # branching**levels unit blocks.
-        n_units = self._branching ** self._levels
+        # A fresh random split of the rows under the subtree root, into one
+        # unit block per unit vertex.
         self.blocks.draw(np.concatenate(list(ctx.leaf_idx.values())), n_units, rng)
 
         forward, reverse, applied = self._children(
@@ -341,6 +369,23 @@ class HINTSProposal(IncrementalTreeProposalBase):
         state_new = self._replayed(x, ctx.root, applied)
         return self._finish_sweep(x, state_new, subtree_root, forward, reverse)
 
+    def _sweep_factors(self, total):
+        """
+        The branch factor of each level of this sweep's hierarchy, the top
+        level's first, for a subtree that splits into about `total` blocks of
+        at least min_data rows; () for a sweep too small to split at all.
+        """
+        if self.hierarchy is None:
+            levels, branching = self._shape(total)
+            return (branching,) * levels
+        factors = list(self.hierarchy[1:])  # the unit vertices' parents first
+        while factors and math.prod(factors) > total:
+            # Too many unit vertices for their rows: each unit vertex takes in
+            # the level below it, so it is a level that goes, never a block
+            # that starves.
+            factors.pop(0)
+        return tuple(reversed(factors))
+
     def _shape(self, total):
         """
         (levels, branching) for a sweep whose subtree splits into about `total`
@@ -348,9 +393,15 @@ class HINTSProposal(IncrementalTreeProposalBase):
         is too small to feed them: a level with one child adds an accept step
         that can only agree with the child below it, and charges a pass over
         its own rows for the privilege.
+
+        With a fixed branching factor the test is against that factor, not 2:
+        otherwise a wide hierarchy (8 x 8, say) would keep all of its unit
+        blocks on a subtree that can only feed a few, and its blocks would hold
+        fewer than min_data rows, some of them none.
         """
         levels = self.levels
-        while levels > 0 and 2 ** levels > total:
+        smallest = self.branching if self.branching is not None else 2
+        while levels > 0 and smallest ** levels > total:
             levels -= 1
         if levels == 0:
             return 0, 0
@@ -376,7 +427,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
             return 0.0, 0.0, ()
         pi_in = self._log_pi(state, ctx.root, f)
 
-        if depth >= self._levels:
+        if depth >= len(self._factors):
             applied = self._primitive(state, ctx, full, rng, f)
             if not applied:
                 return pi_in, pi_in, ()
@@ -419,7 +470,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
         is only filled in if a move reads it. Only leaves a move has rewritten
         mid-sweep hold real arrays, and only those are split.
         """
-        B, K = self._branching, self.problem.num_classes
+        B, K = self._factors[depth], self.problem.num_classes
         ranges = self.blocks.ranges(lo, width, B)
         order = self.blocks.order(B, rng)
         base_leaves = state._descendant_leaves(ctx.root)
@@ -653,5 +704,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
         return f * value
 
     def __repr__(self):
+        shape = (f"hierarchy={list(self.hierarchy)}" if self.hierarchy is not None
+                 else f"levels={self.levels}")
         return (f"<HINTSProposal ss_prop={self.ss_prop} min_data={self.min_data} "
-                f"levels={self.levels}>")
+                f"{shape}>")
