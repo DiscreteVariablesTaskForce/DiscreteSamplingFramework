@@ -47,6 +47,16 @@ cd "${SLURM_SUBMIT_DIR:-$PWD}"
 echo "=== $(date) | evaluation on $(hostname) | ${SLURM_NTASKS:-?} cores ==="
 
 # Experiments that already have their _metrics.npz are skipped.
+# A run submitted with SPLIT wrote each experiment as parts: join them first.
+# The run is named by this job's own --run-id and --results-root.
+MERGE_ARGS=()
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    case "${args[$i]}" in
+        --run-id|--results-root) MERGE_ARGS+=("${args[$i]}" "${args[$((i + 1))]}") ;;
+    esac
+done
+python examples/incremental_decision_tree/run_experiments.py --merge-parts "${MERGE_ARGS[@]}"
 python examples/incremental_decision_tree/evaluate_results.py --jobs "${SLURM_NTASKS:-1}" "$@"
 
 echo "=== $(date) | evaluation finished ==="

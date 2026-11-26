@@ -67,6 +67,12 @@ EVAL_TIME="${EVAL_TIME:-12:00:00}"
 DEPEND_TYPE="${DEPEND_TYPE:-afterok}"
 MAX_PARALLEL="${MAX_PARALLEL:-}"          # e.g. 8: at most 8 tasks at once
 DRY_RUN="${DRY_RUN:-0}"
+SPLIT="${SPLIT:-1}"                       # e.g. 4: each experiment as 4 tasks of chains/4
+if [ "$SPLIT" -gt 1 ]; then
+    # Smaller tasks fit into the gaps on part-used nodes; the evaluation job
+    # joins the parts before it evaluates (run_experiments.py --merge-parts).
+    RUN_ARGS+=(--split "$SPLIT")
+fi
 
 MAIL_OPTS=()
 if [ -n "${MAIL_USER:-}" ]; then

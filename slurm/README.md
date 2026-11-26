@@ -134,6 +134,7 @@ squeue -u $USER                                         # your queued and runnin
 | `EVAL_TIME` | 12:00:00 | time limit for the evaluation job |
 | `PARTITION` | nodes | |
 | `MAX_PARALLEL` | none | most sampling tasks running at once |
+| `SPLIT` | 1 | run each experiment as this many tasks of chains/SPLIT chains (set `CORES` to match), so that tasks fit into part-used nodes; the evaluation job merges the parts first |
 | `DEPEND_TYPE` | afterok | `afterany` evaluates even if some tasks failed |
 | `MAIL_USER`, `MAIL_TYPE` | off, BEGIN,END,FAIL | email notifications |
 

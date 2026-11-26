@@ -122,6 +122,11 @@ DEFAULT_CFG = dict(
     samplers=["mcmc", "smc"],
     proposals=["MH", "DA", "FlatHINTS"],
     chains=4,
+    # The seed of the first chain: chains run seeds chain_offset, ...,
+    # chain_offset + chains - 1, so that one experiment's chains can be split
+    # over several jobs (run_experiments.py --split) and still be the chains
+    # an unsplit run would have been, chain i starting from the same tree.
+    chain_offset=0,
     iters=5_000,
     steps=20,
     particles=200,
@@ -633,7 +638,7 @@ def report(cfg, results):
 # The sweep dimensions: how many configs to build and how to run them, rather
 # than a parameter of any one of them. Kept out of the per-chain cfg dict `run`
 # is called with.
-_SWEEP_KEYS = ("samplers", "proposals", "chains", "jobs")
+_SWEEP_KEYS = ("samplers", "proposals", "chains", "chain_offset", "jobs")
 
 
 def validate_cfg(cfg):
@@ -682,6 +687,9 @@ def validate_cfg(cfg):
         if abs(cfg["ss_prop"] * blocks - 1.0) > 1e-9:
             raise ValueError(f"hierarchy {list(hierarchy)} has {blocks} blocks, so "
                              f"ss_prop must be 1/{blocks}, not {cfg['ss_prop']}")
+    offset = cfg["chain_offset"]
+    if not (isinstance(offset, int) and offset >= 0):
+        raise ValueError(f"chain_offset={offset!r}: must be an int >= 0")
     budget, records = cfg["budget"], cfg["records"]
     if budget is not None and not (isinstance(budget, (int, float)) and budget > 0):
         raise ValueError(f"budget={budget!r}: must be a positive number of row "
@@ -752,7 +760,7 @@ def run_sweep(cfg, results_dir, jobs=None):
     base = {k: v for k, v in cfg.items() if k not in _SWEEP_KEYS}
     configs = [dict(base, sampler=s, proposal=q, seed=seed)
                for s in cfg['samplers'] for q in cfg['proposals']
-               for seed in range(cfg['chains'])]
+               for seed in range(cfg['chain_offset'], cfg['chain_offset'] + cfg['chains'])]
 
     # Results are held by their position in `configs`, not by the order they
     # finish in, so Run_0 is always seed 0 however the pool schedules them.
