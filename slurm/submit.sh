@@ -27,6 +27,10 @@
 # experiments' chains: a task runs one chain per core, so chains beyond CORES
 # queue inside the task and cores beyond the chain count sit idle.
 #
+# AFTER=<job id> holds the whole run (its data job, and so everything after it)
+# until that job has succeeded, e.g. a pilot's decision job
+# (slurm/bigtree_pipeline.sh). NO_EVAL=1 submits no evaluation job.
+#
 # DEPEND_TYPE=afterok (the default) runs the evaluation only if every sampling
 # task succeeded; afterany runs it regardless, evaluating whatever finished.
 # Resubmitting the same RUN_ID reruns only the experiments whose files are
@@ -67,6 +71,8 @@ EVAL_TIME="${EVAL_TIME:-12:00:00}"
 DEPEND_TYPE="${DEPEND_TYPE:-afterok}"
 MAX_PARALLEL="${MAX_PARALLEL:-}"          # e.g. 8: at most 8 tasks at once
 DRY_RUN="${DRY_RUN:-0}"
+AFTER="${AFTER:-}"                        # a job id: hold the run until it succeeds
+NO_EVAL="${NO_EVAL:-0}"                   # 1: no evaluation job
 SPLIT="${SPLIT:-1}"                       # e.g. 4: each experiment as 4 tasks of chains/4
 if [ "$SPLIT" -gt 1 ]; then
     # Smaller tasks fit into the gaps on part-used nodes; the evaluation job
@@ -102,7 +108,9 @@ esac
 
 # Each command is its sbatch options, then the script and its arguments; the
 # dependency on the job before goes in between, once that job's id is known.
-PREP_OPTS=(sbatch --parsable --job-name="dsf_prep_$RUN_ID"
+PREP_DEP=()
+if [ -n "$AFTER" ]; then PREP_DEP=(--dependency="afterok:$AFTER"); fi
+PREP_OPTS=(sbatch --parsable --job-name="dsf_prep_$RUN_ID" ${PREP_DEP[@]+"${PREP_DEP[@]}"}
            --partition="$PARTITION" --nodes=1 --ntasks="${PREP_CORES:-1}" --time="${PREP_TIME:-0:30:00}"
            ${MAIL_OPTS[@]+"${MAIL_OPTS[@]}"})
 PREP_SCRIPT=(slurm/prepare.sbatch "${WHERE[@]}" ${RUN_ARGS[@]+"${RUN_ARGS[@]}"})
@@ -122,7 +130,9 @@ if [ "$DRY_RUN" = 1 ]; then
     echo "DSF_DATA_CACHE=$DSF_DATA_CACHE"
     echo "${PREP_OPTS[*]} ${PREP_SCRIPT[*]}"
     echo "${SAMPLE_OPTS[*]} --dependency=afterok:<prepare job> ${SAMPLE_SCRIPT[*]}"
-    echo "${EVAL_OPTS[*]} --dependency=$DEPEND_TYPE:<sampling job> ${EVAL_SCRIPT[*]}"
+    if [ "$NO_EVAL" != 1 ]; then
+        echo "${EVAL_OPTS[*]} --dependency=$DEPEND_TYPE:<sampling job> ${EVAL_SCRIPT[*]}"
+    fi
     exit 0
 fi
 
@@ -137,12 +147,15 @@ RUN_JOB=$("${SAMPLE_OPTS[@]}" --dependency="afterok:$PREP_JOB" "${SAMPLE_SCRIPT[
 RUN_JOB="${RUN_JOB%%;*}"
 
 # 5. Evaluation, held on the sampling array.
-EVAL_JOB=$("${EVAL_OPTS[@]}" --dependency="$DEPEND_TYPE:$RUN_JOB" "${EVAL_SCRIPT[@]}")
-EVAL_JOB="${EVAL_JOB%%;*}"
+EVAL_JOB="none"
+if [ "$NO_EVAL" != 1 ]; then
+    EVAL_JOB=$("${EVAL_OPTS[@]}" --dependency="$DEPEND_TYPE:$RUN_JOB" "${EVAL_SCRIPT[@]}")
+    EVAL_JOB="${EVAL_JOB%%;*}"
+fi
 
 echo
 echo ">>> run id    $RUN_ID  ->  $RESULTS_ROOT/$RUN_ID"
-echo ">>> data      job $PREP_JOB"
+echo ">>> data      job $PREP_JOB${AFTER:+   (held on afterok:$AFTER)}"
 echo ">>> sampling  job $RUN_JOB   ($N tasks, $CORES cores each, $TIME), held on afterok:$PREP_JOB"
 echo ">>> metrics   job $EVAL_JOB   ($EVAL_CORES cores, $EVAL_TIME), held on $DEPEND_TYPE:$RUN_JOB"
 echo ">>> logs in logs/, watch with: squeue -u \$USER"
