@@ -215,6 +215,7 @@ class FileEvaluation:
         # they need themselves and this process only averages what they find.
         self.ensembles, self.todo, self.per_tree, self.cols = [], [], [], []
         self.iterations = np.zeros(0, dtype=np.int64)
+        self.budget_run = False
         for run, arrays in enumerate(iter_experiment_hdf5(self.path, "state_")):
             series = states_of(arrays)
             if series is None:
@@ -225,7 +226,14 @@ class FileEvaluation:
             if run == 0:
                 [(_, X_fit, y_fit)] = splits_for(self.dataset, ("train",))
                 check_fitted_to(self.path, series, X_fit, y_fit)
+                self.budget_run = "budget" in arrays
                 self.iterations = series.record_iterations()[::self.stride].copy()
+            elif self.budget_run:
+                # The chains of a budget run can hold different numbers of
+                # records (see save); the longest one's are kept.
+                iterations = series.record_iterations()[::self.stride]
+                if len(iterations) > len(self.iterations):
+                    self.iterations = iterations.copy()
             cols = self._checkpointed(run)
             picked = None if cols is not None else picked_ensembles(series, self.stride)
             self.cols.append(cols)
@@ -303,17 +311,27 @@ class FileEvaluation:
         # Runs of one experiment share iters/steps and store_every, so they
         # line up; a run cut short (a crash mid-sweep) is truncated to the
         # common length rather than refused, so the rest of the sweep still
-        # plots.
+        # plots. The chains of a budget run record at the same row reads, but
+        # one that reaches its iteration cap before the budget stops early
+        # with fewer records: it is padded with nan past its last record
+        # instead, so the other chains keep theirs.
         lengths = {len(next(iter(c.values()))) for c in per_run if c}
-        n_points = min(lengths) if lengths else 0
+        n_points = (max if self.budget_run else min)(lengths) if lengths else 0
         if len(lengths) > 1:
             tqdm.write(f"    [warning] {os.path.basename(self.path)}: runs hold "
-                       f"{sorted(lengths)} evaluated records; truncating to "
-                       f"{n_points}")
+                       f"{sorted(lengths)} evaluated records; "
+                       + (f"padding the shorter with nan to {n_points}" if self.budget_run
+                          else f"truncating to {n_points}"))
+
+        def column(values):
+            # Padded along the records only: a confusion matrix is one
+            # (classes x classes) block per record.
+            values = np.asarray(values[:n_points], dtype=np.float64)
+            pad = [(0, n_points - len(values))] + [(0, 0)] * (values.ndim - 1)
+            return np.pad(values, pad, constant_values=np.nan)
 
         keys = sorted(set().union(*(c.keys() for c in per_run))) if per_run else []
-        matrices = {k: np.stack([np.asarray(c[k][:n_points]) for c in per_run])
-                    for k in keys}
+        matrices = {k: np.stack([column(c[k]) for c in per_run]) for k in keys}
         # On disk before the checkpoints it replaces are deleted.
         save_npz(self.out_path,
                  dict(iterations=self.iterations[:n_points], stride=self.stride,
@@ -429,9 +447,12 @@ def summarise(out_path, matrices, evaluated, seconds):
     for split in SPLITS:
         key = f"{split}_accuracy"
         if key in matrices:
-            final = matrices[key][:, -1]
-            line += (f"   {split} accuracy {final.mean():.4f}"
-                     f" (+/- {final.std():.4f})")
+            # Each run's last record; a budget-run chain that stopped early
+            # is padded with nan past its own.
+            final = np.array([row[np.isfinite(row)][-1] if np.isfinite(row).any() else np.nan
+                              for row in matrices[key]])
+            line += (f"   {split} accuracy {np.nanmean(final):.4f}"
+                     f" (+/- {np.nanstd(final):.4f})")
     # tqdm.write, not print, so the line lands above the bars instead of
     # through one of them.
     tqdm.write(line)

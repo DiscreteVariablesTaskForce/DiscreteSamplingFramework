@@ -78,7 +78,10 @@ CACHE_VERSION = 2
 # reference is drawn in muted ink as the baseline every panel shares.
 PROPOSAL_NAMES = {"MH": "MH", "DA": "DA", "FlatHINTS": "Flat HINTS", "HINTS": "HINTS"}
 COLOURS = {"HINTS": "#2a78d6", "Flat HINTS": "#eb6834", "DA": "#1baf7a",
-           "HINTS 2×4": "#eda100", "MH": "#52514e", "MH (reference)": "#52514e"}
+           "MH": "#52514e", "MH (reference)": "#52514e"}
+# Non-binary HINTS hierarchies by their number of levels below the top: one,
+# two, three or more. Checked with the colours above.
+SHAPE_COLOURS = {1: "#6a4ce2", 2: "#eda100", 3: "#e24d8b"}
 GRID_INK = "#d9d8d4"
 # Figure titles; --no-titles drops them for figures captioned elsewhere.
 SHOW_TITLES = True
@@ -107,7 +110,7 @@ class Experiment:
     sampler: str
     proposal: str
     ss_prop: float
-    shape: str | None           # "<levels>x<branching>", HINTS only
+    shape: str | None           # Chapter 2's [m_0,m_1,...], HINTS only
     reference: bool
     path: str
     metrics_path: str
@@ -123,7 +126,7 @@ class Experiment:
             return "MH (reference)" if self.reference and self.separate else "MH"
         name = PROPOSAL_NAMES[self.proposal]
         if self.proposal == "HINTS" and self.shape and self.shape != binary_shape(self.ss_prop):
-            name += " " + self.shape.replace("x", "×")
+            name += " " + self.shape
         return name
 
     @property
@@ -132,16 +135,40 @@ class Experiment:
 
     @property
     def colour(self):
-        return COLOURS[self.label]
+        if self.label in COLOURS:
+            return COLOURS[self.label]
+        # A non-binary HINTS hierarchy is coloured by its number of levels
+        # below the top. Comparing many hierarchies at one ss_prop needs a
+        # figure of its own; this only keeps the standard ones readable.
+        depth = self.shape.count(",")
+        return SHAPE_COLOURS[min(depth, max(SHAPE_COLOURS))]
 
     def sort_key(self):
         return (self.reference, PROPOSALS.index(self.proposal),
                 self.label != PROPOSAL_NAMES[self.proposal], -self.ss_prop)
 
 
+def hierarchy_label(hierarchy):
+    """A hierarchy in Chapter 2's notation [m_0, m_1, ...]: m_0 blocks at each
+    unit vertex, then the branch factor of each level above it, so [1,8] is
+    eight unit vertices under the top vertex with no intermediate levels."""
+    return "[" + ",".join(str(int(m)) for m in hierarchy) + "]"
+
+
+def entry_hierarchy(entry):
+    """A HINTS config entry's hierarchy, [m_0, m_1, ...]: given as such, or as
+    levels of one branch factor over unit vertices of one block; None when
+    the entry leaves the shape to HINTS."""
+    if "hierarchy" in entry:
+        return hierarchy_label(entry["hierarchy"])
+    if "levels" in entry:
+        return hierarchy_label([1] + [entry["branching"]] * entry["levels"])
+    return None
+
+
 def binary_shape(ss_prop):
     """The default HINTS hierarchy at ss_prop: binary levels down to blocks of it."""
-    return f"{int(round(np.log2(1 / ss_prop)))}x2"
+    return hierarchy_label([1] + [2] * int(round(np.log2(1 / ss_prop))))
 
 
 def _as_list(value):
@@ -167,8 +194,7 @@ def discover(results_root, run_ids, reference=None):
                     if not os.path.exists(path):
                         print(f"[warning] {path} is listed in config.json but missing; skipped")
                         continue
-                    shape = (f"{entry['levels']}x{entry['branching']}"
-                             if proposal == "HINTS" and "levels" in entry else None)
+                    shape = entry_hierarchy(entry) if proposal == "HINTS" else None
                     out.append(Experiment(
                         run_id=run_id, dataset=cfg["dataset"], sampler=sampler,
                         proposal=proposal,
@@ -360,8 +386,9 @@ def summarise_file(job):
 
 
 def load_metrics(experiment, keys=("test_log_loss", "test_accuracy")):
-    """{metric: (n_runs, n_records)} off the experiment's _metrics.npz, checked to
-    line up with the stored records; {} if it has not been evaluated."""
+    """{metric: [one array per run, over that run's records]} off the
+    experiment's _metrics.npz, checked to line up with the stored records; {}
+    if it has not been evaluated."""
     if not os.path.exists(experiment.metrics_path):
         print(f"[warning] {experiment.metrics_path} missing: run evaluate_results.py; "
               f"prediction measures left blank for {experiment.label} {experiment.ss_label}")
@@ -371,15 +398,22 @@ def load_metrics(experiment, keys=("test_log_loss", "test_accuracy")):
             raise SystemExit(f"{experiment.metrics_path} was evaluated at --stride "
                              f"{int(saved['stride'])}; this analysis needs every record")
         iterations = saved["iterations"]
+        lengths = [len(r["rec_it"]) for r in experiment.runs]
         # A run with a budget records at the same row reads in every chain,
-        # but at different iterations, so only the record count can be checked.
-        lines_up = (len(iterations) == len(experiment.runs[0]["rec_it"])
+        # but at different iterations, so only the record count can be checked;
+        # a chain that hit its iteration cap first holds fewer records, and
+        # its metrics are padded with nan to the longest chain's.
+        lines_up = (len(iterations) == max(lengths)
                     if experiment.runs[0].get("budget") else
                     np.array_equal(iterations, experiment.runs[0]["rec_it"]))
         if not lines_up:
-            raise SystemExit(f"{experiment.metrics_path} does not line up with the "
-                             f"records of {experiment.path}")
-        return {k: saved[k] for k in keys if k in saved.files}
+            raise SystemExit(
+                f"{experiment.metrics_path} holds {len(iterations)} records, and "
+                f"the chains of {experiment.path} hold {min(lengths)} to "
+                f"{max(lengths)}: it does not line up with them. Evaluate it "
+                f"again with evaluate_results.py --overwrite.")
+        return {k: [saved[k][i, :n] for i, n in enumerate(lengths)]
+                for k in keys if k in saved.files}
 
 
 # --------------------------------------------------------------------------- #
@@ -549,7 +583,7 @@ def smc_row(experiment, reference):
     out["final_nodes"] = nanmedian([r["rec_wnodes"][-1] for r in runs])
     for key, name in (("test_log_loss", "log_loss"), ("test_accuracy", "accuracy")):
         if key in experiment.metrics:
-            out[name] = nanmedian(experiment.metrics[key][:, -1])
+            out[name] = nanmedian([m[-1] for m in experiment.metrics[key]])
             if reference is not None and key in reference.metrics:
                 ref = float(np.concatenate(
                     [m[second_half(r)] for r, m in zip(reference.runs, reference.metrics[key])]).mean())
@@ -770,6 +804,12 @@ def _ss_title(ax, ss):
     ax.set_title(f"$\\omega = 1/{round(1 / ss)}$")
 
 
+def chain_count(experiments):
+    """How many chains the experiments hold, for captions: "64", or "16 to 64"."""
+    counts = sorted({len(e.runs) for e in experiments})
+    return str(counts[0]) if len(counts) == 1 else f"{counts[0]} to {counts[-1]}"
+
+
 def plot_progress(plt, path, dataset, experiments, reference, y_key, ylabel, level=None,
                   ref_values=None, metrics_key=None, ref_value=None):
     """Median and interquartile range over the chains of a per-record value
@@ -808,7 +848,8 @@ def plot_progress(plt, path, dataset, experiments, reference, y_key, ylabel, lev
             ax.set_xlabel("Row reads")
     note = "; dotted: the level" if level is not None else "; dotted: the reference's second-half mean"
     _finish(plt, fig, axes, cols, path,
-            f"{dataset}: median over 16 chains, interquartile range shaded{note}")
+            f"{dataset}: median over {chain_count([reference] + experiments)} chains, "
+            f"interquartile range shaded{note}")
 
 
 SS_MARKERS = {4: "o", 8: "s", 16: "^", 32: "D"}
@@ -971,7 +1012,8 @@ def analyse_dataset(dataset, experiments, out, plt):
     rows = [mcmc_row(e, level, reference) for e in mcmc]
     rows.append(mcmc_row(reference, level, None))
     write_table(os.path.join(tables, f"{dataset}_mcmc"), rows, MCMC_COLUMNS,
-                f"MCMC on {dataset}, each sampler over its own run: median over 16 chains, "
+                f"MCMC on {dataset}, each sampler over its own run: median over "
+                f"{chain_count(mcmc + [reference])} chains, "
                 f"apart from $\\hat R$ and the second-half means (nodes, log loss, accuracy) "
                 f"pooled over them. Burn-in is in row reads, to the level {level:,.0f}.")
 

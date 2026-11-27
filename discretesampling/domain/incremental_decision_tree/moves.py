@@ -1,7 +1,8 @@
 from collections import deque
-from math import log
+from math import exp, log
 
 import numpy as np
+from scipy.special import gammaln
 
 from discretesampling.domain.incremental_decision_tree.problem import large_neg
 
@@ -268,9 +269,35 @@ def evaluate_subtree_move(state, ctx, move, node, idx, rng):
     mp_f = move_probs(problem, len(state.tree))
     mp_b = move_probs(problem, len(state.tree) + {"grow": 1, "prune": -1}.get(move, 0))
 
+    informed = problem.split_proposal == "informed"
+    xbart = problem.split_proposal == "xbart"
+    # Lakshminarayanan et al.'s optimal proposal on a random subset of the rows.
+    marginal = problem.split_proposal == "marginal"
+    # Chipman et al.'s node values for the threshold; the feature stays uniform.
+    node_thr = problem.threshold_proposal == "node" and not (informed or xbart or marginal)
+
     if move == "grow":
-        feat = problem.random_feature(rng)
-        thr, lp_thr = problem.random_threshold(feat, rng)
+        if xbart:
+            cands = _xbart_splits(problem, ctx.leaf_idx[node])
+            feat, thr, lq_split = _draw_xbart(problem, cands, rng)
+        elif marginal:
+            # S from the leaf's rows as this sampler sees them, as for "informed".
+            cands = _marginal_splits(problem, informed_subset(problem, ctx.leaf_idx[node], rng))
+            feat, thr, lq_split = _draw_xbart(problem, cands, rng)
+        elif informed:
+            # S comes from the leaf's rows as this sampler sees them (a HINTS
+            # unit vertex: its block; MH and DA: all of them), the same rows the
+            # reverse prune will draw its S from.
+            log_w, intervals = _best_splits(problem, informed_subset(problem, ctx.leaf_idx[node], rng))
+            feat, thr, lq_split = _draw_informed(problem, log_w, intervals, rng)
+        elif node_thr:
+            feat = problem.random_feature(rng)
+            thr, lq_thr = _node_threshold(problem, ctx.leaf_idx[node], feat, rng)
+            lq_split = lq_thr + problem.lp_feats
+        else:
+            feat = problem.random_feature(rng)
+            thr, lp_thr = problem.random_threshold(feat, rng)
+            lq_split = lp_thr + problem.lp_feats
         # The mask, when computed, is carried on the move so applying it does
         # not split the same rows again.
         valid, go_left = check_grow_split(problem, idx, feat, thr)
@@ -293,7 +320,7 @@ def evaluate_subtree_move(state, ctx, move, node, idx, rng):
         q_b = mp_b["prune"] / denom_b
         if q_f <= 0.0 or q_b <= 0.0:
             return large_neg, {'node': node, 'feat': feat, 'thr': thr, 'stump': stump}
-        prop_correction = log(q_b) - log(q_f) - lp_thr - problem.lp_feats
+        prop_correction = log(q_b) - log(q_f) - lq_split
 
     elif move == "prune":
         if node == ctx.root and len(state.tree) > 1:
@@ -316,7 +343,61 @@ def evaluate_subtree_move(state, ctx, move, node, idx, rng):
             # Reverse grow is barred at the cap: the return path has zero
             # probability, so the prune has to be rejected outright.
             return large_neg, {'node': node, 'feat': None, 'thr': None, 'stump': stump}
-        prop_correction = log(q_b) + lp_old_thr + problem.lp_feats - log(q_f)
+        if xbart:
+            lq_old = _lq_xbart(problem, _xbart_splits(problem, subtree_node_data(state, ctx, node)),
+                               old_feat, float(state.nodes[node][4]))
+        elif marginal:
+            # The reverse grow's density, from an S drawn from the rows the grow drew from.
+            cands = _marginal_splits(
+                problem, informed_subset(problem, subtree_node_data(state, ctx, node), rng))
+            lq_old = _lq_xbart(problem, cands, old_feat, float(state.nodes[node][4]))
+        elif informed:
+            # The reverse grow's density of re-drawing this split, from an S
+            # drawn from the node's rows: the rows the grow drew from.
+            log_w, intervals = _best_splits(
+                problem, informed_subset(problem, subtree_node_data(state, ctx, node), rng))
+            old_thr = float(state.nodes[node][4])
+            lq_old = log_w[old_feat] + _lq_thr(problem, old_feat, old_thr, intervals[old_feat])
+        elif node_thr:
+            lq_old = problem.lp_feats + _lq_node_threshold(
+                problem, _node_values(problem, subtree_node_data(state, ctx, node), old_feat),
+                old_feat, float(state.nodes[node][4]))
+        else:
+            lq_old = lp_old_thr + problem.lp_feats
+        prop_correction = log(q_b) + lq_old - log(q_f)
+
+    elif marginal:  # change: one S for both directions (the node keeps its rows)
+        cands = _marginal_splits(
+            problem, informed_subset(problem, subtree_node_data(state, ctx, node), rng))
+        feat, thr, lq_new = _draw_xbart(problem, cands, rng)
+        old_feat = int(state.nodes[node][3])
+        prop_correction = (_lq_xbart(problem, cands, old_feat, float(state.nodes[node][4]))
+                           - lq_new)
+
+    elif xbart:  # change, XBART-style: the node's rows give both directions
+        cands = _xbart_splits(problem, subtree_node_data(state, ctx, node))
+        feat, thr, lq_new = _draw_xbart(problem, cands, rng)
+        old_feat = int(state.nodes[node][3])
+        prop_correction = (_lq_xbart(problem, cands, old_feat, float(state.nodes[node][4]))
+                           - lq_new)
+
+    elif node_thr:  # change with node values: the node keeps its rows
+        rows = subtree_node_data(state, ctx, node)
+        feat = problem.random_feature(rng)
+        thr, lq_new = _node_threshold(problem, rows, feat, rng)
+        old_feat = int(state.nodes[node][3])
+        prop_correction = (_lq_node_threshold(problem, _node_values(problem, rows, old_feat), old_feat,
+                                              float(state.nodes[node][4]))
+                           - lq_new)
+
+    elif informed:  # change, informed: one S for both directions
+        log_w, intervals = _best_splits(
+            problem, informed_subset(problem, subtree_node_data(state, ctx, node), rng))
+        feat, thr, lq_new = _draw_informed(problem, log_w, intervals, rng)
+        old_feat = int(state.nodes[node][3])
+        old_thr = float(state.nodes[node][4])
+        prop_correction = (log_w[old_feat] + _lq_thr(problem, old_feat, old_thr, intervals[old_feat])
+                           - lq_new)
 
     else:  # change
         feat = problem.random_feature(rng)
@@ -498,3 +579,319 @@ def weighted_root_correction(state, state_new, subtree_root, gamma):
     elif subtree_root != 0:
         return large_neg
     return log_root_norm(state, gamma) - log_root_norm(state_new, gamma)
+
+
+# ------------- the informed split proposal (problem.split_proposal) ------------- #
+#
+# For a grow or a change, draw a small subset S of the moved node's rows (with
+# replacement, so its distribution depends only on the set of rows), score every
+# feature by the information gain of its best split on S, and propose
+#     feature ~ (1 - eps) softmax(eta * gain) + eps uniform,
+#     threshold ~ (1 - eps_thr) uniform on that feature's best interval on S
+#                 + eps_thr * the base threshold proposal.
+# The mixture keeps every split's density positive. A move and its reverse
+# draw S from the same set of rows (a grown leaf's rows are the new node's; a
+# changed node keeps its rows), so for each S the pair is an exact MH step with
+# the q ratio below, and mixing over S keeps it exact.
+
+def informed_subset(problem, rows, rng):
+    """
+    S: problem.informed_rows draws, with replacement, from `rows`; or, with
+    informed_rows = 0, all of `rows` (problem.informed_fraction = 1) or a random
+    informed_fraction of them, without replacement (DA sets it to its ss_prop,
+    so that its proposal sees as many rows as its screen). Either way S's
+    distribution depends only on the set of rows. Index-only.
+    """
+    rows = np.asarray(rows)
+    if len(rows) == 0:
+        return rows
+    if problem.informed_rows > 0:
+        return rows[rng.nprng.integers(0, len(rows), problem.informed_rows)]
+    frac = getattr(problem, "informed_fraction", 1.0)
+    if frac >= 1.0:
+        return rows
+    k = max(2, int(round(frac * len(rows))))
+    return rows[rng.nprng.choice(len(rows), min(k, len(rows)), replace=False)]
+
+
+def _best_splits(problem, S):
+    """
+    (log feature weights, best interval (lo, hi) per feature or None) on S.
+    Reads every feature and the label of each row of S.
+    """
+    F, K = problem.n_features, problem.num_classes
+    if len(S) < 2:
+        return np.full(F, -log(F)), [None] * F
+    if len(S) > 2048:
+        return _best_splits_large(problem, S)
+    X = np.asarray(problem.X[S], dtype=float)
+    y = problem.y[S]
+    problem.reads.n += len(S) * (F + 1)
+    n = len(S)
+    order = np.argsort(X, axis=0, kind="stable")
+    xs = np.take_along_axis(X, order, axis=0)
+    onehot = (y[order][..., None] == np.arange(K)).astype(float)
+    left = np.cumsum(onehot, axis=0)[:-1]
+    total = onehot.sum(axis=0)
+    right = total[None] - left
+    nl = np.arange(1, n, dtype=float)[:, None]
+
+    def n_entropy(c, m):
+        with np.errstate(divide="ignore", invalid="ignore"):
+            p = c / m[..., None]
+            return -(m[..., None] * np.where(p > 0, p * np.log(p), 0.0)).sum(-1)
+    gain = (n_entropy(total[None], np.full((1, F), float(n)))
+            - n_entropy(left, nl) - n_entropy(right, n - nl))
+    gain = np.where(xs[1:] > xs[:-1], gain, -np.inf)
+    best = np.argmax(gain, axis=0)
+    g = gain[best, np.arange(F)]
+    ok = np.isfinite(g)
+    w = np.full(F, 1.0 / F)
+    if ok.any():
+        z = problem.informed_eta * (g[ok] - g[ok].max())
+        soft = np.zeros(F)
+        soft[ok] = np.exp(z) / np.exp(z).sum()
+        w = (1.0 - problem.informed_eps) * soft + problem.informed_eps / F
+    intervals = [(float(xs[b, f]), float(xs[b + 1, f])) if ok[f] else None
+                 for f, b in enumerate(best)]
+    return np.log(w), intervals
+
+
+def _lq_thr(problem, feat, thr, interval):
+    """log q(thr | feat, S): the best-interval part mixed with the base proposal."""
+    base = problem.lp_thr_proposal(feat, thr)
+    if interval is None:
+        return base
+    lo, hi = interval
+    e = problem.informed_eps_thr
+    inside = (1.0 - e) / (hi - lo) if lo <= thr < hi else 0.0
+    return log(inside + e * exp(base))
+
+
+def _draw_informed(problem, log_w, intervals, rng):
+    """(feat, thr, log q(feat, thr | S))."""
+    w = np.exp(log_w)
+    feat = int(rng.nprng.choice(problem.n_features, p=w / w.sum()))
+    interval = intervals[feat]
+    if interval is not None and rng.random() >= problem.informed_eps_thr:
+        thr = interval[0] + rng.random() * (interval[1] - interval[0])
+    else:
+        thr, _ = problem.random_threshold(feat, rng)
+    return feat, thr, log_w[feat] + _lq_thr(problem, feat, thr, interval)
+
+
+# ------------- XBART's split rule as an MH proposal (problem.split_proposal) ------------- #
+#
+# He, Yalov and Hahn (2019), Section 3.1, Eq. 4: the variable and cutpoint are
+# drawn jointly in proportion to exp(log marginal likelihood of the split) on
+# all the node's rows, over the candidate cutpoints of their Section 3.3 (every
+# j-th sorted value, j = (n_node - 2) // max(sqrt(n), 100)). Here the marginal
+# likelihood is the model's own Dirichlet-Multinomial, the threshold is uniform
+# in the gap after the chosen cutpoint, and informed_eps of the uniform
+# proposal keeps every split (the starting trees' included) reversible.
+
+def _xbart_splits(problem, rows):
+    """Candidate gaps over all the node's rows: (feat, lo, hi, score) arrays and
+    log of the normaliser sum(exp(score)). Reads every feature and label."""
+    rows = np.asarray(rows)
+    n, F, K = len(rows), problem.n_features, problem.num_classes
+    problem.reads.n += n * (F + 1)
+    empty = (np.zeros(0, int), np.zeros(0), np.zeros(0), np.zeros(0), -np.inf)
+    m = max(problem.min_samples_leaf, 1)
+    if n < 2 * m:
+        return empty
+    y = problem.y[rows]
+    a0, alpha = problem._a0, problem.alpha
+    total = np.bincount(y, minlength=K).astype(float)
+
+    def log_dm(counts, size):
+        return gammaln(a0) - gammaln(a0 + size) + gammaln(counts + alpha).sum(-1) - K * gammaln(alpha)
+    parent = log_dm(total, float(n))
+    C = max(int(np.sqrt(problem.n_rows)), 100)
+    step = max(1, (n - 2) // C)
+    fs, los, his, scores = [], [], [], []
+    for f in range(F):
+        x = np.asarray(problem.X[rows, f], dtype=float)
+        order = np.argsort(x, kind="stable")
+        xs = x[order]
+        pos = np.arange(m - 1, n - m, step)          # cut after sorted position pos
+        pos = pos[xs[pos] < xs[pos + 1]]
+        if len(pos) == 0:
+            continue
+        onehot = np.zeros((n, K))
+        onehot[np.arange(n), y[order]] = 1.0
+        left = np.cumsum(onehot, axis=0)[pos]
+        nl = (pos + 1).astype(float)
+        score = log_dm(left, nl) + log_dm(total - left, n - nl) - parent
+        fs.append(np.full(len(pos), f))
+        los.append(xs[pos])
+        his.append(xs[pos + 1])
+        scores.append(score)
+    if not fs:
+        return empty
+    feat, lo, hi, score = (np.concatenate(a) for a in (fs, los, his, scores))
+    top = score.max()
+    return feat, lo, hi, score, float(top + np.log(np.exp(score - top).sum()))
+
+
+def _lq_xbart(problem, cands, feat, thr):
+    """log q(feat, thr): the XBART part (the gap holding thr, if any) mixed with
+    informed_eps of the uniform feature and base threshold proposal."""
+    feats, lo, hi, score, log_z = cands
+    eps = problem.informed_eps
+    base = eps * exp(problem.lp_feats + problem.lp_thr_proposal(feat, thr))
+    hit = np.flatnonzero((feats == feat) & (lo <= thr) & (thr < hi))
+    part = 0.0
+    if len(hit):
+        j = hit[0]
+        part = (1.0 - eps) * exp(score[j] - log_z) / (hi[j] - lo[j])
+    return log(part + base)
+
+
+def _draw_xbart(problem, cands, rng):
+    feats, lo, hi, score, log_z = cands
+    if len(feats) and rng.random() >= problem.informed_eps:
+        p = np.exp(score - log_z)
+        j = int(rng.nprng.choice(len(p), p=p / p.sum()))
+        feat = int(feats[j])
+        thr = lo[j] + rng.random() * (hi[j] - lo[j])
+    else:
+        feat = problem.random_feature(rng)
+        thr, _ = problem.random_threshold(feat, rng)
+    return feat, thr, _lq_xbart(problem, cands, feat, thr)
+
+
+# ------------- the marginal-likelihood split proposal (problem.split_proposal) ------------- #
+#
+# Lakshminarayanan, Roy and Teh's (2013) optimal proposal, with the split
+# likelihoods computed on a random subset S of the moved node's rows (drawn as
+# for "informed"): every (feature, gap between adjacent distinct values on S)
+# is weighted by exp(the Dirichlet-Multinomial marginal log-likelihood gain of
+# cutting there), one is drawn, and the threshold is uniform in its gap; with
+# probability informed_eps the uniform feature and base threshold proposal is
+# used instead. Draw and density are _draw_xbart and _lq_xbart: only the
+# candidates differ (all gaps on S, rather than XBART's thinned gaps on all rows).
+
+def _marginal_splits(problem, S):
+    """(feat, lo, hi, score, log_z) over every gap of every feature on S.
+    Reads every feature and the label of each row of S."""
+    S = np.asarray(S)
+    n, F, K = len(S), problem.n_features, problem.num_classes
+    empty = (np.zeros(0, int), np.zeros(0), np.zeros(0), np.zeros(0), -np.inf)
+    if n < 2:
+        return empty
+    problem.reads.n += n * (F + 1)
+    y = problem.y[S]
+    a0, alpha = problem._a0, problem.alpha
+    total = np.bincount(y, minlength=K).astype(float)
+
+    def log_dm(counts, size):
+        return gammaln(a0) - gammaln(a0 + size) + gammaln(counts + alpha).sum(-1) - K * gammaln(alpha)
+    parent = log_dm(total, float(n))
+    nl = np.arange(1, n, dtype=float)
+    fs, los, his, scores = [], [], [], []
+    # All features at once while that fits comfortably, else one at a time.
+    chunk = F if n * F * K <= 4_000_000 else 1
+    for f0 in range(0, F, chunk):
+        X = np.asarray(problem.X[S, f0:f0 + chunk], dtype=float)
+        order = np.argsort(X, axis=0, kind="stable")
+        xs = np.take_along_axis(X, order, axis=0)
+        onehot = (y[order][..., None] == np.arange(K)).astype(float)
+        left = np.cumsum(onehot, axis=0)[:-1]                   # (n-1, chunk, K)
+        score = (log_dm(left, nl[:, None]) + log_dm(total[None, None] - left, n - nl[:, None])
+                 - parent)
+        ok = xs[1:] > xs[:-1]                                    # a gap between distinct values
+        b, j = np.nonzero(ok)
+        fs.append(f0 + j)
+        los.append(xs[b, j])
+        his.append(xs[b + 1, j])
+        scores.append(score[b, j])
+    feat, lo, hi, score = (np.concatenate(a) for a in (fs, los, his, scores))
+    if len(feat) == 0:
+        return empty
+    top = score.max()
+    return feat, lo, hi, score, float(top + np.log(np.exp(score - top).sum()))
+
+
+def _n_entropy(c, m):
+    """m times the entropy of the class counts c (rows of c), in nats."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        p = c / m[..., None]
+        return -(m[..., None] * np.where(p > 0, p * np.log(p), 0.0)).sum(-1)
+
+
+def _best_splits_large(problem, S):
+    """_best_splits one feature at a time, for an S too big to hold every
+    feature's sorted class counts at once. The same result."""
+    F, K = problem.n_features, problem.num_classes
+    y = problem.y[S]
+    problem.reads.n += len(S) * (F + 1)
+    n = len(S)
+    total = np.bincount(y, minlength=K).astype(float)
+    parent = float(_n_entropy(total[None], np.array([float(n)]))[0])
+    nl = np.arange(1, n, dtype=float)
+    g = np.full(F, -np.inf)
+    intervals = [None] * F
+    for f in range(F):
+        x = np.asarray(problem.X[S, f], dtype=float)
+        order = np.argsort(x, kind="stable")
+        xs = x[order]
+        onehot = np.zeros((n, K))
+        onehot[np.arange(n), y[order]] = 1.0
+        left = np.cumsum(onehot, axis=0)[:-1]
+        gain = parent - _n_entropy(left, nl) - _n_entropy(total[None] - left, n - nl)
+        gain = np.where(xs[1:] > xs[:-1], gain, -np.inf)
+        b = int(np.argmax(gain))
+        if np.isfinite(gain[b]):
+            g[f] = gain[b]
+            intervals[f] = (float(xs[b]), float(xs[b + 1]))
+    ok = np.isfinite(g)
+    w = np.full(F, 1.0 / F)
+    if ok.any():
+        z = problem.informed_eta * (g[ok] - g[ok].max())
+        soft = np.zeros(F)
+        soft[ok] = np.exp(z) / np.exp(z).sum()
+        w = (1.0 - problem.informed_eps) * soft + problem.informed_eps / F
+    return np.log(w), intervals
+
+
+# ------------- Chipman, George and McCulloch's (1998) node split values ------------- #
+#
+# The threshold is a cut between two adjacent distinct values that the moved
+# node's own rows take for the feature, chosen uniformly over those cuts and
+# placed uniformly inside the gap (every point of a gap splits the node's rows
+# the same way, so this is their uniform choice among available split values,
+# with a density). node_thr_eps of the uniform proposal over the training range
+# keeps every threshold proposable, so splits made some other way (the prior's
+# starting trees) can still be undone. A move and its reverse see the same rows
+# at the node, so the reverse density is computed from the same values.
+
+def _node_values(problem, rows, feat):
+    """Sorted distinct values of `feat` over the node's rows (reads each row once)."""
+    rows = np.asarray(rows)
+    problem.reads.n += len(rows)
+    return np.unique(np.asarray(problem.X[rows, feat], dtype=float))
+
+
+def _lq_node_threshold(problem, values, feat, thr):
+    """log q(thr | feat, node rows)."""
+    base = problem.lp_thr_proposal(feat, thr)
+    if len(values) < 2:
+        return base
+    eps = problem.node_thr_eps
+    part = 0.0
+    if values[0] <= thr < values[-1]:
+        j = int(np.searchsorted(values, thr, side="right")) - 1
+        part = (1.0 - eps) / (len(values) - 1) / (values[j + 1] - values[j])
+    return log(part + eps * exp(base))
+
+
+def _node_threshold(problem, rows, feat, rng):
+    """(thr, log q(thr | feat, node rows))."""
+    values = _node_values(problem, rows, feat)
+    if len(values) >= 2 and rng.random() >= problem.node_thr_eps:
+        j = int(rng.nprng.integers(0, len(values) - 1))
+        thr = values[j] + rng.random() * (values[j + 1] - values[j])
+    else:
+        thr, _ = problem.random_threshold(feat, rng)
+    return thr, _lq_node_threshold(problem, values, feat, thr)

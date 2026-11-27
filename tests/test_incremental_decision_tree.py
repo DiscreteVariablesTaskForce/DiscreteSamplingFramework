@@ -1021,8 +1021,6 @@ def test_hints_surrogate_at_full_data_is_the_target(problem, target):
         assert proposal._log_pi(x, 0, 1.0) == pytest.approx(target.eval(x), abs=1e-9)
 
 
-
-
 def test_hints_drops_levels_rather_than_starve_them(problem, target):
     """
     A level that cannot be split into at least two blocks decides nothing and
@@ -1182,7 +1180,6 @@ def test_flat_hints_keeps_every_intermediate_state_admissible(problem, target):
     proposal.validate_intermediate = True
     _, moves = walk(proposal, problem, seed=21, steps=400)
     assert len(moves) > 20
-
 
 
 @pytest.mark.parametrize("levels, branching", [(1, None), (2, None), (3, 2)])
@@ -1864,6 +1861,160 @@ def test_weighted_root_samples_the_same_posterior():
                 f"{name} with a weighted root disagrees with MH on P(nodes={k}): "
                 f"{got[:, k].mean():.4f} vs {reference[:, k].mean():.4f} "
                 f"({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+@pytest.mark.parametrize("rows", [16, 0])
+@pytest.mark.parametrize("name", ["MH", "DA", "HINTS"])
+def test_informed_split_proposal_matches_the_exact_posterior(name, rows):
+    """
+    The informed split proposal (feature and threshold favoured by how well
+    they split a subset of the node's rows, mixed with the uniform choice)
+    changes only the proposal, so every sampler must still hit the exact
+    P(0 nodes) of the one-split problem.
+    """
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0, min_samples_leaf=0, max_tree_size=1,
+                           threshold_proposal="data", split_proposal="informed", informed_rows=rows)
+    problem.y = np.random.default_rng(0).integers(0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
+    exact = exact_p_stump(problem, target)
+    make = {"MH": lambda: idt.IncrementalTreeProposal(),
+            "DA": lambda: idt.DAProposal(target, ss_prop=0.25, min_data=4),
+            "HINTS": lambda: idt.HINTSProposal(target, ss_prop=0.1, min_data=4, levels=2,
+                                               fused_buckets=True)}[name]
+    estimates = []
+    for seed in range(8):
+        chain = DiscreteVariableMCMC(idt.IncrementalTree, target, init, proposal=make()
+                                     ).sample(40_000, seed=seed, verbose=False, keep_samples=True)[5_000:]
+        estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
+    estimates = np.array(estimates)
+    se = estimates.std(ddof=1) / np.sqrt(len(estimates))
+    diff = estimates.mean() - exact
+    assert abs(diff) < 4.0 * se + 0.003, (
+        f"{name} with informed splits disagrees with the exact posterior on P(0 nodes): "
+        f"{estimates.mean():.4f} vs {exact:.4f} ({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+@pytest.mark.parametrize("name", ["MH", "DA", "HINTS"])
+def test_marginal_split_proposal_matches_the_exact_posterior(name):
+    """
+    The marginal-likelihood split proposal (Lakshminarayanan et al.'s optimal
+    proposal on a 16-row subset of the node's rows, mixed with the uniform
+    choice) changes only the proposal: every sampler must keep the exact
+    P(0 nodes) of the one-split problem.
+    """
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0, min_samples_leaf=0, max_tree_size=1,
+                           threshold_proposal="data", split_proposal="marginal", informed_rows=16)
+    problem.y = np.random.default_rng(0).integers(0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
+    exact = exact_p_stump(problem, target)
+    make = {"MH": lambda: idt.IncrementalTreeProposal(),
+            "DA": lambda: idt.DAProposal(target, ss_prop=0.25, min_data=4),
+            "HINTS": lambda: idt.HINTSProposal(target, ss_prop=0.1, min_data=4, levels=2,
+                                               fused_buckets=True)}[name]
+    estimates = []
+    for seed in range(8):
+        chain = DiscreteVariableMCMC(idt.IncrementalTree, target, init, proposal=make()
+                                     ).sample(40_000, seed=seed, verbose=False, keep_samples=True)[5_000:]
+        estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
+    estimates = np.array(estimates)
+    se = estimates.std(ddof=1) / np.sqrt(len(estimates))
+    diff = estimates.mean() - exact
+    assert abs(diff) < 4.0 * se + 0.003, (
+        f"{name} with marginal-likelihood splits disagrees with the exact posterior on P(0 nodes): "
+        f"{estimates.mean():.4f} vs {exact:.4f} ({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+@pytest.mark.parametrize("name", ["MH", "DA", "HINTS"])
+def test_node_threshold_proposal_matches_the_exact_posterior(name):
+    """Chipman et al.'s node split values (with a small uniform share) change only
+    the proposal: every sampler must keep the exact P(0 nodes)."""
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0, min_samples_leaf=0, max_tree_size=1,
+                           threshold_proposal="node")
+    problem.y = np.random.default_rng(0).integers(0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
+    exact = exact_p_stump(problem, target)
+    make = {"MH": lambda: idt.IncrementalTreeProposal(),
+            "DA": lambda: idt.DAProposal(target, ss_prop=0.25, min_data=4),
+            "HINTS": lambda: idt.HINTSProposal(target, ss_prop=0.1, min_data=4, levels=2,
+                                               fused_buckets=True)}[name]
+    estimates = []
+    for seed in range(8):
+        chain = DiscreteVariableMCMC(idt.IncrementalTree, target, init, proposal=make()
+                                     ).sample(40_000, seed=seed, verbose=False, keep_samples=True)[5_000:]
+        estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
+    estimates = np.array(estimates)
+    se = estimates.std(ddof=1) / np.sqrt(len(estimates))
+    diff = estimates.mean() - exact
+    assert abs(diff) < 4.0 * se + 0.003, (
+        f"{name} with node split values disagrees with the exact posterior on P(0 nodes): "
+        f"{estimates.mean():.4f} vs {exact:.4f} ({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+def test_xbart_split_proposal_matches_the_exact_posterior():
+    """XBART's split rule as an MH proposal (all the node's rows, joint over
+    candidate cutpoints, a small uniform share) must keep the exact P(0 nodes)."""
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0, min_samples_leaf=0, max_tree_size=1,
+                           threshold_proposal="data", split_proposal="xbart", informed_eps=0.05)
+    problem.y = np.random.default_rng(0).integers(0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
+    exact = exact_p_stump(problem, target)
+    estimates = []
+    for seed in range(8):
+        chain = DiscreteVariableMCMC(idt.IncrementalTree, target, init, proposal=idt.IncrementalTreeProposal()
+                                     ).sample(40_000, seed=seed, verbose=False, keep_samples=True)[5_000:]
+        estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
+    estimates = np.array(estimates)
+    se = estimates.std(ddof=1) / np.sqrt(len(estimates))
+    diff = estimates.mean() - exact
+    assert abs(diff) < 4.0 * se + 0.003, (
+        f"MH with XBART splits disagrees with the exact posterior on P(0 nodes): "
+        f"{estimates.mean():.4f} vs {exact:.4f} ({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+def test_informed_split_proposal_samples_the_same_posterior():
+    """
+    On the deeper problem of test_weighted_root_samples_the_same_posterior
+    (trees up to four nodes), MH, DA and HINTS with informed splits must agree
+    with plain MH on the posterior over tree size.
+    """
+    def problem_with(**kw):
+        pr = make_problem(n=300, d=4, seed=0, lam=6.0, min_samples_leaf=20, max_tree_size=4, **kw)
+        pr.y = np.random.default_rng(5).integers(0, 2, size=pr.n_rows)
+        pr._root_counts = None
+        return pr
+
+    def pmf(problem, make, seeds=8, iters=25000, burn=4000):
+        target = idt.IncrementalTreeTarget(problem)
+        init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
+        out = []
+        for seed in range(seeds):
+            chain = DiscreteVariableMCMC(idt.IncrementalTree, target, init, proposal=make(target)
+                                         ).sample(iters, seed=seed, verbose=False, keep_samples=True)[burn:]
+            sizes = idt.tree_sizes(chain)
+            out.append([float(np.mean(sizes == k)) for k in range(5)])
+        return np.array(out)
+
+    reference = pmf(problem_with(), lambda t: idt.IncrementalTreeProposal())
+    informed = problem_with(threshold_proposal="data", split_proposal="informed", informed_rows=32)
+    for name, make in [("MH", lambda t: idt.IncrementalTreeProposal()),
+                       ("DA", lambda t: idt.DAProposal(t, ss_prop=0.25, min_data=20)),
+                       ("HINTS", lambda t: idt.HINTSProposal(t, ss_prop=0.1, min_data=15,
+                                                             fused_buckets=True))]:
+        got = pmf(informed, make)
+        for k in range(5):
+            diff = got[:, k].mean() - reference[:, k].mean()
+            se = np.sqrt(got[:, k].var(ddof=1) / len(got) + reference[:, k].var(ddof=1) / len(reference))
+            assert abs(diff) < 3.5 * se + 0.002, (
+                f"{name} with informed splits disagrees with MH on P(nodes={k}): "
+                f"{got[:, k].mean():.4f} vs {reference[:, k].mean():.4f} ({diff / max(se, 1e-12):+.1f} sigma)")
 
 
 def test_non_uniform_threshold_proposal_keeps_the_target():

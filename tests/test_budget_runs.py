@@ -117,6 +117,52 @@ def test_the_analysis_reads_an_smc_budget_run():
     assert summary["total_reads"] == out["row_reads"][-1] >= 100_000
 
 
+def test_a_chain_cut_short_by_its_iteration_cap_keeps_the_others_records(tmp_path):
+    """A budget-run chain that hits its iteration cap first has fewer records:
+    the evaluation pads its metrics with nan instead of cutting every chain to
+    it, and the analysis hands each chain back its own records."""
+    import io
+    import types
+    from tqdm.auto import tqdm
+    import evaluate_results as er
+
+    # Chain 1 stops on its cap after 3 of the 5 records.
+    lengths = (5, 3)
+    evaluation = object.__new__(er.FileEvaluation)
+    evaluation.path = str(tmp_path / "x.h5")
+    evaluation.out_path = str(tmp_path / "x_metrics.npz")
+    evaluation.partial_dir = str(tmp_path / "x_metrics.partial")
+    evaluation.stride, evaluation.budget_run = 1, True
+    evaluation.evaluated, evaluation.started = 0, 0.0
+    evaluation.iterations = np.arange(5) * 10
+    evaluation.cols = [{"test_log_loss": np.arange(n) + 1.0,
+                        "test_confusion": np.ones((n, 2, 2))} for n in lengths]
+    evaluation.bar = tqdm(total=1, file=io.StringIO())
+    evaluation.save()
+
+    with np.load(evaluation.out_path) as saved:
+        loss = saved["test_log_loss"]
+        assert loss.shape == (2, 5) and len(saved["iterations"]) == 5
+        confusion = saved["test_confusion"]
+        assert confusion.shape == (2, 5, 2, 2) and np.isnan(confusion[1, 3:]).all()
+    assert np.array_equal(loss[0], [1, 2, 3, 4, 5])
+    assert np.array_equal(loss[1, :3], [1, 2, 3]) and np.isnan(loss[1, 3:]).all()
+
+    experiment = types.SimpleNamespace(
+        metrics_path=evaluation.out_path, path=evaluation.path, label="DA", ss_label="1/4",
+        runs=[dict(budget=1e6, rec_it=np.arange(n)) for n in lengths])
+    metrics = ar.load_metrics(experiment)["test_log_loss"]
+    assert [len(m) for m in metrics] == list(lengths)
+    assert not np.isnan(np.concatenate(metrics)).any()
+
+    # A file cut to the shortest chain, as the evaluation used to write, is
+    # refused rather than misread.
+    np.savez(evaluation.out_path, iterations=np.arange(3), stride=1,
+             test_log_loss=np.ones((2, 3)))
+    with pytest.raises(SystemExit, match="--overwrite"):
+        ar.load_metrics(experiment)
+
+
 def test_the_report_takes_runs_of_different_lengths(capsys):
     runs = [sd.run_smc(cfg(sampler="smc", budget=100_000, records=5, seed=s)) for s in (1, 2)]
     assert len(runs[0]["ess_history"]) != len(runs[1]["ess_history"])

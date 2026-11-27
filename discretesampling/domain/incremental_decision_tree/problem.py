@@ -45,17 +45,42 @@ class IncrementalTreeProblem:
                        target's support (3 -- below that a leaf is empty for
                        practical purposes)
     max_tree_size    : node count at which grow moves stop being offered
+    split_proposal   : how grow and change moves pick a split -- "uniform" (the
+                       default) draws the feature uniformly and the threshold
+                       from threshold_proposal; "informed" draws a small random
+                       subset S of the moved node's rows and favours the
+                       features and thresholds that split S well (see
+                       moves.informed_split), mixed with the uniform choice so
+                       that every split keeps a positive proposal density.
+                       "marginal" is Lakshminarayanan, Roy and Teh's (2013)
+                       optimal proposal on the same subset S: every (feature,
+                       gap) on S weighted by exp(Dirichlet-Multinomial marginal
+                       log-likelihood gain), threshold uniform in the gap,
+                       informed_eps of the uniform choice.
+                       "xbart" is XBART's split rule (He, Yalov and Hahn,
+                       2019) made an MH proposal: (feature, cutpoint) drawn
+                       jointly over XBART's candidate cutpoints in proportion to
+                       exp(marginal-likelihood gain) on ALL the node's rows,
+                       with only informed_eps of the uniform choice.
     threshold_proposal : how split thresholds are PROPOSED -- "uniform" draws
                        from the feature's whole range, "data" draws an interval
                        between adjacent observed values and then a point inside
                        it, so proposals concentrate where the data is. This does
                        not change the target: the threshold PRIOR is uniform on
                        the range either way (see lp_vals vs lp_thr_proposal).
+                       "node" is Chipman, George and McCulloch's (1998) choice:
+                       a cut between two adjacent values that the moved node's
+                       own rows take, uniformly over those cuts, with
+                       node_thr_eps of the uniform proposal kept so that any
+                       threshold (the prior's starting trees' included) can be
+                       proposed back (see moves._node_threshold).
     """
 
     def __init__(self, X, y, num_classes=None, alpha=1.0, lam=2.0,
                  min_samples_leaf=3, max_tree_size=None,
-                 threshold_proposal="uniform"):
+                 threshold_proposal="uniform", split_proposal="uniform",
+                 informed_rows=64, informed_eta=1.0, informed_eps=0.25,
+                 informed_eps_thr=0.25, node_thr_eps=0.1):
         self.X = np.asfortranarray(X)
         self.y = np.ascontiguousarray(y).astype(np.int64, copy=False)
         self.num_classes = int(num_classes if num_classes is not None
@@ -90,11 +115,23 @@ class IncrementalTreeProblem:
             self.vals.append((v_min, v_max))
             self.lp_vals.append(-log(v_max - v_min))
 
-        if threshold_proposal not in ("uniform", "data"):
-            raise ValueError("threshold_proposal must be 'uniform' or 'data', "
+        if threshold_proposal not in ("uniform", "data", "node"):
+            raise ValueError("threshold_proposal must be 'uniform', 'data' or 'node', "
                              f"got {threshold_proposal!r}")
         self.threshold_proposal = threshold_proposal
         self._intervals = {}
+        if split_proposal not in ("uniform", "informed", "xbart", "marginal"):
+            raise ValueError("split_proposal must be 'uniform', 'informed', 'xbart' or 'marginal', "
+                             f"got {split_proposal!r}")
+        self.split_proposal = split_proposal
+        # The informed proposal's settings: rows in the subset S, the weight on
+        # a feature's information gain (in nats over S), and the shares kept
+        # for the uniform feature and the base threshold proposal.
+        self.informed_rows = int(informed_rows)
+        self.informed_eta = float(informed_eta)
+        self.informed_eps = float(informed_eps)
+        self.informed_eps_thr = float(informed_eps_thr)
+        self.node_thr_eps = float(node_thr_eps)
 
         self._all_rows = None
         self._root_counts = None

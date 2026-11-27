@@ -36,6 +36,9 @@ class DAProposal(IncrementalTreeProposalBase):
         self.ss_prop = float(ss_prop)
         self.min_data = int(min_data) if min_data is not None \
             else max(1, self.problem.n_rows // 10)
+        # With informed splits on all the rows (informed_rows = 0), score them on
+        # an ss_prop share of the node's rows, as many as the screen sees.
+        self.problem.informed_fraction = self.ss_prop
 
     def sample(self, x, rng=RNG(), target=None):
         return self._timed(self._sample, x, rng)

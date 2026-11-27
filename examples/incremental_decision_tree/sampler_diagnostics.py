@@ -149,6 +149,20 @@ DEFAULT_CFG = dict(
     # drawn with probability proportional to (rows under it + 1)^-gamma. 0 is
     # the uniform draw of the thesis runs (see moves.draw_weighted_subtree).
     root_weight=0.0,
+    # How every proposal picks a split for a grow or change: thresholds
+    # "uniform" over the feature's range or "data" (between observed values);
+    # splits "uniform" (feature uniform, threshold as above) or "informed"
+    # (favouring splits that separate a small subset of the node's rows; see
+    # moves.informed_split). The defaults are the thesis runs'.
+    threshold_proposal="uniform",
+    split_proposal="uniform",
+    # The informed and xbart split proposals' settings (moves.informed_split,
+    # moves._xbart_splits): subset size, gain weight, uniform shares.
+    informed_rows=64,
+    informed_eta=1.0,
+    informed_eps=0.25,
+    informed_eps_thr=0.25,
+    node_thr_eps=0.1,
     lam=15.0,
     min_samples_leaf=3,
     max_tree_size=None,
@@ -295,7 +309,12 @@ def build(cfg, X_train, y_train):
     problem = idt.IncrementalTreeProblem(
         X_train, y_train, lam=cfg['lam'],
         min_samples_leaf=cfg['min_samples_leaf'],
-        max_tree_size=cfg['max_tree_size'])
+        max_tree_size=cfg['max_tree_size'],
+        threshold_proposal=cfg.get('threshold_proposal', "uniform"),
+        split_proposal=cfg.get('split_proposal', "uniform"),
+        informed_rows=cfg.get('informed_rows', 64), informed_eta=cfg.get('informed_eta', 1.0),
+        informed_eps=cfg.get('informed_eps', 0.25), informed_eps_thr=cfg.get('informed_eps_thr', 0.25),
+        node_thr_eps=cfg.get('node_thr_eps', 0.1))
     target = idt.IncrementalTreeTarget(problem)
     name = cfg['proposal']
     if name == "MH":
