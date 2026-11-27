@@ -3,7 +3,7 @@ import math
 from discretesampling.base.random import RNG
 from discretesampling.domain.incremental_decision_tree.problem import BARRED
 from discretesampling.domain.incremental_decision_tree.moves import (
-    draw_subtree, evaluate_subtree_move, select_move, subtree_leaves,
+    evaluate_subtree_move, select_move, subtree_leaves,
     subtree_size)
 from discretesampling.domain.incremental_decision_tree.subsampling import (
     block_count, sample_partition_block)
@@ -41,7 +41,7 @@ class DAProposal(IncrementalTreeProposalBase):
         return self._timed(self._sample, x, rng)
 
     def _sample(self, x, rng):
-        subtree_root, ctx = draw_subtree(x, rng)
+        subtree_root, ctx = self._draw_root(x, rng)
         move, node = select_move(x, ctx, rng)
         if move == "stay":
             self._note(move, node, 0)

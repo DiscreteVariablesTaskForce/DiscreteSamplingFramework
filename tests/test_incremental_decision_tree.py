@@ -1110,6 +1110,56 @@ def test_hints_mixed_hierarchy_sweeps_through_every_level(problem, target, hiera
     assert proposal.n_level_accepts > 0 and proposal.n_level_rejects > 0
 
 
+@pytest.mark.parametrize("option", ["bucket_rows", "lazy_counts", "fused_buckets"])
+@pytest.mark.parametrize("shape", [dict(levels=3, branching=2), dict(levels=2, branching=4),
+                                   dict(hierarchy=[1, 2, 4], ss_prop=1 / 8)])
+def test_hints_cheaper_bookkeeping_keeps_the_same_chain(problem, target, option, shape):
+    """
+    bucket_rows, lazy_counts and fused_buckets only change how a sweep's
+    blocks and counts are worked out, so from the same seed the chain must pass through the same
+    trees with the same rows in every leaf, while reading no more rows.
+    """
+    shape = dict(shape)
+    ss = shape.pop("ss_prop", 0.05)
+
+    def run(**extra):
+        proposal = idt.HINTSProposal(target, ss_prop=ss, min_data=5, **shape, **extra)
+        start = problem.reads.n
+        _, moves = walk(proposal, problem, seed=31, steps=250)
+        return moves, problem.reads.n - start
+
+    plain, plain_reads = run()
+    cheap, cheap_reads = run(**{option: True})
+    assert len(plain) == len(cheap) > 20
+    for (_, a), (_, b) in zip(plain, cheap):
+        assert np.array_equal(np.asarray(a.tree), np.asarray(b.tree))
+        assert set(a.leaf_idx) == set(b.leaf_idx)
+        for leaf in a.leaf_idx:
+            assert np.array_equal(a.leaf_idx[leaf], b.leaf_idx[leaf])
+            assert np.array_equal(a.counts[leaf], b.counts[leaf])
+    assert cheap_reads <= plain_reads
+
+
+def test_hints_lazy_level_change_is_the_full_sums_difference(problem, target):
+    """lazy_counts gives a level the change in its surrogate over the leaves
+    its moves touched; that has to be the difference of the full sums."""
+    proposal = idt.HINTSProposal(target, ss_prop=0.05, min_data=5, levels=3,
+                                 branching=2, lazy_counts=True)
+    change = proposal._surrogate_change
+    seen = []
+
+    def checked(old, new, root, applied, f):
+        value = change(old, new, root, applied, f)
+        full = proposal._log_pi(new, root, f) - proposal._log_pi(old, root, f)
+        assert value == pytest.approx(full, rel=1e-9, abs=1e-6)
+        seen.append(value)
+        return value
+
+    proposal._surrogate_change = checked
+    walk(proposal, problem, seed=5, steps=300)
+    assert len(seen) > 20
+
+
 @pytest.mark.parametrize("bad", [dict(branching=1), dict(branching=0),
                                  dict(levels=-1)])
 def test_hints_refuses_settings_it_would_otherwise_quietly_change(target, bad):
@@ -1646,6 +1696,174 @@ def test_hints_mixed_hierarchy_matches_the_exact_posterior(hierarchy):
         f"the HINTS hierarchy {hierarchy} disagrees with the exact posterior on "
         f"P(0 nodes): {estimates.mean():.4f} vs {exact:.4f} "
         f"({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+def test_hints_untempered_matches_the_exact_posterior():
+    """
+    The exact-posterior check for HINTS with untempered surrogates: the path
+    correction has to make the sweep exact whatever surrogate the levels use.
+    """
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0, min_samples_leaf=0,
+                           max_tree_size=1)
+    problem.y = np.random.default_rng(0).integers(
+        0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
+    exact = exact_p_stump(problem, target)
+    estimates = []
+    for seed in range(8):
+        chain = DiscreteVariableMCMC(
+            idt.IncrementalTree, target, init,
+            proposal=idt.HINTSProposal(target, ss_prop=0.1, min_data=4, levels=2,
+                                       temper=False)
+        ).sample(40_000, seed=seed, verbose=False, keep_samples=True)[5_000:]
+        estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
+
+    estimates = np.array(estimates)
+    se = estimates.std(ddof=1) / np.sqrt(len(estimates))
+    diff = estimates.mean() - exact
+    assert abs(diff) < 4.0 * se + 0.003, (
+        f"untempered HINTS disagrees with the exact posterior on P(0 nodes): "
+        f"{estimates.mean():.4f} vs {exact:.4f} ({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+@pytest.mark.parametrize("extra", [dict(lazy_counts=True),
+                                   dict(lazy_counts=True, temper=False)])
+def test_hints_lazy_counts_matches_the_exact_posterior(extra):
+    """The exact-posterior check for HINTS with lazy_counts (and with it
+    untempered): its acceptance probabilities are the default's, summed over
+    fewer leaves."""
+    problem = make_problem(n=60, d=2, seed=0, lam=1.0, min_samples_leaf=0,
+                           max_tree_size=1)
+    problem.y = np.random.default_rng(0).integers(
+        0, 2, size=problem.n_rows).astype(np.int64)
+    problem._root_counts = None
+
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
+    exact = exact_p_stump(problem, target)
+    estimates = []
+    for seed in range(8):
+        chain = DiscreteVariableMCMC(
+            idt.IncrementalTree, target, init,
+            proposal=idt.HINTSProposal(target, ss_prop=0.1, min_data=4, levels=2, **extra)
+        ).sample(40_000, seed=seed, verbose=False, keep_samples=True)[5_000:]
+        estimates.append(float(np.mean(idt.tree_sizes(chain) == 0)))
+
+    estimates = np.array(estimates)
+    se = estimates.std(ddof=1) / np.sqrt(len(estimates))
+    diff = estimates.mean() - exact
+    assert abs(diff) < 4.0 * se + 0.003, (
+        f"HINTS with {extra} disagrees with the exact posterior on P(0 nodes): "
+        f"{estimates.mean():.4f} vs {exact:.4f} ({diff / max(se, 1e-12):+.1f} sigma)")
+
+
+def _brute_root_logp(tree, root, gamma):
+    """log P(root | tree) for the weighted root draw, recomputed by brute force
+    from every internal node's descendant leaves."""
+    if not tree.tree:
+        return 0.0
+
+    def w(v):
+        n = sum(len(tree.leaf_idx[leaf]) for leaf in tree._descendant_leaves(v)
+                if leaf in tree.leaf_idx)
+        return (n + 1.0) ** -gamma
+    return float(np.log(w(root)) - np.log(sum(w(v) for v in tree.list_nodes)))
+
+
+@pytest.mark.parametrize("make", [
+    lambda target: idt.IncrementalTreeProposal(),
+    lambda target: idt.DAProposal(target, ss_prop=0.25, min_data=10),
+    lambda target: idt.HINTSProposal(target, ss_prop=0.05, min_data=5, levels=3,
+                                     branching=2, lazy_counts=True)])
+def test_weighted_root_correction_is_the_reverse_draw(problem, target, make):
+    """With root_weight set, the root term a proposal records must be
+    log P(rho | T') - log P(rho | T) of the weighted draw."""
+    proposal = make(target)
+    proposal.root_weight = 0.8
+
+    def probe(proposal, x, x_prime):
+        d = x_prime._smc_diag
+        rho = d['subtree_root']
+        expected = _brute_root_logp(x_prime, rho, 0.8) - _brute_root_logp(x, rho, 0.8)
+        assert d['root_term'] == pytest.approx(expected, abs=1e-9)
+        return len(x.tree), len(x_prime.tree)
+
+    _, _, sizes = walk(proposal, problem, seed=3, steps=400, record=True, probe=probe)
+    assert len(sizes) > 20 and max(max(s) for s in sizes) >= 3
+
+
+def test_weighted_root_draw_follows_its_weights(problem):
+    """The weighted draw picks each internal node with probability
+    (n + 1)^-gamma / W, and gamma = 0 is the uniform draw, RNG call for call."""
+    from discretesampling.domain.incremental_decision_tree.moves import (
+        draw_weighted_subtree, node_rows)
+    tree = largest_tree_visited(problem, seed=2)
+    pool = tree.list_nodes
+    assert len(pool) >= 3
+    n = node_rows(tree)
+    for v in pool:
+        assert n[v] == sum(len(tree.leaf_idx[leaf]) for leaf in tree._descendant_leaves(v)
+                           if leaf in tree.leaf_idx)
+    rng = RNG(0)
+    draws = [draw_weighted_subtree(tree, rng, 1.0)[0] for _ in range(20_000)]
+    w = np.array([(n[v] + 1.0) ** -1.0 for v in pool])
+    freq = np.array([np.mean(np.array(draws) == v) for v in pool])
+    assert np.allclose(freq, w / w.sum(), atol=0.015)
+    a, b = RNG(7), RNG(7)
+    for _ in range(50):
+        assert draw_subtree(tree, a)[0] == idt.IncrementalTreeProposal()._draw_root(tree, b)[0]
+
+
+def test_weighted_root_samples_the_same_posterior():
+    """
+    MH, DA and HINTS with the subtree root drawn towards small subtrees
+    (root_weight=1) must agree with plain MH on the posterior over tree size.
+
+    Calibrated (Results/overnight/calibrate_weighted_root.py): on this problem,
+    whose trees reach four internal nodes and put a fifth of their mass on two
+    or more, the weighted draw with the uniform draw's correction (wrong) is
+    off by 4.5-5.8 sigma on P(nodes=0..3), and the right one sits within
+    0.2 sigma. A problem with less mass on deep trees cannot tell them apart.
+    """
+    problem = make_problem(n=300, d=4, seed=0, lam=6.0,
+                           min_samples_leaf=20, max_tree_size=4)
+    problem.y = np.random.default_rng(5).integers(0, 2, size=problem.n_rows)
+    problem._root_counts = None
+    target = idt.IncrementalTreeTarget(problem)
+    init = idt.IncrementalTreeInitialProposal(problem, n_nodes=0)
+
+    def pmf(make, seeds=8, iters=25000, burn=4000):
+        out = []
+        for seed in range(seeds):
+            chain = DiscreteVariableMCMC(
+                idt.IncrementalTree, target, init, proposal=make()
+            ).sample(iters, seed=seed, verbose=False, keep_samples=True)[burn:]
+            sizes = idt.tree_sizes(chain)
+            out.append([float(np.mean(sizes == k)) for k in range(5)])
+        return np.array(out)
+
+    def weighted(proposal):
+        proposal.root_weight = 1.0
+        return proposal
+
+    reference = pmf(lambda: idt.IncrementalTreeProposal())
+    for name, make in [("MH", lambda: weighted(idt.IncrementalTreeProposal())),
+                       ("DA", lambda: weighted(idt.DAProposal(target, ss_prop=0.25,
+                                                              min_data=20))),
+                       ("HINTS", lambda: weighted(idt.HINTSProposal(
+                           target, ss_prop=0.1, min_data=15, lazy_counts=True)))]:
+        got = pmf(make)
+        for k in range(5):
+            diff = got[:, k].mean() - reference[:, k].mean()
+            se = np.sqrt(got[:, k].var(ddof=1) / len(got)
+                         + reference[:, k].var(ddof=1) / len(reference))
+            assert abs(diff) < 3.5 * se + 0.002, (
+                f"{name} with a weighted root disagrees with MH on P(nodes={k}): "
+                f"{got[:, k].mean():.4f} vs {reference[:, k].mean():.4f} "
+                f"({diff / max(se, 1e-12):+.1f} sigma)")
 
 
 def test_non_uniform_threshold_proposal_keeps_the_target():

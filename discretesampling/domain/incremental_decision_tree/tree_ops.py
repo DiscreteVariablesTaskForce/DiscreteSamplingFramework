@@ -265,7 +265,8 @@ class IncBDTree:
         for nid, sub_idx in ((left_id, idx[mask]), (right_id, idx[~mask])):
             self.leaf_idx[nid] = sub_idx
             self.counts[nid] = np.bincount(y[sub_idx], minlength=K)
-        self.counts.pop(leaf_id, None)
+        # dict.pop: a discarded count is never worked out (lazy_counts).
+        dict.pop(self.counts, leaf_id, None)
         return self
 
     def prune(self, parent_id):
@@ -327,7 +328,7 @@ class IncBDTree:
                     partition[curr] = curr_idx
         for leaf in desc:
             self.leaf_idx.pop(leaf, None)
-            self.counts.pop(leaf, None)
+            dict.pop(self.counts, leaf, None)
 
         y, K = self.problem.y, self.problem.num_classes
         for leaf, rows in partition.items():
@@ -350,7 +351,8 @@ class IncBDTree:
         # .copy(), not dict(): a HINTS block state's mapping copies its
         # unbuilt rows as they are, and stays that kind of mapping.
         new.leaf_idx = self.leaf_idx.copy()
-        new.counts = dict(self.counts)
+        # .copy() for the same reason: a lazy_counts block state's counts.
+        new.counts = self.counts.copy()
         new._next_id = self._next_id
         new._parent_map = self._parent_map.copy()
         new._nodes_cache = None

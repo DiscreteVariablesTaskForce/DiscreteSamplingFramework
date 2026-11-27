@@ -110,7 +110,8 @@ DATASETS = ("wine", "digits", "covtype", "mnist", "hepmass", "susy", "frogs", "s
 # gets it, and one that does not gets whatever the proposal's own signature
 # says, rather than a second opinion kept here.
 PROPOSAL_KNOBS = {
-    "HINTS": ("levels", "branching", "hierarchy", "equal_blocks"),
+    "HINTS": ("levels", "branching", "hierarchy", "equal_blocks", "temper", "bucket_rows",
+              "lazy_counts", "fused_buckets"),
     "FlatHINTS": ("equal_blocks",),
 }
 ALL_KNOBS = frozenset(k for knobs in PROPOSAL_KNOBS.values() for k in knobs)
@@ -144,6 +145,10 @@ DEFAULT_CFG = dict(
     record_moves=True,
     ss_prop=0.1,
     min_data=20,
+    # The exponent gamma of every proposal's subtree-root draw: the root is
+    # drawn with probability proportional to (rows under it + 1)^-gamma. 0 is
+    # the uniform draw of the thesis runs (see moves.draw_weighted_subtree).
+    root_weight=0.0,
     lam=15.0,
     min_samples_leaf=3,
     max_tree_size=None,
@@ -315,6 +320,8 @@ def build(cfg, X_train, y_train):
         # FlatHINTS, so a run labelled one thing silently sampled with another.
         raise ValueError(f"unknown proposal {name!r}: expected one of {PROPOSALS}")
     proposal.record_moves = cfg['record_moves']
+    if cfg.get('root_weight'):
+        proposal.root_weight = float(cfg['root_weight'])
     return problem, target, proposal
 
 

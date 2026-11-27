@@ -4,8 +4,9 @@ from discretesampling.base.random import RNG
 from discretesampling.base.types import DiscreteVariableProposal
 from discretesampling.domain.incremental_decision_tree.problem import BARRED
 from discretesampling.domain.incremental_decision_tree.moves import (
-    apply_subtree_proposal, proposal_root_correction, root_correction,
-    subtree_admissible)
+    apply_subtree_proposal, draw_subtree, draw_weighted_subtree,
+    proposal_root_correction, root_correction, subtree_admissible,
+    weighted_root_correction)
 from discretesampling.domain.incremental_decision_tree.diagnostics import (
     MOVE_CODE, MoveLog, PROPOSED, STAY_OUTCOME)
 
@@ -16,6 +17,17 @@ class IncrementalTreeProposalBase(DiscreteVariableProposal):
     """
     Base class for proposals in the incremental decision tree domain.
     """
+
+    # The exponent gamma of the subtree-root draw: rho is drawn with
+    # probability proportional to (rows under rho + 1)^-gamma. 0 (the default)
+    # is the uniform draw; above 0 the draw leans towards smaller subtrees,
+    # whose moves cost fewer row reads. See moves.draw_weighted_subtree.
+    root_weight = 0.0
+
+    def _draw_root(self, x, rng):
+        if self.root_weight:
+            return draw_weighted_subtree(x, rng, self.root_weight)
+        return draw_subtree(x, rng)
 
     def __init__(self):
         # Off by default: writing it costs a dict per accepted move, which the
@@ -174,7 +186,8 @@ class IncrementalTreeProposalBase(DiscreteVariableProposal):
             return self._stay(x)
         if not subtree_admissible(state_new, subtree_root):
             return self._stay(x, 'n_inadmissible')
-        root_term = root_correction(x, state_new, subtree_root)
+        root_term = (weighted_root_correction(x, state_new, subtree_root, self.root_weight)
+                     if self.root_weight else root_correction(x, state_new, subtree_root))
         if root_term <= BARRED:
             return self._stay(x, 'n_barred')
 

@@ -1,7 +1,7 @@
 from discretesampling.base.random import RNG
 from discretesampling.domain.incremental_decision_tree.problem import BARRED
 from discretesampling.domain.incremental_decision_tree.moves import (
-    draw_subtree, evaluate_subtree_move, select_move, subtree_node_data_len)
+    evaluate_subtree_move, select_move, subtree_node_data_len)
 from discretesampling.domain.incremental_decision_tree.proposals.base import (
     IncrementalTreeProposalBase)
 
@@ -17,7 +17,7 @@ class IncrementalTreeProposal(IncrementalTreeProposalBase):
         return self._timed(self._sample, x, rng)
 
     def _sample(self, x, rng):
-        subtree_root, ctx = draw_subtree(x, rng)
+        subtree_root, ctx = self._draw_root(x, rng)
         move, node = select_move(x, ctx, rng)
         if move == "stay":
             self._note(move, node, 0)

@@ -5,7 +5,7 @@ import numpy as np
 from discretesampling.base.random import RNG
 from discretesampling.domain.incremental_decision_tree.problem import BARRED, RowReads
 from discretesampling.domain.incremental_decision_tree.moves import (
-    SubtreeContext, apply_subtree_proposal, change_partition, draw_subtree,
+    SubtreeContext, apply_subtree_proposal, change_partition,
     evaluate_subtree_move, make_context, select_move, subtree_leaves,
     subtree_size)
 from discretesampling.domain.incremental_decision_tree.subsampling import (
@@ -34,9 +34,10 @@ class BlockRows:
     overwrites them. Block states never outlive their sweep -- the particle the
     sweep returns is the original brought forward by replay, with real arrays.
     """
-    __slots__ = ('parent', 'lo', 'hi', 'pos', 'labels', 'reads', '_rows')
+    __slots__ = ('parent', 'lo', 'hi', 'pos', 'labels', 'reads', '_rows',
+                 'bucketed', '_order', '_bounds', '_cum')
 
-    def __init__(self, parent, lo, hi, pos, labels, reads, rows=None):
+    def __init__(self, parent, lo, hi, pos, labels, reads, rows=None, bucketed=False):
         self.parent = parent
         self.lo = lo            # minimum unit label in this leaf's block, inclusive
         self.hi = hi            # maximum unit label in this leaf's block, exclusive
@@ -44,19 +45,75 @@ class BlockRows:
         self.labels = labels
         self.reads = reads      # the RowReads building the rows is charged to
         self._rows = rows
+        # bucketed: build any block's rows from the leaf's rows sorted once by
+        # unit label (see _from_buckets) instead of filtering every level.
+        self.bucketed = bucketed
+        self._order = None
+        self._bounds = None
+        self._cum = None
 
     def rows(self):
         r = self._rows
         if r is None:
-            p = self.parent.rows()
-            lab = self.labels[p]
-            self.reads.n += len(p)
-            r = self._rows = p[(lab >= self.lo) & (lab < self.hi)]
+            if self.bucketed:
+                r = self._rows = self._from_buckets()
+            else:
+                p = self.parent.rows()
+                lab = self.labels[p]
+                self.reads.n += len(p)
+                r = self._rows = p[(lab >= self.lo) & (lab < self.hi)]
         return r
+
+    def _from_buckets(self):
+        """
+        The rows in [lo, hi), from the leaf's rows at the top of the sweep
+        sorted once by unit label. A range of units is then a contiguous slice
+        of that order, and putting the slice back in position order gives
+        exactly the array the level-by-level filter gives, so the sweep is the
+        same; only the labels are read once per leaf rather than once per level.
+        """
+        top = self.parent
+        while top.parent is not None:
+            top = top.parent
+        if top._order is None:
+            full = top._rows
+            lab = self.labels[full]
+            self.reads.n += len(full)
+            top._order = np.argsort(lab, kind="stable")
+            top._bounds = np.searchsorted(lab[top._order], np.arange(top.hi + 1))
+        b = top._bounds
+        return top._rows[np.sort(top._order[b[self.lo]:b[self.hi]])]
+
+    def block_counts(self, y, num_classes):
+        """
+        The leaf's class counts in [lo, hi), for lazy_counts: from a table of
+        its counts in every unit, built the first time any of its blocks is
+        asked for (one read of each of its rows' class labels, on top of the
+        label reads of the buckets) and shared by every block of the sweep.
+        """
+        top = self.parent if self.parent is not None else self
+        while top.parent is not None:
+            top = top.parent
+        if top._cum is None:
+            if top._order is None:
+                self._from_buckets() if self is not top else top.child(0, top.hi)._from_buckets()
+            full = top._rows
+            ys = y[full[top._order]]
+            self.reads.n += len(full)
+            units = np.repeat(np.arange(top.hi), np.diff(top._bounds))
+            table = np.bincount(units * num_classes + ys,
+                                minlength=top.hi * num_classes).reshape(top.hi, num_classes)
+            cum = np.zeros((top.hi + 1, num_classes), dtype=table.dtype)
+            np.cumsum(table, axis=0, out=cum[1:])
+            top._cum = cum
+        counts = top._cum[self.hi] - top._cum[self.lo]
+        counts.flags.writeable = False
+        return counts
 
     def child(self, lo, hi):
         """The same leaf's rows in the narrower range [lo, hi)."""
-        return BlockRows(self, lo, hi, self.pos, self.labels, self.reads)
+        return BlockRows(self, lo, hi, self.pos, self.labels, self.reads,
+                         bucketed=self.bucketed)
 
 
 class LazyLeafIdx(dict):
@@ -102,6 +159,43 @@ class LazyLeafIdx(dict):
         return dict.__getitem__(self, leaf)
 
 
+class LazyCounts(dict):
+    """
+    A block state's counts for lazy_counts: {leaf: class counts}, where a
+    leaf's value may still be the BlockRows of its block, whose counts are only
+    worked out if something reads them (a prune adding two leaves' counts, or
+    a level's surrogate on the leaves its moves touched). Copies keep the
+    placeholders, as LazyLeafIdx's do.
+    """
+    __slots__ = ('y', 'num_classes')
+
+    def __init__(self, data, y, num_classes):
+        super().__init__(data)
+        self.y = y
+        self.num_classes = num_classes
+
+    def _value(self, v):
+        return v.block_counts(self.y, self.num_classes) if type(v) is BlockRows else v
+
+    def __getitem__(self, leaf):
+        return self._value(dict.__getitem__(self, leaf))
+
+    def get(self, leaf, default=None):
+        return self._value(dict.get(self, leaf, default))
+
+    def pop(self, leaf, *default):
+        return self._value(dict.pop(self, leaf, *default))
+
+    def values(self):
+        return [self[leaf] for leaf in self]
+
+    def items(self):
+        return [(leaf, self[leaf]) for leaf in self]
+
+    def copy(self):
+        return LazyCounts(self, self.y, self.num_classes)
+
+
 class NestedBlocks:
     """
     One sweep's random split of the rows under the subtree root into nested
@@ -131,9 +225,13 @@ class NestedBlocks:
     are charged to: the problem's, for a proposal; a private one otherwise.
     """
 
-    def __init__(self, n_rows, y, equal=True, reads=None):
+    def __init__(self, n_rows, y, equal=True, reads=None, bucketed=False, lazy=False,
+                 fused=False):
         self.y = y
         self.equal = bool(equal)
+        self.fused = bool(fused)
+        self.lazy = bool(lazy) or self.fused
+        self.bucketed = bool(bucketed) or self.lazy
         self.labels = np.zeros(n_rows, dtype=np.intp)
         self.n_units = 1
         self._cum = None
@@ -142,9 +240,32 @@ class NestedBlocks:
 
     def draw(self, rows, n_units, rng):
         """Split `rows` uniformly at random into `n_units` unit blocks."""
-        draw_block_labels(self.labels, rows, n_units, rng, self.equal)
+        if self.lazy:
+            self._draw_with_sizes(rows, n_units, rng)
+        else:
+            draw_block_labels(self.labels, rows, n_units, rng, self.equal)
         self.reads.n += len(rows)
         self.n_units = n_units
+
+    def _draw_with_sizes(self, rows, n_units, rng):
+        """
+        draw_block_labels, with the same calls to the generator in the same
+        order, also keeping how many rows each unit got: with lazy_counts
+        there is no table to read the sizes off, and the shares f need them.
+        """
+        U = n_units
+        if self.equal:
+            shuffled = rng.nprng.permutation(rows)
+            cut = np.arange(len(rows)) * U // max(len(rows), 1)
+            perm = rng.nprng.permutation(U)
+            self.labels[shuffled] = perm[cut]
+            sizes = np.zeros(U, dtype=np.int64)
+            sizes[perm] = np.bincount(cut, minlength=U)
+        else:
+            drawn = rng.nprng.integers(0, U, size=len(rows))
+            self.labels[rows] = drawn
+            sizes = np.bincount(drawn, minlength=U)
+        self._total = np.concatenate([[0], np.cumsum(sizes)])
 
     def tabulate(self, leaf_rows, num_classes):
         """
@@ -153,6 +274,26 @@ class NestedBlocks:
         placeholder for its rows at the top of the hierarchy.
         """
         U, n_leaves = self.n_units, len(leaf_rows)
+        if self.lazy:
+            # No table: a leaf's counts are worked out from its buckets only
+            # if a level reads them (BlockRows.block_counts).
+            held = [BlockRows(None, 0, U, i, self.labels, self.reads, rows=r,
+                              bucketed=True)
+                    for i, r in enumerate(leaf_rows)]
+            if self.fused:
+                # fused: each leaf's rows bucketed by unit label as the labels
+                # are drawn. draw() hands every row under the subtree root its
+                # label, one charged write each; a counting sort that drops the
+                # row into its (leaf, unit) bucket in that same pass needs
+                # nothing it does not already hold, so nothing more is charged.
+                # The buckets are exactly the ones _from_buckets would sort out
+                # later (reading every label a second time), so the sweep is
+                # the same.
+                for h in held:
+                    lab = self.labels[h._rows]
+                    h._order = np.argsort(lab, kind="stable")
+                    h._bounds = np.searchsorted(lab[h._order], np.arange(U + 1))
+            return held
         lens = np.fromiter(map(len, leaf_rows), np.intp, n_leaves)
         rows = np.concatenate(leaf_rows)
         # Every row's block label and class label.
@@ -165,7 +306,8 @@ class NestedBlocks:
         self._cum = cum
         # Rows in units [0, u), summed over every leaf and class.
         self._total = cum.sum(axis=(0, 2))
-        return [BlockRows(None, 0, U, i, self.labels, self.reads, rows=r)
+        return [BlockRows(None, 0, U, i, self.labels, self.reads, rows=r,
+                          bucketed=self.bucketed)
                 for i, r in enumerate(leaf_rows)]
 
     def counts(self, pos, lo, hi):
@@ -251,6 +393,27 @@ class HINTSProposal(IncrementalTreeProposalBase):
         1 / (m_0 m_1 ... m_H). On a subtree too small for every unit vertex to
         hold min_data rows, the unit vertices take in the level below them
         (m_1 is dropped first, then m_2, ...) until they can.
+    bucket_rows : bool, optional
+        Build a leaf's rows in a block from its rows sorted once by unit label
+        (True) rather than by filtering the labels again at every level (False,
+        the default). The sweep is exactly the same; only fewer labels are read.
+    lazy_counts : bool, optional
+        Work out a leaf's class counts in a block only when a level reads
+        them, and give each level its surrogate's change over the leaves its
+        moves touched, rather than tabulating every leaf in every unit and
+        summing every leaf at every level (implies bucket_rows). Leaves no
+        move touches add the same to a level's surrogate before and after, so
+        the acceptance probabilities are the same; only the floating-point
+        rounding of the sums differs.
+    fused_buckets : bool, optional
+        With lazy_counts (which it implies), bucket each leaf's rows by unit
+        label in the same pass that draws the labels, rather than reading every
+        label back later to sort them. The sweep is exactly the same; only the
+        second read of each label is saved.
+    temper : bool, optional
+        Temper each vertex's surrogate by its share f of the rows (True, the
+        default), or use the scaled surrogate at full strength (False). Both
+        keep the sampler exact.
     equal_blocks : bool, optional
         Cut the rows into unit blocks of equal size, labelled in a random order
         (True), or give every row an independent, uniformly random unit-block
@@ -262,13 +425,19 @@ class HINTSProposal(IncrementalTreeProposalBase):
     """
 
     def __init__(self, target, ss_prop=0.1, min_data=None, levels=None,
-                 branching=None, equal_blocks=True, hierarchy=None):
+                 branching=None, equal_blocks=True, hierarchy=None, temper=True,
+                 bucket_rows=False, lazy_counts=False, fused_buckets=False):
         super().__init__()
         self.target = target
         self.problem = target.problem
         self.ss_prop = float(ss_prop)
         self.min_data = int(min_data) if min_data is not None \
             else max(1, self.problem.n_rows // 10)
+        # Each vertex's surrogate is its share f of the rows' scaled log
+        # posterior times f (tempered, the default), or the scaled log
+        # posterior itself (temper=False, as in Chapter 2). Either is a valid
+        # surrogate: the path correction makes the sweep exact for any.
+        self.temper = bool(temper)
         self.hierarchy = None if hierarchy is None else tuple(int(m) for m in hierarchy)
         if self.hierarchy is not None:
             if levels is not None or branching is not None:
@@ -295,8 +464,12 @@ class HINTSProposal(IncrementalTreeProposalBase):
         # Holds each sweep's split of the rows under the subtree root; a new
         # split is drawn into it at the start of every sweep that has more
         # than one block.
+        self.lazy_counts = bool(lazy_counts) or bool(fused_buckets)
         self.blocks = NestedBlocks(self.problem.n_rows, self.problem.y,
-                                   equal=equal_blocks, reads=self.problem.reads)
+                                   equal=equal_blocks, reads=self.problem.reads,
+                                   bucketed=bucket_rows, lazy=self.lazy_counts,
+                                   fused=fused_buckets)
+        self._last_delta = 0.0
         self.n_blocks_total = 0
         self.n_level_accepts = 0
         self.n_level_rejects = 0
@@ -334,7 +507,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
         return self._timed(self._sample, x, rng)
 
     def _sample(self, x, rng):
-        subtree_root, ctx = draw_subtree(x, rng)
+        subtree_root, ctx = self._draw_root(x, rng)
         total = block_count(subtree_size(ctx), self.ss_prop, self.min_data)
         self._factors = self._sweep_factors(total)
         self._levels = len(self._factors)
@@ -425,6 +598,8 @@ class HINTSProposal(IncrementalTreeProposalBase):
         f = self.blocks.share(lo, lo + width)
         if f == 0.0:
             return 0.0, 0.0, ()
+        if self.lazy_counts:
+            return self._node_lazy(state, ctx, full, rng, lo, width, depth, f)
         pi_in = self._log_pi(state, ctx.root, f)
 
         if depth >= len(self._factors):
@@ -450,6 +625,79 @@ class HINTSProposal(IncrementalTreeProposalBase):
             return pi_in, pi_out, applied
         self.n_level_rejects += 1
         return pi_in, pi_in, ()
+
+    def _node_lazy(self, state, ctx, full, rng, lo, width, depth, f):
+        """
+        _node for lazy_counts. Only the change in a level's surrogate is ever
+        used (by its own accept step and, through the children's terms, by the
+        level above), so a node reports (0, change) for what it did: the unit
+        vertex the change its screen already worked out, and a level the
+        change over the leaves below the nodes its moves touched, every other
+        leaf adding the same before and after.
+        """
+        if depth >= len(self._factors):
+            applied = self._primitive(state, ctx, full, rng, f)
+            if not applied:
+                return 0.0, 0.0, ()
+            return 0.0, self._last_delta, applied
+
+        forward, reverse, applied = self._children(state, ctx, full, rng,
+                                                   lo, width, depth)
+        if not applied:
+            return 0.0, 0.0, ()
+
+        new = self._replayed(state, ctx.root, applied)
+        change = self._surrogate_change(state, new, ctx.root, applied, f)
+        log_accept = min(0.0, change - (forward - reverse))
+        if rng.random() < math.exp(log_accept):
+            self.n_level_accepts += 1
+            return 0.0, change, applied
+        self.n_level_rejects += 1
+        return 0.0, 0.0, ()
+
+    def _surrogate_change(self, old, new, root, applied, f):
+        """
+        _log_pi(new) - _log_pi(old), summing the leaf likelihoods only over
+        the leaves below the nodes the moves were made at: the rest are the
+        same leaves with the same rows in both, so they cancel exactly.
+        """
+        moved = {int(prop['node']) for _, prop, _ in applied}
+
+        def touched(state):
+            out = set()
+            for node in moved:
+                if node in state.nodes or node in state.leaf_idx:
+                    out.update(state._descendant_leaves(node))
+            return sorted(out)
+
+        target = self.target
+        value = 0.0
+        for state, sign in ((new, 1.0), (old, -1.0)):
+            leaves = touched(state)
+            value += sign * self._prior_pi(state, root)
+            if leaves:
+                counts = np.stack([state.counts[leaf] for leaf in leaves])
+                value += sign * target._sum_leaf_log_dm(counts, range(len(leaves)), 1.0 / f)
+        return (f if self.temper else 1.0) * value
+
+    def _prior_pi(self, state, root):
+        """The prior part of _log_pi: no rows read."""
+        problem = self.problem
+        m = state.nodes
+        lp_vals = problem.lp_vals
+        stack, n_internal, splits = [root], 0, 0.0
+        while stack:
+            node = stack.pop()
+            row = m.get(node)
+            if row is None:
+                continue
+            n_internal += 1
+            splits += lp_vals[int(row[3])]
+            stack.append(int(row[1]))
+            stack.append(int(row[2]))
+        n_nodes = len(state.tree)
+        return (self.target.log_prior(n_nodes, n_nodes + 1)
+                + splits + n_internal * problem.lp_feats)
 
     def _children(self, state, ctx, full, rng, lo, width, depth):
         """
@@ -485,12 +733,19 @@ class HINTSProposal(IncrementalTreeProposalBase):
         rewritten = {i: self.blocks.split(h, lo, width, B, K)
                      for i, h in enumerate(held) if type(h) is not BlockRows}
         pieces = []
+        lazy = self.lazy_counts
         for j, (child_lo, child_width) in enumerate(ranges):
             child_hi = child_lo + child_width
-            counts = self.blocks.counts(pos, child_lo, child_hi)
             piece = [None] * len(held)
-            for k, i in enumerate(untouched):
-                piece[i] = (held[i].child(child_lo, child_hi), counts[k])
+            if lazy:
+                # The block's rows stand in for its counts too (LazyCounts).
+                for i in untouched:
+                    c = held[i].child(child_lo, child_hi)
+                    piece[i] = (c, c)
+            else:
+                counts = self.blocks.counts(pos, child_lo, child_hi)
+                for k, i in enumerate(untouched):
+                    piece[i] = (held[i].child(child_lo, child_hi), counts[k])
             for i, parts in rewritten.items():
                 piece[i] = parts[j]
             pieces.append(piece)
@@ -561,7 +816,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
         # tempering is the factor f on their difference.
         v, v_prime = self.target.eval_move(state, move, node, prop_move,
                                            subset, leaf_pos, leaves, 1.0 / f)
-        delta = f * (v_prime - v)
+        delta = (f if self.temper else 1.0) * (v_prime - v)
         log_accept = min(0.0, delta + prop_correction)
         if not rng.random() < math.exp(log_accept):
             self.n_screened_out += 1
@@ -606,6 +861,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
 
         self.n_inner_moves += 1
         self._log(move, node, n_rows, APPLIED, n_sub, delta)
+        self._last_delta = delta
         return [(move, plain, full_after)]
 
     def _check_full(self, state, root, full, move, node):
@@ -638,9 +894,12 @@ class HINTSProposal(IncrementalTreeProposalBase):
         leaf_idx = new.leaf_idx
         if type(leaf_idx) is not LazyLeafIdx:
             leaf_idx = new.leaf_idx = LazyLeafIdx(leaf_idx)
+        if self.lazy_counts and type(new.counts) is not LazyCounts:
+            new.counts = LazyCounts(new.counts, self.problem.y, self.problem.num_classes)
+        counts_map = new.counts
         for leaf, (idx, counts) in zip(base_leaves, pieces):
             dict.__setitem__(leaf_idx, leaf, idx)
-            new.counts[leaf] = counts
+            dict.__setitem__(counts_map, leaf, counts)
         return new
 
     def _replay(self, state, ctx, applied):
@@ -701,7 +960,7 @@ class HINTSProposal(IncrementalTreeProposalBase):
         if counts:
             value += target._sum_leaf_log_dm(np.stack(counts),
                                              range(len(counts)), 1.0 / f)
-        return f * value
+        return (f if self.temper else 1.0) * value
 
     def __repr__(self):
         shape = (f"hierarchy={list(self.hierarchy)}" if self.hierarchy is not None

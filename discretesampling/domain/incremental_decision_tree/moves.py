@@ -427,3 +427,74 @@ def proposal_root_correction(state, move, node, subtree_root):
     root_survives = not (move == "prune" and node == subtree_root)
     return _root_correction(len(state.tree), len(state.tree) + delta,
                             root_survives, subtree_root)
+
+
+# ------------- a subtree root weighted towards smaller subtrees ------------- #
+#
+# Opt-in (a proposal's root_weight, gamma > 0): the root is drawn with
+# probability w(rho) / W(T), where w(nu) = (n_nu + 1)^-gamma for the n_nu rows
+# under nu, and W(T) is the sum of w over T's internal nodes. A move under rho
+# leaves the rows reaching rho, and so w(rho), unchanged, so the auxiliary-
+# variable correction log q(rho | T') - log q(rho | T) is log W(T) - log W(T').
+# For an empty tree the draw is from {0} with probability one, so its "W" is
+# w(0) itself. gamma = 0 is the uniform draw above (W = number of nodes).
+
+def node_rows(state):
+    """
+    {node: rows under it} for every node of the tree, from the leaves' row
+    counts. Index-only bookkeeping: no row's value is read.
+    """
+    leaf_idx = state.leaf_idx
+    m = state.nodes
+    n = {}
+    stack = [(0, False)]
+    while stack:
+        v, done = stack.pop()
+        if v not in m:
+            n[v] = len(leaf_idx[v]) if v in leaf_idx else 0
+        elif done:
+            n[v] = n[int(m[v][1])] + n[int(m[v][2])]
+        else:
+            stack.append((v, True))
+            stack.append((int(m[v][1]), False))
+            stack.append((int(m[v][2]), False))
+    return n
+
+
+def _root_weights(state, gamma):
+    """(pool, weights) of the weighted root draw; pool is [0] for an empty tree."""
+    n = node_rows(state)
+    pool = state.list_nodes or [0]
+    return pool, (np.array([n[v] for v in pool], dtype=float) + 1.0) ** -gamma
+
+
+def log_root_norm(state, gamma):
+    """log W(T), memoised on the tree: a tree is never mutated once evaluated,
+    and deep_copy does not carry the memo over."""
+    memo = getattr(state, '_log_root_norm', None)
+    if memo is not None and memo[0] == gamma:
+        return memo[1]
+    value = float(log(_root_weights(state, gamma)[1].sum()))
+    state._log_root_norm = (gamma, value)
+    return value
+
+
+def draw_weighted_subtree(state, rng, gamma):
+    """draw_subtree with the root drawn with probability w(rho) / W(T)."""
+    pool, w = _root_weights(state, gamma)
+    cum = np.cumsum(w)
+    state._log_root_norm = (gamma, float(log(cum[-1])))
+    i = int(np.searchsorted(cum, rng.nprng.random() * cum[-1], side='right'))
+    root = pool[min(i, len(pool) - 1)]
+    return root, make_context(state, root)
+
+
+def weighted_root_correction(state, state_new, subtree_root, gamma):
+    """root_correction for the weighted draw: log W(T) - log W(T'), and barred
+    exactly when the uniform draw's is."""
+    if state_new.tree:
+        if subtree_root not in state_new.nodes:
+            return large_neg
+    elif subtree_root != 0:
+        return large_neg
+    return log_root_norm(state, gamma) - log_root_norm(state_new, gamma)

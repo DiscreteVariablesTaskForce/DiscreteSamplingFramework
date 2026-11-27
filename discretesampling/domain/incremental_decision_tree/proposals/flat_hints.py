@@ -5,7 +5,7 @@ import numpy as np
 from discretesampling.base.random import RNG
 from discretesampling.domain.incremental_decision_tree.problem import BARRED
 from discretesampling.domain.incremental_decision_tree.moves import (
-    apply_subtree_proposal, change_partition, draw_subtree,
+    apply_subtree_proposal, change_partition,
     evaluate_subtree_move, select_move, subtree_admissible, subtree_leaves,
     subtree_size)
 from discretesampling.domain.incremental_decision_tree.subsampling import (
@@ -73,7 +73,7 @@ class FlatHINTSProposal(IncrementalTreeProposalBase):
         return self._timed(self._sample, x, rng)
 
     def _sample(self, x, rng):
-        subtree_root, ctx = draw_subtree(x, rng)
+        subtree_root, ctx = self._draw_root(x, rng)
         num_blocks = block_count(subtree_size(ctx), self.ss_prop, self.min_data)
         self.n_blocks_total += num_blocks
 
